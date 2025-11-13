@@ -97,8 +97,7 @@ docker run -it -p 8080:8080 -p 50000:50000 dev-env:latest
 ```
 
 Luego abre en tu navegador:
-
-👉 [http://localhost:8080](http://localhost:8080)
+[http://localhost:8080](http://localhost:8080)
 
 Si el puerto 8080 está ocupado, puedes usar otro:
 
@@ -107,8 +106,7 @@ docker run -it -p 8090:8080 -p 50000:50000 dev-env:latest
 ```
 
 Accede entonces en:
-
-👉 [http://localhost:8090](http://localhost:8090)
+[http://localhost:8090](http://localhost:8090)
 
 ---
 
@@ -146,7 +144,6 @@ user=root
 ---
 
 ##  Notas Adicionales
-
 - Los plugins se instalan usando la versión más reciente de **Jenkins Plugin Installation Manager** desde GitHub.
 - El contenedor expone los puertos **8080 (HTTP)** y **50000 (Agente remoto)**.
 - El directorio de trabajo por defecto es `/workspace`.
@@ -154,8 +151,7 @@ user=root
 
 ---
 
-## 🧾 Licencia
-
+## Licencia
 Este entorno está basado en software open-source y puede adaptarse libremente para propósitos personales o profesionales.
 
 ---
