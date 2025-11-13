@@ -1,4 +1,4 @@
-# 🧰 Entorno de Desarrollo Dev-Env
+# Entorno de Desarrollo Dev-Env
 
 Este contenedor provee un entorno completo de desarrollo con **Jenkins**, **Node.js**, **Angular CLI**, **Lean4**, **Python**, y herramientas esenciales de compilación sobre **Debian Bookworm Slim**.
 
@@ -10,7 +10,7 @@ Incluye:
 
 ---
 
-## 📁 Estructura del Proyecto
+##  Estructura del Proyecto
 
 ```
 .
@@ -25,7 +25,7 @@ Incluye:
 
 ---
 
-## ⚙️ Dependencias Incluidas
+##  Dependencias Incluidas
 
 | Herramienta | Versión | Descripción |
 |--------------|----------|-------------|
@@ -40,7 +40,7 @@ Incluye:
 
 ---
 
-## 🧩 Plugins de Jenkins
+##  Plugins de Jenkins
 
 Los plugins definidos en `plugins.txt` se instalan automáticamente durante el build usando `jenkins-plugin-cli`.
 
@@ -66,7 +66,7 @@ antisamy-markup-formatter
 
 ---
 
-## 👤 Usuario Jenkins Predeterminado
+##  Usuario Jenkins Predeterminado
 
 Durante la construcción se crea automáticamente un usuario administrador:
 
@@ -78,7 +78,7 @@ Esto se realiza mediante un script Groovy en `init.groovy.d/basic-security.groov
 
 ---
 
-## 🚀 Construcción de la Imagen
+##  Construcción de la Imagen
 
 Ejecuta en la raíz del proyecto:
 
@@ -88,7 +88,7 @@ docker build -t dev-env:latest .
 
 ---
 
-## ▶️ Ejecución del Contenedor
+##  Ejecución del Contenedor
 
 Para iniciar Jenkins y acceder al panel web:
 
@@ -112,7 +112,7 @@ Accede entonces en:
 
 ---
 
-## 🧱 Persistencia de Datos (opcional)
+##  Persistencia de Datos (opcional)
 
 Si deseas mantener los datos de Jenkins entre reinicios, monta un volumen:
 
@@ -124,7 +124,7 @@ Esto guardará configuraciones, jobs y plugins en el volumen `jenkins_home`.
 
 ---
 
-## 🧩 Archivo `supervisord.conf`
+##  Archivo `supervisord.conf`
 
 El contenedor usa **Supervisor** para ejecutar Jenkins automáticamente:
 
@@ -145,7 +145,7 @@ user=root
 
 ---
 
-## 🧩 Notas Adicionales
+##  Notas Adicionales
 
 - Los plugins se instalan usando la versión más reciente de **Jenkins Plugin Installation Manager** desde GitHub.
 - El contenedor expone los puertos **8080 (HTTP)** y **50000 (Agente remoto)**.
