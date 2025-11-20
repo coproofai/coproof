@@ -782,6 +782,136 @@ srun --mpi=pmi2 -N1 -n1 /root/pi_mpi
 srun --mpi=pmi2 -N3 -n12 /root/pi_mpi
 ```
 
+**Salida esperada para la prueba con un nodo:**
+
+```
+[root@sms rocky]# srun -N1 -n1 /root/pi_mpi
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 47.0156 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+[root@sms rocky]#
+```
+
+**Salida esperada para la prueba con tres nodos (12 tareas):**
+
+```
+[root@sms rocky]# srun -N3 -n12 /root/pi_mpi
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 46.8266 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 46.8293 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 46.8356 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 46.8774 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 46.8771 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 47.0076 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 47.0359 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 47.0377 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 47.0572 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 47.2404 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 47.3471 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+--- STARTING PARALLEL CALCULATION ---
+Total Iterations: 1000000000
+Total Workers   : 1
+
+--- RESULTS ---
+Calculated Pi: 3.1415926535899708
+Real Pi      : 3.1415926535897932
+Wall Clock Time: 47.3364 seconds
+Speedup check: Single core takes ~48s. We should be ~4s.
+[root@sms rocky]#
+```
 ---
 
 ## Conclusión
