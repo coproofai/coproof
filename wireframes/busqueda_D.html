@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscar Demostración</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7f7f7; }
+        
+        /* Estilo general para las cajas de contenido */
+        .content-box { 
+            overflow-y: auto; 
+            background-color: #ffffff; 
+            border: 1px solid #e5e7eb; 
+            padding: 16px; 
+            border-radius: 8px; 
+            font-size: 0.875rem; 
+        }
+        /* Altura del detalle (adaptable) */
+        .detail-box { height: calc(100vh - 420px); min-height: 300px; }
+        
+        /* Estilo para el toggle (Monocromático) */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 38px;
+            height: 22px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 22px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #555; /* Gris oscuro para monocromático "on" */
+        }
+        input:focus + .slider {
+            box-shadow: 0 0 1px #555;
+        }
+        input:checked + .slider:before {
+            transform: translateX(16px);
+        }
+        
+        /* Estilo para el input de búsqueda */
+        #search-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        #search-input:focus {
+            border-color: #555;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(85, 85, 85, 0.2);
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 bg-gray-100">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Buscar Demostración en la Base de Conocimiento</h1>
+        
+        <!-- Área de Búsqueda -->
+        <div class="bg-white p-5 rounded-xl shadow-lg mb-6 border border-gray-200">
+            <div class="relative">
+                <input type="text" id="search-input" placeholder="Buscar por Teorema, Lema, o Resultado..." onkeyup="filterResults()">
+                <!-- Icono de lupa SVG -->
+                <svg class="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                </svg>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Columna de Resultados de Búsqueda -->
+            <div class="lg:col-span-1">
+                <h2 class="text-xl font-semibold text-gray-700 mb-3">Resultados (4)</h2>
+                <div id="results-list" class="content-box h-auto lg:h-[calc(100vh-250px)]">
+                    <!-- Los resultados se inyectarán aquí -->
+                    <p class="text-gray-500">Escriba en el buscador o haga click en un resultado.</p>
+                </div>
+            </div>
+
+            <!-- Columna de Detalle de Demostración (Oculta Inicialmente) -->
+            <div id="detail-panel" class="lg:col-span-2 hidden">
+                <h2 class="text-xl font-semibold text-gray-700 mb-3" id="detail-title">Detalle de Demostración: Teorema Seleccionado</h2>
+                
+                <!-- Toggles para las columnas de detalle -->
+                <div class="flex flex-wrap gap-4 mb-4 bg-white p-3 rounded-xl shadow-inner border border-gray-200 justify-center">
+                    <div class="flex items-center space-x-2">
+                        <label for="toggleDetailNatural" class="font-medium text-gray-700">Lenguaje Natural</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggleDetailNatural" checked onchange="toggleColumn('detail-natural', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <label for="toggleDetailLean" class="font-medium text-gray-700">Formalismo Lean</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggleDetailLean" checked onchange="toggleColumn('detail-lean', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Contenedor de las dos columnas de detalle -->
+                <div id="detail-columns-container" class="grid grid-cols-1 gap-6">
+                    
+                    <!-- Detalle: Lenguaje Natural -->
+                    <div id="detail-natural" class="flex flex-col">
+                        <h3 class="text-lg font-medium text-gray-700 mb-2">Lenguaje Natural</h3>
+                        <div id="natural-detail" class="content-box detail-box text-gray-800">
+                            <!-- Contenido del lenguaje natural aquí -->
+                        </div>
+                    </div>
+
+                    <!-- Detalle: Formalismo Lean -->
+                    <div id="detail-lean" class="flex flex-col">
+                        <h3 class="text-lg font-medium text-gray-700 mb-2">Formalismo Lean</h3>
+                        <div id="lean-detail" class="content-box detail-box font-mono bg-gray-50 text-gray-800 border-gray-300 whitespace-pre-wrap">
+                            <!-- Contenido de Lean aquí -->
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+    
+    <script>
+        // Datos de ejemplo
+        const DEMONSTRATIONS = [
+            {
+                id: 1,
+                title: "Teorema de la Paridad de n² + n",
+                preview: "Demuestra que la suma de un número natural y su cuadrado es siempre par...",
+                natural_full: "La demostración formal establece que $n^2 + n$ es par al factorizar la expresión como $n(n+1)$. Dado que $n$ y $n+1$ son números consecutivos, uno de ellos siempre debe ser par. El producto de cualquier número por un número par es siempre par, completando la prueba.",
+                lean_full: "import tactic\n\ntheorem paridad_n_cuadrado_mas_n (n : nat) : even (n^2 + n) :=\nbegin\n  by_cases h_par : even n,\n  { exact even_add.mpr ⟨even_pow.mpr h_par, h_par⟩ },\n  { exact even_add.mpr ⟨(odd_iff_not_even.mpr h_par).pow.mp rfl, (odd_iff_not_even.mpr h_par)⟩ }\nend"
+            },
+            {
+                id: 2,
+                title: "Lema de la Transitividad de la Igualdad",
+                preview: "Si a=b y b=c, entonces a=c. Un lema fundamental en lógica formal...",
+                natural_full: "La transitividad es una propiedad de las relaciones de equivalencia. Formalmente, en el contexto de Lean, esto es una propiedad axiomática que se utiliza para encadenar múltiples igualdades.",
+                lean_full: "import data.nat.basic\n\ntheorem transitive_eq {α : Type*} [has_eq α] (a b c : α) (hab : a = b) (hbc : b = c) : a = c :=\nbegin\n  rw [hab, hbc]\nend"
+            },
+            {
+                id: 3,
+                title: "Corolario de los Números Primos",
+                preview: "Todo número natural mayor que 1 tiene un divisor primo...",
+                natural_full: "Este corolario se deriva del Teorema Fundamental de la Aritmética. Implica que el conjunto de los números primos es la 'base' multiplicativa para todos los números naturales.",
+                lean_full: "import data.nat.prime\n\nlemma exists_prime_factor {n : ℕ} (hn : n > 1) : ∃ p, p.prime ∧ p ∣ n :=\nbegin\n  -- Demostración truncada para la vista previa\n  exact nat.exists_prime_factor hn\nend"
+            },
+            {
+                id: 4,
+                title: "Teorema de Pitágoras (Versión Natural)",
+                preview: "En un triángulo rectángulo, el cuadrado de la hipotenusa es igual a la suma de los cuadrados de los catetos.",
+                natural_full: "El Teorema de Pitágoras es crucial en la geometría euclidiana. Si las longitudes de los catetos son $a$ y $b$, y la hipotenusa es $c$, se cumple la relación: $a^2 + b^2 = c^2$.",
+                lean_full: "import analysis.inner_product_space.pythagoras\n\n-- Asumiendo un espacio euclidiano y un triángulo rectángulo\ntheorem pythagoras {E : Type*} [inner_product_space ℝ E] {u v : E} (h : u ⟂ v) :\n  ∥u + v∥^2 = ∥u∥^2 + ∥v∥^2 :=\ninner_product_space.pythagoras h\n"
+            }
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderResults(DEMONSTRATIONS);
+        });
+
+        /**
+         * Renderiza la lista de resultados en el panel izquierdo.
+         * @param {Array} results - Lista de objetos de demostración.
+         */
+        function renderResults(results) {
+            const listContainer = document.getElementById('results-list');
+            listContainer.innerHTML = '';
+
+            if (results.length === 0) {
+                listContainer.innerHTML = '<p class="text-gray-500 p-4">No se encontraron resultados que coincidan.</p>';
+                return;
+            }
+
+            results.forEach(demo => {
+                const item = document.createElement('div');
+                item.className = 'p-3 mb-2 bg-white hover:bg-gray-100 rounded-lg cursor-pointer transition duration-150 border border-gray-200 shadow-sm';
+                item.onclick = () => showDetail(demo.id);
+                item.innerHTML = `
+                    <h3 class="font-bold text-gray-800">${demo.title}</h3>
+                    <p class="text-sm text-gray-500 mt-1">${demo.preview}</p>
+                `;
+                listContainer.appendChild(item);
+            });
+        }
+
+        /**
+         * Filtra los resultados de la búsqueda basándose en el input.
+         */
+        function filterResults() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            const filtered = DEMONSTRATIONS.filter(demo => 
+                demo.title.toLowerCase().includes(query) || 
+                demo.preview.toLowerCase().includes(query)
+            );
+            renderResults(filtered);
+            
+            // Ocultar el panel de detalle al iniciar una nueva búsqueda
+            document.getElementById('detail-panel').classList.add('hidden');
+        }
+
+        /**
+         * Muestra el panel de detalle para una demostración específica.
+         * @param {number} id - El ID de la demostración a mostrar.
+         */
+        function showDetail(id) {
+            const demo = DEMONSTRATIONS.find(d => d.id === id);
+            if (!demo) return;
+
+            // 1. Mostrar el panel de detalle
+            document.getElementById('detail-panel').classList.remove('hidden');
+            
+            // 2. Llenar el contenido
+            document.getElementById('detail-title').textContent = `Detalle de Demostración: ${demo.title}`;
+            document.getElementById('natural-detail').innerHTML = `<pre>${demo.natural_full}</pre>`;
+            document.getElementById('lean-detail').textContent = demo.lean_full;
+
+            // 3. Restaurar toggles a visible (checked) y reajustar layout
+            document.getElementById('toggleDetailNatural').checked = true;
+            document.getElementById('toggleDetailLean').checked = true;
+            toggleColumn('detail-natural', true);
+            toggleColumn('detail-lean', true);
+        }
+        
+        /**
+         * Activa/desactiva la visibilidad de una columna de detalle y ajusta el layout.
+         * @param {string} columnId - El ID de la columna a alternar (detail-natural o detail-lean).
+         * @param {boolean} isChecked - Si el toggle está marcado (visible) o no.
+         */
+        function toggleColumn(columnId, isChecked) {
+            const column = document.getElementById(columnId);
+            if (isChecked) {
+                column.classList.remove('hidden');
+            } else {
+                column.classList.add('hidden');
+            }
+            adjustDetailLayout();
+        }
+
+        /**
+         * Ajusta el diseño de la cuadrícula de columnas de detalle dinámicamente (1 o 2 columnas).
+         */
+        function adjustDetailLayout() {
+            const container = document.getElementById('detail-columns-container');
+            // Solo considerar las dos columnas de detalle
+            const visibleColumns = [
+                document.getElementById('detail-natural'),
+                document.getElementById('detail-lean')
+            ].filter(col => !col.classList.contains('hidden'));
+            
+            // Limpiar clases de columnas anteriores
+            container.classList.remove('grid-cols-1', 'grid-cols-2');
+
+            // Aplicar nuevas clases basadas en el número de columnas visibles
+            if (visibleColumns.length === 2) {
+                container.classList.add('lg:grid-cols-2');
+            } else { // 0 o 1 columna
+                container.classList.add('grid-cols-1');
+            }
+        }
+        
+    </script>
+</body>
+</html>

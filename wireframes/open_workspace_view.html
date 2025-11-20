@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abrir Workspace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7f7f7; }
+
+        .form-select, .form-radio {
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 1rem;
+            background-color: white;
+            appearance: none; /* Oculta la flecha nativa */
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236B7280'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd' /%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1em;
+        }
+
+        .form-select:focus {
+            border-color: #333;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(51, 51, 51, 0.2);
+        }
+
+        .btn-primary {
+            padding: 10px 20px;
+            background-color: #333; /* Gris oscuro */
+            color: white;
+            font-weight: 600;
+            border-radius: 8px;
+            transition: background-color 0.2s, transform 0.1s;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .btn-primary:hover {
+            background-color: #1a1a1a;
+            transform: translateY(-1px);
+        }
+        
+    </style>
+</head>
+<body class="p-4 sm:p-8 bg-gray-100 min-h-screen flex items-start justify-center">
+    <div class="max-w-xl w-full mt-10 bg-white p-6 sm:p-8 rounded-xl shadow-2xl border border-gray-200">
+        
+        <h1 class="text-3xl font-bold text-gray-800 mb-8 flex items-center">
+            <svg class="w-7 h-7 mr-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            Abrir Workspace
+        </h1>
+        
+        <form id="workspace-form" onsubmit="handleFormSubmit(event)">
+            
+            <!-- 1. Selección del Proyecto -->
+            <div class="mb-6">
+                <label for="projectId" class="block text-sm font-medium text-gray-700 mb-2">
+                    Seleccionar Proyecto
+                </label>
+                <div class="relative">
+                    <select id="projectId" name="projectId" required class="form-select">
+                        <!-- Opciones se insertarán aquí por JS -->
+                    </select>
+                </div>
+            </div>
+
+            <!-- 2. Tipo de Sesión -->
+            <div class="mb-8">
+                <label class="block text-sm font-medium text-gray-700 mb-3">
+                    Tipo de Sesión
+                </label>
+                <div class="space-y-3">
+                    
+                    <!-- Sesión Individual -->
+                    <label class="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100">
+                        <input type="radio" name="sessionType" value="individual" checked class="h-4 w-4 text-gray-600 border-gray-300 focus:ring-gray-500 form-radio">
+                        <div class="ml-3 text-sm">
+                            <p class="font-medium text-gray-800">Individual</p>
+                            <p class="text-gray-500 text-xs">Trabajar en el proyecto sin interacción en tiempo real con otros colaboradores.</p>
+                        </div>
+                    </label>
+
+                    <!-- Sesión Colaborativa -->
+                    <label class="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100">
+                        <input type="radio" name="sessionType" value="collaborative" class="h-4 w-4 text-gray-600 border-gray-300 focus:ring-gray-500 form-radio">
+                        <div class="ml-3 text-sm">
+                            <p class="font-medium text-gray-800">Nueva Sesión Colaborativa</p>
+                            <p class="text-gray-500 text-xs">Invitar a otros colaboradores a editar y demostrar teoremas simultáneamente.</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Botón de Abrir -->
+            <div class="pt-4 border-t border-gray-200 mt-4">
+                <button type="submit" class="btn-primary w-full">
+                    Abrir Workspace
+                </button>
+            </div>
+            
+        </form>
+        
+        <!-- Contenedor para mensajes de estado/error -->
+        <div id="message-box" class="mt-6 p-4 rounded-lg text-sm hidden"></div>
+        
+    </div>
+
+    <script>
+        // Simulación de datos de proyectos accesibles por el usuario
+        const MOCK_PROJECTS = [
+            { id: 1, name: "Teoría de la Computación", visibility: "Público", collaborators: ["AlanTuring", "AdaLovelace"] },
+            { id: 2, name: "Geometría Algebraica Avanzada", visibility: "Privado", collaborators: ["User_Current", "EvaristeGalois", "SophieGermain"] },
+            { id: 3, name: "Fundamentos de la Lógica Matemática", visibility: "Público", collaborators: ["KurtGoedel", "BertrandRussel"] },
+            { id: 4, name: "Cálculo Integral para Ingeniería", visibility: "Privado", collaborators: ["User_Current", "IsaacNewton"] },
+            { id: 5, name: "Teoría de Grafos y Conectividad", visibility: "Público", collaborators: ["LeonhardEuler"] },
+            { id: 6, name: "Ecuaciones Diferenciales Parciales", visibility: "Privado", collaborators: ["User_Current", "BernhardRiemann"] },
+            { id: 7, name: "Un Proyecto Privado de Otro", visibility: "Privado", collaborators: ["OtherUser"] }, // Inaccesible
+        ];
+        const CURRENT_USER = "User_Current";
+
+        /**
+         * Filtra los proyectos que son accesibles para el usuario actual.
+         */
+        function getAccessibleProjects() {
+            return MOCK_PROJECTS.filter(project => 
+                project.visibility === "Público" || 
+                (project.visibility === "Privado" && project.collaborators.includes(CURRENT_USER))
+            );
+        }
+
+        /**
+         * Rellena el selector de proyectos con los proyectos accesibles.
+         */
+        function populateProjectSelector() {
+            const selectElement = document.getElementById('projectId');
+            const accessibleProjects = getAccessibleProjects();
+
+            if (accessibleProjects.length === 0) {
+                selectElement.innerHTML = '<option value="" disabled selected>No hay proyectos accesibles</option>';
+                document.querySelector('button[type="submit"]').disabled = true;
+                return;
+            }
+            
+            selectElement.innerHTML = '<option value="" disabled selected>Selecciona un proyecto...</option>';
+            document.querySelector('button[type="submit"]').disabled = false;
+
+            accessibleProjects.forEach(project => {
+                const option = document.createElement('option');
+                option.value = project.id;
+                
+                const visibilityTag = project.visibility === 'Privado' ? ' (Privado)' : ' (Público)';
+                
+                option.textContent = `${project.name}${visibilityTag}`;
+                selectElement.appendChild(option);
+            });
+        }
+
+        /**
+         * Muestra un mensaje de estado o error.
+         * @param {string} message - Mensaje a mostrar.
+         * @param {string} type - Tipo de mensaje ('green', 'red', 'yellow').
+         */
+        function showMessage(message, type) {
+            const box = document.getElementById('message-box');
+            box.textContent = message;
+            box.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800', 'bg-yellow-100', 'text-yellow-800');
+            
+            if (type === 'green') {
+                box.classList.add('bg-green-100', 'text-green-800');
+            } else if (type === 'red') {
+                box.classList.add('bg-red-100', 'text-red-800');
+            } else { // yellow
+                box.classList.add('bg-yellow-100', 'text-yellow-800');
+            }
+            
+            // Ocultar automáticamente después de 4 segundos
+            setTimeout(() => {
+                box.classList.add('hidden');
+            }, 4000);
+        }
+
+        /**
+         * Maneja el envío del formulario (simulado).
+         */
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            
+            const projectId = document.getElementById('projectId').value;
+            const sessionType = document.querySelector('input[name="sessionType"]:checked').value;
+            
+            if (!projectId) {
+                showMessage('Por favor, selecciona un proyecto para abrir.', 'red');
+                return;
+            }
+
+            const project = MOCK_PROJECTS.find(p => p.id == projectId);
+            
+            const actionData = {
+                projectId: projectId,
+                projectName: project ? project.name : 'Desconocido',
+                sessionType: sessionType
+            };
+            
+            console.log("Acción de Workspace:", actionData);
+            showMessage(`Abriendo Workspace para el proyecto '${actionData.projectName}' en modo ${sessionType === 'individual' ? 'Individual' : 'Colaborativo'}...`, 'green');
+            
+            // Aquí iría la lógica real para redirigir al workspace
+        }
+
+        // Inicializar el selector de proyectos al cargar la página
+        document.addEventListener('DOMContentLoaded', () => {
+            populateProjectSelector();
+        });
+    </script>
+</body>
+</html>

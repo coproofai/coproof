@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traducción a Lean</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7f7f7; }
+        /* Altura del área de texto: 100% de la ventana menos el encabezado y el margen */
+        .text-area { 
+            height: calc(100vh - 160px); 
+            min-height: 400px; 
+            overflow-y: auto; 
+            background-color: #ffffff; 
+            border: 1px solid #e5e7eb; 
+            padding: 16px; 
+            border-radius: 8px; 
+            font-size: 0.875rem; 
+        }
+        /* Estilo para el botón principal (monocromático) */
+        .btn-primary {
+            background-color: #333;
+            color: white;
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 8px;
+            transition: background-color 0.2s;
+        }
+        .btn-primary:hover {
+            background-color: #555;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 bg-gray-100">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Traducción a Formalismo Lean</h1>
+        
+        <!-- Panel de Control y Acciones -->
+        <div class="bg-white p-4 rounded-xl shadow-lg mb-6 flex flex-wrap gap-4 justify-between items-center border border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-700">Editor de Traducción</h2>
+            <button id="translate-btn" class="btn-primary hover:shadow-lg" onclick="simulateTranslation()">
+                Traducir a Lean
+            </button>
+        </div>
+
+        <!-- Vista de Dos Columnas Estáticas -->
+        <div id="columns-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- Columna 1: Lenguaje Natural (Editable) -->
+            <div id="col-natural" class="flex flex-col">
+                <h2 class="text-xl font-semibold text-gray-700 mb-3">Lenguaje Natural (Entrada)</h2>
+                <textarea id="natural-input" class="text-area border-gray-300 resize-none focus:ring-gray-500 focus:border-gray-500 p-4" placeholder="Escribe aquí el teorema o proposición que deseas formalizar en Lean. Por ejemplo: 'Para todo número natural n, n al cuadrado más n es par.'">
+Proposición: Demostrar que para todo número natural n, si n es mayor que 2, entonces n al cuadrado es mayor que 4.
+                </textarea>
+            </div>
+
+            <!-- Columna 2: Versión en Lean (Solo Lectura) -->
+            <div id="col-lean" class="flex flex-col">
+                <h2 class="text-xl font-semibold text-gray-700 mb-3">Formalismo Lean (Salida)</h2>
+                <div id="lean-output" class="text-area font-mono bg-gray-50 text-gray-800 border-gray-300 whitespace-pre-wrap">
+                    <p class="text-gray-500">// Presiona "Traducir a Lean" para generar el código.</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    
+    <script>
+        /**
+         * Simula el proceso de traducción y actualiza el output de Lean.
+         */
+        function simulateTranslation() {
+            const naturalText = document.getElementById('natural-input').value.trim();
+            const leanOutputDiv = document.getElementById('lean-output');
+            const translateBtn = document.getElementById('translate-btn');
+            
+            if (naturalText === "") {
+                leanOutputDiv.innerHTML = '<p class="text-red-500">// Por favor, introduce texto en lenguaje natural para traducir.</p>';
+                return;
+            }
+
+            // Simulación de carga
+            translateBtn.disabled = true;
+            translateBtn.textContent = 'Traduciendo...';
+            leanOutputDiv.innerHTML = '<p class="text-gray-500">// Generando código formal...</p>';
+
+            // Simulación de la respuesta (usando un setTimeout)
+            setTimeout(() => {
+                const simulatedLeanCode = `
+import data.nat.prime
+import tactic
+
+-- Teorema simulado basado en el input (ejemplo: n > 2 -> n^2 > 4)
+theorem n_cuadrado_mayor_que_cuatro (n : ℕ) (hn : n > 2) : n^2 > 4 :=
+begin
+  -- Demostración por álgebra simple en Lean
+  exact nat.pow_le_pow_of_le_left (show 2 ≤ n, by linarith) (by norm_num : 2 > 0)
+  -- o la prueba directa
+  -- exact nat.pow_lt_pow_of_lt_left (show 2 < n, by linarith) (by norm_num : 2 > 0)
+end
+`;
+                leanOutputDiv.textContent = simulatedLeanCode.trim();
+                translateBtn.disabled = false;
+                translateBtn.textContent = 'Traducir a Lean';
+            }, 1500); // 1.5 segundos de retraso
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menú Principal</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f7f7f7; color: #333; margin: 0; padding: 20px; }
+        h1 { color: #333; margin-bottom: 30px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        .menu-item { background-color: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05); text-align: center; cursor: pointer; transition: all 0.2s; border: 1px solid #eee; }
+        .menu-item:hover { transform: translateY(-3px); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); border-color: #ccc; }
+        .menu-item-title { font-size: 1.2em; font-weight: bold; color: #555; margin: 0; }
+    </style>
+</head>
+<body>
+    <h1>Menú Principal</h1>
+    <div class="menu-grid">
+        <!-- Botón 1 -->
+        <a href="validation_view.html" style="text-decoration: none; color: inherit;">
+            <div class="menu-item">
+                <p class="menu-item-title">Validar Demostración</p>
+            </div>
+        </a>
+    
+        <!-- Botón 2 -->
+        <a href="translation_view.html" style="text-decoration: none; color: inherit;">
+            <div class="menu-item">
+                <p class="menu-item-title">Traducir a Lean</p>
+            </div>
+        </a>
+    
+        <!-- Botón 3 -->
+        <a href="busqueda_D.html" style="text-decoration: none; color: inherit;">
+            <div class="menu-item">
+                <p class="menu-item-title">Buscar Demostración</p>
+            </div>
+        </a>
+    
+        <!-- Botón 4 -->
+        <a href="lineage_search_view.html" style="text-decoration: none; color: inherit;">
+            <div class="menu-item">
+                <p class="menu-item-title">Buscar Linaje</p>
+            </div>
+        </a>
+    
+        <!-- Botón 5 -->
+        <a href="create_project_view.html" style="text-decoration: none; color: inherit;">
+            <div class="menu-item">
+                <p class="menu-item-title">Crear Proyecto (Privado o Público)</p>
+            </div>
+        </a>
+    
+        <!-- Botón 6 -->
+        <a href="project_search_view.html" style="text-decoration: none; color: inherit;">
+            <div class="menu-item">
+                <p class="menu-item-title">Buscar Proyectos</p>
+            </div>
+        </a>
+    
+        <!-- Botón 7 -->
+        <a href="open_workspace_view.html" style="text-decoration: none; color: inherit;">
+            <div class="menu-item">
+                <p class="menu-item-title">Abrir Workspace</p>
+            </div>
+        </a>
+    </div>
+</body>
+</html>

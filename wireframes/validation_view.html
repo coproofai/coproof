@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validar Demostración</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f7f7f7; color: #333; margin: 0; padding: 20px; }
+        h1 { color: #333; margin-bottom: 20px; }
+        .control-panel { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05); margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #eee; }
+        .upload-button { padding: 10px 20px; background-color: #333; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .upload-button:hover { background-color: #555; }
+        .validation-result { font-size: 1.1em; font-weight: bold; padding: 10px; border-radius: 4px; }
+        .result-pending { background-color: #ffc; color: #880; border: 1px solid #cc0; }
+        .result-validated { background-color: #e6ffe6; color: #080; border: 1px solid #0c0; }
+        .columns-container { display: flex; gap: 20px; }
+        .column { flex: 1; background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05); border: 1px solid #eee; min-height: 400px; }
+        .column-header { font-weight: bold; color: #555; margin-bottom: 10px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        pre { background-color: #f7f7f7; padding: 10px; border-radius: 4px; overflow: auto; white-space: pre-wrap; font-size: 0.9em; border: 1px solid #eee; }
+    </style>
+</head>
+<body>
+    <h1>Validar Demostración</h1>
+    <div class="control-panel">
+        <button class="upload-button">Subir Archivo de Validación</button>
+        <div class="validation-result result-pending">Resultado: Pendiente de Subida/Validación</div>
+    </div>
+    
+    <div class="columns-container">
+        <div class="column">
+            <div class="column-header">1. Demostración Original (Usuario)</div>
+            <pre>// Contenido subido (código, texto, PDF)
+// Ej: "La suma de dos números pares es par."</pre>
+        </div>
+        
+        <div class="column">
+            <div class="column-header">2. Versión en Lean (Generada)</div>
+            <pre>-- Código Lean generado
+theorem sum_even_is_even (h1 : even x) (h2 : even y) : even (x + y) :=
+begin
+  -- Demostración en Lean
+end</pre>
+        </div>
+        
+        <div class="column">
+            <div class="column-header">3. Versión en Lenguaje Natural</div>
+            <pre>Demostración:
+1. Asumimos que $x$ y $y$ son números pares.
+2. Por definición, $x=2k$ y $y=2m$ para enteros $k, m$.
+3. Entonces $x+y = 2k + 2m = 2(k+m)$.
+4. Como $k+m$ es un entero, $x+y$ es par.</pre>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuración de Entorno</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7f7f7; }
+
+        /* Estilo de los campos de entrada, replicando el estilo del login */
+        .input-field {
+            @apply w-full px-4 py-3 border border-gray-300 rounded-lg 
+                   focus:outline-none focus:ring-2 focus:ring-gray-500 
+                   transition duration-150 text-gray-800 bg-white;
+        }
+
+        .form-group label {
+            /* Título y label en gris para contraste sutil */
+            @apply block text-sm font-medium text-gray-600 mb-2;
+        }
+        
+        /* Botón de acción secundaria (Probar Conexión) */
+        .secondary-button {
+            @apply w-full py-3 border border-gray-400 text-gray-600 font-bold rounded-lg 
+                   hover:bg-gray-100 transition duration-200 shadow-sm;
+        }
+
+        /* Botón de guardar principal */
+        .primary-button {
+            @apply w-full py-3 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-600 transition duration-200 shadow-md;
+        }
+
+        /* Estilos para mensajes de estado */
+        .status-success { @apply bg-green-50 text-green-700 border border-green-200; }
+        .status-error { @apply bg-red-50 text-red-700 border border-red-200; }
+        .status-info { @apply bg-blue-50 text-blue-700 border border-blue-200; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 bg-gray-100">
+    <!-- Tarjeta Principal, manteniendo las clases de la vista de autenticación -->
+    <div class="w-full max-w-md bg-white p-8 rounded-xl shadow-2xl border border-gray-200">
+        
+        <!-- Título principal -->
+        <h3 class="text-xl font-medium text-gray-600 mb-5 border-b pb-2">Ajustes de Entorno y Servidor</h3>
+        
+        <form id="environmentConfigForm" onsubmit="saveEnvConfig(event)" class="space-y-6">
+            
+            <!-- SECCIÓN 1: Modelos de Asistencia (AI) -->
+            <div>
+                <h4 class="text-base font-semibold text-gray-700 mb-3">Modelos de Asistencia (AI)</h4>
+                
+                <div class="space-y-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                    <label class="flex items-center space-x-3">
+                        <input type="checkbox" id="aiModel1" checked class="form-checkbox h-4 w-4 text-gray-800 rounded focus:ring-gray-500">
+                        <span class="text-sm font-medium text-gray-700">Formalizer Pro (Lógica)</span>
+                    </label>
+                    <label class="flex items-center space-x-3">
+                        <input type="checkbox" id="aiModel2" class="form-checkbox h-4 w-4 text-gray-800 rounded focus:ring-gray-500">
+                        <span class="text-sm font-medium text-gray-700">Data-Viz Engine (Numérico)</span>
+                    </label>
+                    <label class="flex items-center space-x-3">
+                        <input type="checkbox" id="aiModel3" checked class="form-checkbox h-4 w-4 text-gray-800 rounded focus:ring-gray-500">
+                        <span class="text-sm font-medium text-gray-700">Project Planner (Estratégico)</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 2: Configuración del Cluster -->
+            <div>
+                <h4 class="text-base font-semibold text-gray-700 mb-3 pt-2 border-t border-gray-200">Cluster de Cómputo</h4>
+                
+                <div class="form-group">
+                    <label for="clusterEndpoint">URL del Endpoint</label>
+                    <input type="url" id="clusterEndpoint" value="https://compute.formalizer-cluster.io/api/v1" class="input-field" required>
+                </div>
+                
+                <div class="form-group mt-5">
+                    <button type="button" onclick="testClusterConnection()" class="secondary-button">
+                        Probar Conexión
+                    </button>
+                </div>
+                
+                <!-- Indicador de estado de conexión -->
+                <div id="connectionStatus" class="mt-3 p-3 text-sm text-center hidden rounded-lg border" role="status"></div>
+            </div>
+            
+            <!-- Botón de Guardar Principal -->
+            <button type="submit" class="primary-button mt-6">
+                Guardar Configuración de Entorno
+            </button>
+        </form>
+
+        <!-- Mensaje de estado global -->
+        <div id="statusMessage" class="mt-4 p-3 text-sm text-center hidden rounded-lg" role="alert"></div>
+
+    </div>
+
+    <script>
+        // Simulación de la carga inicial de datos (opcional)
+        window.onload = () => {
+             // Aquí se podría cargar el estado real de los checkboxes y el endpoint del cluster.
+        };
+
+        /**
+         * Función simulada para guardar la configuración de entorno.
+         * @param {Event} event - El evento de envío del formulario.
+         */
+        function saveEnvConfig(event) {
+            event.preventDefault(); 
+            
+            const aiModel1 = document.getElementById('aiModel1').checked;
+            const aiModel2 = document.getElementById('aiModel2').checked;
+            const aiModel3 = document.getElementById('aiModel3').checked;
+            const clusterEndpoint = document.getElementById('clusterEndpoint').value;
+            const statusMessage = document.getElementById('statusMessage');
+
+            // Ocultar mensaje anterior
+            statusMessage.classList.add('hidden');
+            statusMessage.textContent = '';
+
+            setTimeout(() => {
+                displayStatus('Configuración de entorno guardada exitosamente.', 'status-success', statusMessage);
+                console.log("Configuración de Entorno Guardada:", { aiModel1, aiModel2, aiModel3, clusterEndpoint });
+            }, 500);
+        }
+
+        /**
+         * Simula la prueba de conexión al clúster.
+         */
+        function testClusterConnection() {
+            const statusIndicator = document.getElementById('connectionStatus');
+            const endpoint = document.getElementById('clusterEndpoint').value;
+            
+            // Mostrar mensaje de prueba
+            displayStatus(`Probando conexión a: ${endpoint}...`, 'status-info', statusIndicator);
+
+            // Simular retraso de conexión
+            setTimeout(() => {
+                const success = Math.random() > 0.2; // 80% de probabilidad de éxito
+                if (success) {
+                    displayStatus('Conexión exitosa. Cluster operativo.', 'status-success', statusIndicator);
+                } else {
+                    displayStatus('Error de conexión. Verifique el endpoint o el estado del cluster.', 'status-error', statusIndicator);
+                }
+            }, 1500);
+        }
+
+        /**
+         * Muestra un mensaje de estado temporal en el contenedor especificado.
+         * @param {string} message - El mensaje a mostrar.
+         * @param {string} classes - Clase de estado (e.g., 'status-success', 'status-error').
+         * @param {HTMLElement} element - El elemento donde mostrar el estado.
+         */
+        function displayStatus(message, classes, element) {
+            element.className = 'mt-4 p-3 text-sm text-center rounded-lg border'; 
+            element.classList.add(classes);
+            element.textContent = message;
+            element.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workspace de Proyecto</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Incluir D3.js para la visualización de grafos -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7f7f7; overflow: hidden; }
+        
+        /* Estilos específicos para el SVG del grafo */
+        .node-circle {
+            fill: #cccccc; /* Gris claro por defecto */
+            stroke: #333;
+            stroke-width: 1px;
+            transition: stroke-width 0.1s, fill 0.1s;
+            cursor: pointer;
+        }
+        .node-text {
+            font-size: 11px; /* Ligeramente más grande */
+            pointer-events: none; /* No interceptar clics */
+            fill: #333;
+            font-weight: 500; /* Reducción de bold */
+        }
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 1.5px;
+            marker-end: url(#arrowhead);
+        }
+        .node-circle:hover {
+            stroke-width: 1.5px;
+            stroke: #000;
+        }
+
+        /* Colores de estado y tipo */
+        .status-unproven { background-color: #fca5a5; color: #991b1b; } /* Rojo suave */
+        .status-in-progress { background-color: #fde68a; color: #92400e; } /* Amarillo suave */
+        .status-proven { background-color: #a7f3d0; color: #065f46; } /* Verde suave */
+        .type-axiom { background-color: #bfdbfe; color: #1e40af; } /* Azul suave */
+        .type-conjecture { background-color: #e9d5ff; color: #5b21b6; } /* Púrpura suave */
+
+        /* Clases de utilidad */
+        .panel {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e5e7eb;
+        }
+        .action-icon-btn {
+            @apply flex flex-col items-center justify-center p-1.5 text-xs font-medium rounded-lg text-gray-700 border border-gray-300 bg-white hover:bg-gray-100 transition duration-150 h-16; /* Aumento de altura para las etiquetas de 2 líneas */
+        }
+        .action-icon-btn span {
+            @apply mt-1 text-[9px] text-center font-normal leading-tight; /* Texto más pequeño para evitar desbordamiento */
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- Panel Superior: Contexto y Colaboradores -->
+    <header class="bg-white border-b border-gray-200 p-4 flex justify-between items-center flex-shrink-0">
+        <div class="flex items-center space-x-4">
+            <h1 class="text-xl font-bold text-gray-800 truncate">Proyecto: <span id="projectName">Cálculo de Límites (Colab)</span></h1>
+            <span class="text-sm font-medium text-gray-500">Sesión Colaborativa</span>
+        </div>
+        
+        <!-- Botón de Guardar Cambios (Commit) -->
+        <div class="flex items-center space-x-4">
+            <button onclick="handleCommit()" class="px-4 py-2 bg-gray-800 text-white font-semibold rounded-lg text-sm hover:bg-gray-900 transition duration-150 shadow-md flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                Guardar Cambios (Commit)
+            </button>
+
+            <!-- Información de Colaboradores -->
+            <div id="collaborators-info" class="flex items-center space-x-2 text-sm text-gray-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20v-2c0-.656-.126-1.283-.356-1.857M2.008 2.008a6 6 0 0111.984 0M11 12h.01M3 13h2a3 3 0 003 3h3a3 3 0 003-3h2"></path></svg>
+                <span class="font-semibold">Activos:</span>
+                <div id="activeCollaborators" class="flex space-x-1">
+                    <span class="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs">User_Current</span>
+                    <span class="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs">AdaLovelace</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Contenido Principal: Metas, Grafo y Detalles -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- Panel Izquierdo: Lista de Metas (Goals) -->
+        <aside class="w-64 bg-gray-50 border-r border-gray-200 p-4 overflow-y-auto flex-shrink-0">
+            <h2 class="text-lg font-semibold text-gray-700 mb-3 border-b pb-2">Metas del Proyecto</h2>
+            <ul id="goalsList" class="space-y-2">
+                <!-- Los items de metas se insertan aquí -->
+            </ul>
+        </aside>
+
+        <!-- Área Central: Grafo de Nodos de Demostración -->
+        <main class="flex-1 overflow-hidden relative">
+            <div class="absolute inset-0 p-4">
+                <div class="panel h-full w-full overflow-hidden">
+                    <!-- El SVG ahora contendrá un grupo <g> para el contenido zoomable -->
+                    <svg id="dependencyGraph" class="w-full h-full">
+                        <g id="zoomable-content"></g>
+                    </svg>
+                </div>
+            </div>
+        </main>
+
+        <!-- Panel Derecho: Detalles del Nodo y Acciones -->
+        <aside id="nodeDetailPanel" class="w-80 bg-white border-l border-gray-200 p-4 overflow-y-auto flex-shrink-0 hidden">
+            <div id="nodeDetailContent" class="p-2">
+                <h2 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Detalles del Nodo</h2>
+                
+                <p class="text-sm font-medium text-gray-700 mb-1">Nombre:</p>
+                <p id="nodeName" class="text-xl font-extrabold text-gray-900 mb-4"></p>
+                
+                <div class="mb-4 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-700">Tipo:</span>
+                        <span id="nodeType" class="text-xs font-semibold px-2 py-1 rounded-full type-axiom"></span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-700">Estado:</span>
+                        <span id="nodeStatus" class="text-xs font-semibold px-2 py-1 rounded-full status-unproven"></span>
+                    </div>
+                </div>
+
+                <!-- --- -->
+                <h3 class="text-base font-semibold text-gray-700 mb-3 pt-3 border-t">Acciones Disponibles</h3>
+                <div class="space-y-3">
+                    <!-- Grupo 1: Formalización / Demostración -->
+                    <div class="panel p-3 border-gray-300">
+                        <p class="font-medium text-gray-800 mb-2 text-sm">Demostración</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button class="action-icon-btn" data-action="load-proof" title="Cargar Demostración">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            </button>
+                            <button class="action-icon-btn" data-action="request-proof" title="Solicitar Demostración (AI)">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Grupo 2: Planificación -->
+                    <div class="panel p-3 border-gray-300">
+                        <p class="font-medium text-gray-800 mb-2 text-sm">Planificación</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button class="action-icon-btn" data-action="load-plan" title="Cargar Plan de Demostración">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h10a2 2 0 012 2v1m-3 7h1v4h-1V7m3 7h1v4h-1V7m-7 7h1v4h-1V7"></path></svg>
+                            </button>
+                            <button class="action-icon-btn" data-action="request-plan" title="Solicitar Plan (AI)">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-3-3v6M12 2a10 10 0 100 20 10 10 0 000-20z"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Grupo 3: Datos y Ejemplos -->
+                    <div class="panel p-3 border-gray-300">
+                        <p class="font-medium text-gray-800 mb-2 text-sm">Datos y Ejemplos</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button class="action-icon-btn" data-action="load-data" title="Cargar Datos Numéricos">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 2h6"></path></svg>
+                            </button>
+                            <button class="action-icon-btn" data-action="request-data" title="Solicitar Datos Numéricos (AI)">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2v2m0 0v2m0-4c-1.657 0-3 .895-3 2s1.343 2 3 2"></path></svg>
+                            </button>
+                            <button class="action-icon-btn" data-action="request-logic-example" title="Solicitar Ejemplos Lógicos (AI)">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 11h2m10 0h2M3 15h2m14 0h2M5 7h2m10 0h2M3 3h2m14 0h2M3 21h2m14 0h2M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"></path></svg>
+                            </button>
+                            <button class="action-icon-btn" data-action="request-numeric-example" title="Solicitar Ejemplos Numéricos (AI)">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h10m-5 0v10m0-10h-2m2 0H5m2 10h10m-5 0v2m-2-2h-3m1 2h2m-1-4h1v2h-1m2-2h1v2h-1m2-2h1v2h-1"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // --- Datos Simulados ---
+        const MOCK_GOALS = [
+            { id: 'g1', name: 'Teorema Fundamental del Cálculo (Parte I)' },
+            { id: 'g2', name: 'Límite de una Sucesión Convergente' },
+            { id: 'g3', name: 'Propiedades de Números Reales' },
+        ];
+
+        const MOCK_NODES = {
+            'g1': [ // Grafo para el Teorema Fundamental del Cálculo (TFC)
+                // Nivel 0 (Meta principal)
+                { id: 'n1', name: 'Demostrar TFC (Parte I)', type: 'Teorema', status: 'unproven', parent: null },
+                // Nivel 1 (Pasos directos)
+                { id: 'n2', name: 'Lema: Función Acotada en Intervalo', type: 'Lema', status: 'proven', parent: 'n1' },
+                { id: 'n3', name: 'Corolario: Continuidad de la Integral', type: 'Corolario', status: 'in-progress', parent: 'n1' },
+                // Nivel 2 (Dependencias de n3)
+                { id: 'n4', name: 'Axioma: Delta-Épsilon (Continuidad)', type: 'Axioma', status: 'proven', parent: 'n3' },
+                { id: 'n5', name: 'Lema: Sumas de Riemann', type: 'Lema', status: 'unproven', parent: 'n3' },
+            ],
+            'g2': [ // Grafo para Límite de una Sucesión Convergente
+                 { id: 'n6', name: 'Definición de Límite Épsilon', type: 'Axioma', status: 'proven', parent: null },
+                 { id: 'n7', name: 'Demostrar Unicidad del Límite', type: 'Teorema', status: 'unproven', parent: 'n6' },
+            ],
+        };
+
+        let selectedNodeId = null;
+        let selectedGoalId = MOCK_GOALS[0].id; // Meta seleccionada por defecto
+
+        // --- Configuración y Lógica del Grafo ---
+        const svg = d3.select("#dependencyGraph");
+        const g = d3.select("#zoomable-content"); // Grupo para aplicar transformaciones de zoom
+        let width, height;
+
+        // 1. Definición de la flecha
+        svg.append("defs").append("marker")
+            .attr("id", "arrowhead")
+            .attr("viewBox", "0 -5 10 10")
+            .attr("refX", 20)
+            .attr("refY", 0)
+            .attr("orient", "auto")
+            .attr("markerWidth", 6)
+            .attr("markerHeight", 6)
+            .append("svg:path")
+            .attr("d", "M 0, -5 L 10, 0 L 0, 5")
+            .attr("fill", "#999");
+
+        // 2. Definición del comportamiento de Zoom
+        const zoom = d3.zoom()
+            .scaleExtent([0.5, 3]) // Limitar el zoom
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+            
+        function getGoalNodes(goalId) {
+            return MOCK_NODES[goalId] || [];
+        }
+        
+        /**
+         * Dibuja el grafo de dependencia para la meta seleccionada.
+         */
+        function drawGraph() {
+            // Limpiar contenido zoomable
+            g.selectAll("*").remove();
+            
+            // Obtener dimensiones del contenedor
+            const container = document.querySelector('.panel');
+            width = container.clientWidth;
+            height = container.clientHeight;
+            svg.attr("viewBox", [0, 0, width, height]);
+
+            // Aplicar comportamiento de zoom al SVG
+            svg.call(zoom);
+            
+            const nodesData = getGoalNodes(selectedGoalId);
+            const linksData = nodesData.filter(d => d.parent).map(d => ({
+                source: d.parent,
+                target: d.id
+            }));
+
+            // Usar d3.forceSimulation para posicionar los nodos
+            const simulation = d3.forceSimulation(nodesData)
+                .force("link", d3.forceLink(linksData).id(d => d.id).distance(100).strength(0.5))
+                .force("charge", d3.forceManyBody().strength(-1000))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("y", d3.forceY(d => {
+                    // Posicionamiento vertical: Mover nodos más abajo si son pasos derivados
+                    if (d.parent === null) return height * 0.15; 
+                    
+                    let depth = 0;
+                    let current = d;
+                    while(current.parent && current.parent !== current.id) {
+                        depth++;
+                        current = nodesData.find(n => n.id === current.parent);
+                        if (!current) break;
+                    }
+                    
+                    return height * 0.15 + (depth * (height * 0.8 / 3)); 
+                }).strength(0.8))
+                .force("x", d3.forceX(width / 2).strength(0.05));
+
+
+            // --- Renderizado del Grafo ---
+            
+            // Líneas de conexión
+            const link = g.append("g")
+                .attr("class", "links")
+                .selectAll("line")
+                .data(linksData)
+                .enter().append("line")
+                .attr("class", "link");
+
+            // Nodos (círculos)
+            const node = g.append("g")
+                .attr("class", "nodes")
+                .selectAll("g")
+                .data(nodesData)
+                .enter().append("g")
+                .attr("class", "node")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            node.append("circle")
+                .attr("r", 15)
+                .attr("data-id", d => d.id) // Añadir data-id para selección
+                .attr("class", "node-circle")
+                .style("fill", d => {
+                    if (d.status === 'proven') return '#6ee7b7'; 
+                    if (d.status === 'in-progress') return '#fcd34d'; 
+                    return '#fca5a5'; 
+                })
+                .on('click', (event, d) => {
+                     // Prevenir que el clic se propague al SVG para zoom/pan
+                    event.stopPropagation(); 
+                    showNodeDetails(d.id, d.name, d.type, d.status)
+                });
+
+            // Etiquetas (Nombres)
+            const nodeLabels = node.append("text")
+                .attr("class", "node-text")
+                .attr("data-id", d => d.id) // Añadir data-id para selección
+                .attr("dy", 30) // Mover debajo del nodo (radio 15 + margen)
+                .attr("text-anchor", "middle")
+                .text(d => d.name)
+                .style("opacity", 0); // Ocultar por defecto
+
+            // Tick de la simulación
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+            });
+
+            // Función de arrastre
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null; 
+                d.fy = null;
+            }
+
+            // Seleccionar el nodo principal al dibujar
+            if (nodesData.length > 0) {
+                 showNodeDetails(nodesData[0].id, nodesData[0].name, nodesData[0].type, nodesData[0].status);
+            } else {
+                 document.getElementById('nodeDetailPanel').classList.add('hidden');
+            }
+        }
+
+        /**
+         * Rellena el panel lateral de detalles con la información del nodo.
+         */
+        function showNodeDetails(nodeId, name, type, status) {
+            // 1. Actualizar la selección visual (asegurar borde oscuro)
+            g.selectAll('.node-circle')
+                .style('stroke', '#333')
+                .style('stroke-width', '1.5px');
+
+            g.select(`.node-circle[data-id='${nodeId}']`)
+                .style('stroke', '#000') // Borde más oscuro
+                .style('stroke-width', '2px'); // Borde más grueso
+            
+            // 2. Ocultar todas las etiquetas y mostrar solo la seleccionada
+            g.selectAll('.node-text').style('opacity', 0);
+            g.select(`.node-text[data-id='${nodeId}']`).style('opacity', 1);
+
+            // 3. Mostrar el panel y actualizar contenido
+            const panel = document.getElementById('nodeDetailPanel');
+            panel.classList.remove('hidden');
+            
+            document.getElementById('nodeName').textContent = name;
+
+            const typeEl = document.getElementById('nodeType');
+            typeEl.textContent = type;
+            typeEl.className = `text-xs font-semibold px-2 py-1 rounded-full type-${type.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+
+            const statusEl = document.getElementById('nodeStatus');
+            statusEl.textContent = status.charAt(0).toUpperCase() + status.slice(1).replace('-', ' ');
+            statusEl.className = `text-xs font-semibold px-2 py-1 rounded-full status-${status}`;
+            
+            selectedNodeId = nodeId;
+            console.log(`Nodo seleccionado: ${nodeId}`);
+        }
+
+        /**
+         * Maneja el botón de Guardar Cambios (simulación).
+         */
+        function handleCommit() {
+            // Reemplazar con lógica real de guardado (Firestore)
+            // Ya que el router fue eliminado, alert() funciona como un simple feedback.
+            alert("Simulando Guardar Cambios (Commit) en el proyecto."); 
+        }
+
+
+        /**
+         * Maneja las acciones del nodo (simulación).
+         */
+        document.querySelectorAll('.action-icon-btn').forEach(button => {
+            button.addEventListener('click', (event) => {
+                const action = event.currentTarget.getAttribute('data-action');
+                alert(`Acción sobre el nodo ${selectedNodeId} (${document.getElementById('nodeName').textContent}): ${action}`);
+            });
+        });
+        
+        /**
+         * Renderiza la lista de metas en el panel lateral izquierdo.
+         */
+        function renderGoalsList() {
+            const list = document.getElementById('goalsList');
+            list.innerHTML = '';
+            
+            MOCK_GOALS.forEach(goal => {
+                const isSelected = goal.id === selectedGoalId;
+                const listItem = document.createElement('li');
+                listItem.className = `p-3 rounded-lg cursor-pointer transition duration-150 ${isSelected ? 'bg-gray-200 text-gray-900 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`;
+                listItem.textContent = goal.name;
+                listItem.onclick = () => {
+                    selectedGoalId = goal.id;
+                    renderGoalsList(); // Volver a renderizar para actualizar la selección
+                    drawGraph();
+                };
+                list.appendChild(listItem);
+            });
+        }
+
+        // --- Inicialización ---
+        window.addEventListener('load', () => {
+            renderGoalsList();
+            drawGraph();
+        });
+        
+        // Manejar el redimensionamiento de la ventana para que el grafo se ajuste
+        window.addEventListener('resize', drawGraph);
+    </script>
+</body>
+</html>

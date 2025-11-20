@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuración de Cuenta</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7f7f7; }
+
+        /* Estilo de los campos de entrada, replicando el estilo del login */
+        .input-field {
+            @apply w-full px-4 py-3 border border-gray-300 rounded-lg 
+                   focus:outline-none focus:ring-2 focus:ring-gray-500 
+                   transition duration-150 text-gray-800 bg-white;
+        }
+
+        .form-group label {
+            /* Título y label en gris para contraste sutil */
+            @apply block text-sm font-medium text-gray-600 mb-2;
+        }
+        
+        /* Estilos para mensajes de estado */
+        .status-success { @apply bg-green-50 text-green-700 border border-green-200; }
+        .status-error { @apply bg-red-50 text-red-700 border border-red-200; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 bg-gray-100">
+    <!-- Tarjeta Principal, manteniendo las clases del archivo original: w-full max-w-md bg-white p-8 rounded-xl shadow-2xl border border-gray-200 -->
+    <div class="w-full max-w-md bg-white p-8 rounded-xl shadow-2xl border border-gray-200">
+        
+        <!-- Título principal, replicando el estilo del h3 de la vista de autenticación -->
+        <h3 class="text-xl font-medium text-gray-600 mb-5 border-b pb-2">Ajustes de Cuenta</h3>
+        
+        <!-- Contenedor del Formulario de Configuración -->
+        <form id="accountConfigForm" onsubmit="saveConfig(event)" class="space-y-5">
+            
+            <!-- 1. Nombre de Usuario -->
+            <div class="form-group">
+                <label for="username">Nombre de Usuario</label>
+                <!-- Usando la clase 'input-field' definida en el head que replica el estilo de los inputs de autenticación -->
+                <input type="text" id="username" value="Usuario_Demo" required class="input-field">
+            </div>
+
+            <!-- 2. Contraseña (Cambio) -->
+            <div class="form-group">
+                <label for="password">Contraseña (Cambiar)</label>
+                <input type="password" id="password" placeholder="Dejar vacío para no cambiar" class="input-field">
+            </div>
+            
+            <!-- 3. Idioma -->
+            <div class="form-group">
+                <label for="language">Idioma de la Interfaz</label>
+                <select id="language" class="input-field">
+                    <option value="es">Español</option>
+                    <option value="en">Inglés</option>
+                    <option value="pt">Portugués</option>
+                </select>
+            </div>
+            
+            <!-- 4. Tema (Modo Claro/Oscuro) -->
+            <div class="form-group">
+                <label for="theme">Tema</label>
+                <select id="theme" class="input-field">
+                    <option value="light">Claro</option>
+                    <option value="dark">Oscuro</option>
+                    <option value="system">Sistema</option>
+                </select>
+            </div>
+            
+            <!-- Botón de Guardar, replicando el estilo del botón de Entrar -->
+            <button type="submit" class="w-full py-3 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-600 transition duration-200 shadow-md mt-6">
+                Guardar Cambios
+            </button>
+        </form>
+
+        <!-- Mensaje de estado -->
+        <div id="statusMessage" class="mt-4 p-3 text-sm text-center hidden rounded-lg" role="alert"></div>
+    </div>
+
+    <script>
+        // Simulación de la carga inicial de datos
+        window.onload = () => {
+             document.getElementById('language').value = 'es';
+             document.getElementById('theme').value = 'light';
+        };
+        
+        /**
+         * Función simulada para guardar la configuración de la cuenta.
+         * @param {Event} event - El evento de envío del formulario.
+         */
+        function saveConfig(event) {
+            event.preventDefault(); 
+            
+            const username = document.getElementById('username').value;
+            const language = document.getElementById('language').value;
+            const theme = document.getElementById('theme').value;
+            const password = document.getElementById('password').value;
+            const statusMessage = document.getElementById('statusMessage');
+
+            // 1. Ocultar mensaje anterior
+            statusMessage.classList.add('hidden');
+            statusMessage.textContent = '';
+
+            // 2. Simular validación y guardado
+            if (username.length < 3) {
+                displayStatus('El nombre de usuario debe tener al menos 3 caracteres.', 'status-error');
+                return;
+            }
+            
+            // Simulación de una llamada API exitosa
+            setTimeout(() => {
+                let message = `Configuración guardada para ${username}.`;
+                if (password) {
+                    message += ` (Contraseña actualizada)`;
+                }
+                
+                displayStatus(message, 'status-success');
+                
+                // Limpiar campo de contraseña después de guardar
+                document.getElementById('password').value = '';
+
+                console.log("Configuración guardada:", { username, language, theme, password: password ? 'Updated' : 'Not Changed' });
+            }, 800);
+        }
+
+        /**
+         * Muestra un mensaje de estado temporal en el contenedor.
+         * @param {string} message - El mensaje a mostrar.
+         * @param {string} classes - Clase de estado (e.g., 'status-success', 'status-error').
+         */
+        function displayStatus(message, classes) {
+            const statusMessage = document.getElementById('statusMessage');
+            // Resetear clases y aplicar la nueva
+            statusMessage.className = 'mt-4 p-3 text-sm text-center rounded-lg'; 
+            statusMessage.classList.add(classes);
+            statusMessage.textContent = message;
+            statusMessage.classList.remove('hidden');
+        }
+
+    </script>
+</body>
+</html>

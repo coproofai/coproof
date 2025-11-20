@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscar Proyectos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7f7f7; }
+
+        /* Estilos base para campos de formulario */
+        .search-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb; /* gray-200 */
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .search-input:focus {
+            border-color: #333;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(51, 51, 51, 0.1);
+        }
+        
+        /* Estilo para items de la lista */
+        .project-item {
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.15s, transform 0.1s;
+            border: 1px solid #f3f4f6;
+        }
+        .project-item:hover {
+            background-color: #f9fafb;
+            transform: translateY(-1px);
+        }
+        .project-item.selected {
+            background-color: #e5e5e5; /* Fondo más oscuro para seleccionado */
+            border-color: #333;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Estilo para el progreso */
+        .progress-bar-container {
+            height: 12px;
+            background-color: #e5e7eb;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #333; /* Color principal */
+            transition: width 0.5s ease-out;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 bg-gray-100 min-h-screen">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Buscar Proyectos de Formalización</h1>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Columna Izquierda: Búsqueda y Lista de Proyectos (1/3) -->
+            <div class="lg:col-span-1">
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 sticky top-4">
+                    
+                    <!-- Buscador -->
+                    <div class="mb-4 relative">
+                        <input type="text" id="searchInput" placeholder="Buscar por nombre del proyecto..." class="search-input pr-10" oninput="filterProjects(this.value)">
+                        <svg class="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+
+                    <h2 class="text-lg font-semibold text-gray-700 mb-3 border-b pb-2">Resultados</h2>
+                    
+                    <!-- Lista de Proyectos -->
+                    <div id="projectsList" class="max-h-96 overflow-y-auto pr-2 -mr-2">
+                        <!-- Los proyectos se insertarán aquí por JS -->
+                    </div>
+
+                    <p id="noResults" class="text-gray-500 text-sm mt-4 hidden">No se encontraron proyectos.</p>
+                </div>
+            </div>
+
+            <!-- Columna Derecha: Detalles del Proyecto (2/3) -->
+            <div class="lg:col-span-2">
+                <div id="projectDetailPanel" class="bg-white p-6 sm:p-8 rounded-xl shadow-lg border border-gray-200 min-h-[400px]">
+                    
+                    <div id="welcomeMessage">
+                        <h2 class="text-2xl font-bold text-gray-700 mb-4">Detalle del Proyecto</h2>
+                        <p class="text-gray-500">Selecciona un proyecto de la lista de la izquierda para ver su información y progreso.</p>
+                        <img src="https://placehold.co/400x200/cccccc/333333?text=Estructura+Matemática" alt="Placeholder para estructura matemática" class="mt-8 mx-auto rounded-lg">
+                    </div>
+
+                    <div id="detailContent" class="hidden">
+                        
+                        <!-- Título y Visibilidad -->
+                        <div class="border-b pb-4 mb-4">
+                            <h2 class="text-3xl font-bold text-gray-800 mb-1" id="detailProjectName"></h2>
+                            <span id="detailProjectVisibility" class="inline-flex items-center px-3 py-1 text-xs font-medium rounded-full"></span>
+                        </div>
+
+                        <!-- Colaboradores -->
+                        <div class="mb-6">
+                            <h3 class="text-xl font-semibold text-gray-700 mb-3 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20v-2c0-.656-.126-1.283-.356-1.857M2.008 2.008a6 6 0 0111.984 0M11 12h.01M3 13h2a3 3 0 003 3h3a3 3 0 003-3h2"></path></svg>
+                                Colaboradores
+                            </h3>
+                            <div id="detailCollaborators" class="flex flex-wrap gap-2">
+                                <!-- Colaboradores se insertan aquí -->
+                            </div>
+                        </div>
+
+                        <!-- Progreso -->
+                        <div>
+                            <h3 class="text-xl font-semibold text-gray-700 mb-3 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h.01M3 14h.01M3 18h.01M16 12H8m4 0l-3 3m3-3l3-3"></path></svg>
+                                Progreso General de Metas
+                            </h3>
+
+                            <div class="mb-2 flex justify-between text-sm font-medium text-gray-600">
+                                <span>Demostrado: <span id="demonstratedCount" class="font-bold text-green-700"></span></span>
+                                <span>Por Demostrar: <span id="toDemonstrateCount" class="font-bold text-red-700"></span></span>
+                            </div>
+                            
+                            <div class="progress-bar-container">
+                                <div id="progressBar" class="progress-bar" style="width: 0%;"></div>
+                            </div>
+                            
+                            <p class="text-xs text-gray-500 mt-2">
+                                <span id="progressPercentage" class="font-semibold text-gray-700">0%</span> del total de nodos de la formalización completado.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Datos de ejemplo simulando proyectos
+        const MOCK_PROJECTS = [
+            { id: 1, name: "Teoría de la Computación", visibility: "Público", collaborators: ["AlanTuring", "AdaLovelace"], demonstrated: 15, total: 20 },
+            { id: 2, name: "Geometría Algebraica Avanzada", visibility: "Privado", collaborators: ["User_Current", "EvaristeGalois", "SophieGermain"], demonstrated: 8, total: 30 },
+            { id: 3, name: "Fundamentos de la Lógica Matemática", visibility: "Público", collaborators: ["KurtGoedel", "BertrandRussel"], demonstrated: 50, total: 50 },
+            { id: 4, name: "Cálculo Integral para Ingeniería", visibility: "Privado", collaborators: ["User_Current", "IsaacNewton"], demonstrated: 12, total: 25 },
+            { id: 5, name: "Teoría de Grafos y Conectividad", visibility: "Público", collaborators: ["LeonhardEuler"], demonstrated: 3, total: 10 },
+            { id: 6, name: "Ecuaciones Diferenciales Parciales", visibility: "Privado", collaborators: ["User_Current", "BernhardRiemann"], demonstrated: 2, total: 45 },
+        ];
+        
+        let currentSelectedId = null;
+
+        /**
+         * Renderiza la lista de proyectos filtrada por el texto de búsqueda.
+         * @param {string} searchText - Texto para filtrar.
+         */
+        function filterProjects(searchText) {
+            const listContainer = document.getElementById('projectsList');
+            const noResults = document.getElementById('noResults');
+            listContainer.innerHTML = '';
+            
+            const normalizedSearch = searchText.toLowerCase().trim();
+            
+            // Simulación de acceso: Se muestran todos los proyectos ya que el mock data
+            // ya incluye los accesibles (públicos o donde User_Current es colaborador).
+            const filteredProjects = MOCK_PROJECTS.filter(project => 
+                project.name.toLowerCase().includes(normalizedSearch)
+            );
+
+            if (filteredProjects.length === 0) {
+                noResults.classList.remove('hidden');
+                return;
+            } else {
+                noResults.classList.add('hidden');
+            }
+
+            filteredProjects.forEach(project => {
+                const item = document.createElement('div');
+                item.id = `project-${project.id}`;
+                item.className = `project-item ${project.id === currentSelectedId ? 'selected' : ''}`;
+                item.onclick = () => showProjectDetails(project.id);
+                
+                const visibilityTag = project.visibility === 'Público' 
+                    ? `<span class="text-xs font-semibold text-green-700 bg-green-100 rounded-full px-2">Público</span>`
+                    : `<span class="text-xs font-semibold text-red-700 bg-red-100 rounded-full px-2">Privado</span>`;
+
+                item.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-medium text-gray-800 truncate">${project.name}</span>
+                        ${visibilityTag}
+                    </div>
+                `;
+                listContainer.appendChild(item);
+            });
+            
+            // Si hay resultados y no hay uno seleccionado, seleccionar el primero por defecto
+            if (currentSelectedId === null && filteredProjects.length > 0) {
+                showProjectDetails(filteredProjects[0].id);
+            }
+        }
+        
+        /**
+         * Muestra los detalles de un proyecto específico en el panel derecho.
+         * @param {number} projectId - ID del proyecto.
+         */
+        function showProjectDetails(projectId) {
+            const project = MOCK_PROJECTS.find(p => p.id === projectId);
+            
+            if (!project) return;
+
+            // Actualizar el estado de selección
+            document.querySelectorAll('.project-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            document.getElementById(`project-${projectId}`).classList.add('selected');
+            currentSelectedId = projectId;
+
+            // Ocultar mensaje de bienvenida y mostrar contenido de detalle
+            document.getElementById('welcomeMessage').classList.add('hidden');
+            document.getElementById('detailContent').classList.remove('hidden');
+
+            // 1. Detalles Básicos
+            document.getElementById('detailProjectName').textContent = project.name;
+            const visibilitySpan = document.getElementById('detailProjectVisibility');
+            visibilitySpan.textContent = project.visibility;
+
+            if (project.visibility === 'Público') {
+                visibilitySpan.className = 'inline-flex items-center px-3 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700';
+            } else {
+                visibilitySpan.className = 'inline-flex items-center px-3 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700';
+            }
+            
+            // 2. Colaboradores
+            const collabContainer = document.getElementById('detailCollaborators');
+            collabContainer.innerHTML = '';
+            
+            project.collaborators.forEach(collaborator => {
+                const tag = document.createElement('span');
+                tag.className = 'inline-flex items-center px-3 py-1 text-sm font-medium bg-gray-200 text-gray-700 rounded-full shadow-sm';
+                tag.textContent = collaborator;
+                collabContainer.appendChild(tag);
+            });
+            
+            // 3. Progreso
+            const total = project.total;
+            const demonstrated = project.demonstrated;
+            const toDemonstrate = total - demonstrated;
+            const percentage = total > 0 ? Math.round((demonstrated / total) * 100) : 0;
+
+            document.getElementById('demonstratedCount').textContent = demonstrated;
+            document.getElementById('toDemonstrateCount').textContent = toDemonstrate;
+            document.getElementById('progressPercentage').textContent = `${percentage}%`;
+
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = `${percentage}%`;
+
+            // Establecer color de la barra
+            if (percentage === 100) {
+                 progressBar.style.backgroundColor = '#10B981'; // green-500
+            } else if (percentage > 50) {
+                 progressBar.style.backgroundColor = '#F59E0B'; // amber-500
+            } else {
+                 progressBar.style.backgroundColor = '#EF4444'; // red-500
+            }
+        }
+
+        // Inicializar la lista de proyectos al cargar la página
+        document.addEventListener('DOMContentLoaded', () => {
+            filterProjects('');
+        });
+    </script>
+</body>
+</html>

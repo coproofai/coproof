@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Búsqueda de Linaje (Grafo)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carga de D3.js para la visualización de grafos -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7f7f7; }
+        
+        /* Contenedor del Grafo */
+        #graph-container {
+            width: 100%;
+            height: 60vh; /* Altura adaptable */
+            min-height: 400px;
+            border-radius: 12px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e5e7eb;
+            overflow: hidden;
+        }
+
+        /* Estilo base para el SVG de D3 */
+        .link {
+            stroke: #ccc;
+            stroke-width: 1.5px;
+            transition: stroke 0.3s;
+        }
+        .node circle {
+            stroke: #555;
+            stroke-width: 2px;
+            cursor: pointer;
+            transition: fill 0.3s, stroke 0.3s;
+        }
+        .node text {
+            pointer-events: none;
+            font-weight: 600;
+            fill: #333;
+        }
+        .node:hover circle {
+            fill: #e5e5e5;
+        }
+        .selected-node circle {
+            fill: #555; /* Gris oscuro para el nodo seleccionado */
+            stroke: #333;
+            stroke-width: 3px;
+        }
+
+        /* Estilo para el input de búsqueda */
+        #search-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        #search-input:focus {
+            border-color: #555;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(85, 85, 85, 0.2);
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 bg-gray-100">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Búsqueda de Linaje y Dependencias de Teoremas</h1>
+        
+        <!-- Controles: Búsqueda y Profundidad -->
+        <div class="bg-white p-5 rounded-xl shadow-lg mb-6 border border-gray-200">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+                
+                <!-- Buscador Principal -->
+                <div class="lg:col-span-2 relative">
+                    <input type="text" id="search-input" placeholder="Buscar Teorema, Lema o Resultado inicial..." onchange="updateGraph('search')" onkeyup="if(event.key === 'Enter') updateGraph('search')">
+                    <svg class="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                
+                <!-- Controles de Profundidad -->
+                <div class="flex items-center justify-between lg:justify-end space-x-4 text-sm">
+                    <div class="flex flex-col items-center">
+                        <label for="depth-up" class="text-gray-600 mb-1">Ancestros (Arriba)</label>
+                        <input type="number" id="depth-up" value="1" min="0" max="5" class="w-16 p-1 border rounded-md text-center" onchange="updateGraph('depth')">
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <label for="depth-down" class="text-gray-600 mb-1">Descendencia (Abajo)</label>
+                        <input type="number" id="depth-down" value="2" min="0" max="5" class="w-16 p-1 border rounded-md text-center" onchange="updateGraph('depth')">
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Área de Visualización del Grafo y Detalle -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            <!-- Grafo Interactivo (3/4 de ancho) -->
+            <div class="lg:col-span-3">
+                <h2 class="text-xl font-semibold text-gray-700 mb-3">Grafo de Linaje de Dependencias</h2>
+                <div id="graph-container">
+                    <!-- El SVG del grafo D3 se insertará aquí -->
+                </div>
+            </div>
+            
+            <!-- Panel de Descripción del Teorema (1/4 de ancho) -->
+            <div class="lg:col-span-1">
+                <h2 class="text-xl font-semibold text-gray-700 mb-3">Detalle del Nodo Seleccionado</h2>
+                <div id="detail-panel" class="content-box h-full bg-white shadow-md">
+                    <p class="text-gray-500 mb-2">Haga click en un nodo (círculo) en el grafo para ver su descripción aquí.</p>
+                    <div id="selected-theorem-info" class="hidden">
+                        <h3 class="font-bold text-gray-800 text-lg mb-1" id="theorem-name"></h3>
+                        <p class="text-sm text-gray-600 mb-4" id="theorem-type"></p>
+                        
+                        <!-- Contenedor para toggles y contenido -->
+                        <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="font-medium text-gray-700">Mostrar/Ocultar Vistas:</span>
+                            </div>
+                            
+                            <!-- Toggles para contenido -->
+                            <div class="flex flex-col space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <label for="toggleDetailNatural" class="text-gray-700 text-sm">Lenguaje Natural</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="toggleDetailNatural" checked onchange="toggleContent('natural-content', this.checked)">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <label for="toggleDetailLean" class="text-gray-700 text-sm">Formalismo Lean</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="toggleDetailLean" checked onchange="toggleContent('lean-content', this.checked)">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Contenido Detallado -->
+                        <div id="natural-content" class="mt-4 border-t pt-3 border-gray-200">
+                            <h4 class="font-semibold text-gray-700 text-base mb-1">Definición (Natural)</h4>
+                            <p class="text-sm text-gray-600" id="natural-desc"></p>
+                        </div>
+                        <div id="lean-content" class="mt-4 border-t pt-3 border-gray-200">
+                            <h4 class="font-semibold text-gray-700 text-base mb-1">Código Lean</h4>
+                            <pre class="bg-gray-100 p-2 rounded-md text-xs font-mono overflow-auto max-h-40" id="lean-code"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Datos de ejemplo para el grafo (Linaje)
+        const ALL_DATA = {
+            nodes: [
+                { id: 1, name: "Axioma de Peano", group: "Axiom", type: "Axioma", desc: "Define los números naturales.", lean: "inductive nat ...", selected: false },
+                { id: 2, name: "Inducción Matemática", group: "Lema", type: "Lema", desc: "Principio de inducción para demostrar propiedades en $\mathbb{N}$.", lean: "theorem nat.induction ...", selected: false },
+                { id: 3, name: "Paridad n² + n", group: "Teorema", type: "Teorema", desc: "Demuestra que $n^2 + n$ es siempre par.", lean: "theorem paridad_n_cuadrado_mas_n ...", selected: false },
+                { id: 4, name: "Divisibilidad por 2", group: "Lema", type: "Lema", desc: "Define la condición de ser un número par (divisible por 2).", lean: "def even (n : ℕ) := ∃ k, n = 2 * k", selected: false },
+                { id: 5, name: "Teorema Fundamental de la Aritmética", group: "Teorema", type: "Teorema", desc: "Todo número natural tiene una factorización prima única.", lean: "theorem nat.exists_unique_prime_factors ...", selected: false },
+                { id: 6, name: "Infinitud de los Primos", group: "Teorema", type: "Teorema", desc: "El conjunto de números primos es infinito (por Euclides).", lean: "theorem primes_infinite ...", selected: false },
+                { id: 7, name: "Lema de Euclides", group: "Lema", type: "Lema", desc: "Si un primo $p$ divide a $ab$, $p$ divide a $a$ o $p$ divide a $b$.", lean: "lemma euclid's_lemma ...", selected: false },
+            ],
+            links: [
+                { source: 1, target: 2, type: "Ancestor" }, // Axioma -> Inducción
+                { source: 2, target: 3, type: "Descendant" }, // Inducción -> Paridad
+                { source: 4, target: 3, type: "Descendant" }, // Divisibilidad -> Paridad
+                { source: 5, target: 6, type: "Descendant" }, // T.F.A. -> Infinitud
+                { source: 7, target: 5, type: "Ancestor" }, // Lema Euclides -> T.F.A.
+                { source: 5, target: 7, type: "Descendant" }, // Lema Euclides (dependencia lógica inversa en algunos contextos)
+                { source: 3, target: 6, type: "Descendant" }, // Paridad (uso menor) -> Infinitud
+            ]
+        };
+
+        let currentData = { nodes: [], links: [] };
+        let selectedNodeId = null;
+        let simulation = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Inicializar el grafo con un teorema central simulado
+            document.getElementById('search-input').value = "Paridad n² + n";
+            updateGraph('init');
+        });
+
+        /**
+         * Colores monocromáticos y opacos
+         */
+        const NODE_COLOR = (d) => {
+            if (d.id === selectedNodeId) return '#555'; // Seleccionado
+            if (d.group === 'Axiom') return '#999';    // Axioma
+            if (d.group === 'Lema') return '#bbb';     // Lema
+            return '#ddd';                             // Teorema
+        };
+
+        const LINK_COLOR = (d) => {
+            return '#aaa'; // Enlaces
+        };
+
+        /**
+         * Filtra y actualiza los datos del grafo basados en el nodo central y la profundidad.
+         * @param {string} type - Tipo de actualización ('init', 'search', 'depth').
+         */
+        function updateGraph(type) {
+            const centralName = document.getElementById('search-input').value.trim();
+            const depthUp = parseInt(document.getElementById('depth-up').value) || 0;
+            const depthDown = parseInt(document.getElementById('depth-down').value) || 0;
+            
+            const centralNode = ALL_DATA.nodes.find(n => n.name.toLowerCase().includes(centralName.toLowerCase()));
+
+            if (!centralNode) {
+                document.getElementById('graph-container').innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">Teorema inicial no encontrado.</div>';
+                currentData = { nodes: [], links: [] };
+                return;
+            }
+
+            // Lógica de filtrado de linaje simulado
+            const reachableNodes = new Set([centralNode.id]);
+            const queue = [centralNode.id];
+            
+            // Simulación de BFS para ancestros y descendientes (simplificado)
+            const getNeighbors = (id, direction) => ALL_DATA.links
+                .filter(l => direction === 'up' ? l.target === id : l.source === id)
+                .map(l => direction === 'up' ? l.source : l.target);
+
+            // 1. Ancestros (Arriba)
+            let currentLevel = [centralNode.id];
+            for (let d = 0; d < depthUp; d++) {
+                const nextLevel = [];
+                currentLevel.forEach(id => {
+                    getNeighbors(id, 'up').forEach(neighborId => {
+                        if (!reachableNodes.has(neighborId)) {
+                            reachableNodes.add(neighborId);
+                            nextLevel.push(neighborId);
+                        }
+                    });
+                });
+                currentLevel = nextLevel;
+            }
+
+            // 2. Descendencia (Abajo) - Re-usamos la lógica partiendo del central
+            currentLevel = [centralNode.id];
+            for (let d = 0; d < depthDown; d++) {
+                const nextLevel = [];
+                currentLevel.forEach(id => {
+                    getNeighbors(id, 'down').forEach(neighborId => {
+                        if (!reachableNodes.has(neighborId)) {
+                            reachableNodes.add(neighborId);
+                            nextLevel.push(neighborId);
+                        }
+                    });
+                });
+                currentLevel = nextLevel;
+            }
+
+            // 3. Construir los datos finales
+            currentData.nodes = ALL_DATA.nodes.filter(n => reachableNodes.has(n.id));
+            currentData.links = ALL_DATA.links.filter(l => 
+                reachableNodes.has(l.source) && reachableNodes.has(l.target)
+            );
+            
+            if (type === 'search' || type === 'init') {
+                // Seleccionar el nodo central al iniciar la búsqueda
+                selectedNodeId = centralNode.id;
+                displayDetail(centralNode);
+            }
+            
+            drawGraph();
+        }
+
+        /**
+         * Dibuja y actualiza el grafo D3 en el contenedor.
+         */
+        function drawGraph() {
+            const container = document.getElementById('graph-container');
+            container.innerHTML = ''; // Limpiar SVG anterior
+            
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            const svg = d3.select(container).append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .call(d3.zoom().on("zoom", function(event) {
+                    g.attr("transform", event.transform);
+                }))
+                .append("g");
+                
+            const g = svg.append("g");
+
+            // Simulación de fuerzas
+            if (simulation) simulation.stop();
+
+            simulation = d3.forceSimulation(currentData.nodes)
+                .force("link", d3.forceLink(currentData.links).id(d => d.id).distance(150))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collision", d3.forceCollide(35));
+
+            // Enlaces
+            const link = g.append("g")
+                .attr("class", "links")
+                .selectAll("line")
+                .data(currentData.links)
+                .enter().append("line")
+                .attr("class", "link")
+                .attr("stroke", LINK_COLOR);
+
+            // Nodos (Grupos para círculo y texto)
+            const node = g.append("g")
+                .attr("class", "nodes")
+                .selectAll("g")
+                .data(currentData.nodes)
+                .enter().append("g")
+                .attr("class", d => d.id === selectedNodeId ? "node selected-node" : "node")
+                .on("click", (event, d) => {
+                    selectedNodeId = d.id;
+                    displayDetail(d);
+                    // Actualizar clase para el color seleccionado
+                    d3.selectAll('.node').classed('selected-node', false);
+                    d3.select(event.currentTarget).classed('selected-node', true);
+                })
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            // Círculos (Nodos)
+            node.append("circle")
+                .attr("r", 20)
+                .attr("fill", NODE_COLOR);
+
+            // Etiquetas de Texto
+            node.append("text")
+                .attr("dy", 45) // Posición debajo del círculo
+                .attr("text-anchor", "middle")
+                .text(d => d.name);
+
+            // Ticks de la simulación
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                node
+                    .attr("transform", d => `translate(${d.x},${d.y})`);
+            });
+        }
+
+        /**
+         * Manejadores de arrastre para D3
+         */
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        /**
+         * Muestra los detalles del nodo seleccionado.
+         */
+        function displayDetail(d) {
+            document.getElementById('selected-theorem-info').classList.remove('hidden');
+            document.getElementById('theorem-name').textContent = d.name;
+            document.getElementById('theorem-type').textContent = d.type;
+            document.getElementById('natural-desc').textContent = d.desc;
+            document.getElementById('lean-code').textContent = d.lean;
+            
+            // Asegurar que el contenido se muestre según los toggles
+            const naturalChecked = document.getElementById('toggleDetailNatural').checked;
+            const leanChecked = document.getElementById('toggleDetailLean').checked;
+            toggleContent('natural-content', naturalChecked);
+            toggleContent('lean-content', leanChecked);
+        }
+
+        /**
+         * Muestra/oculta las secciones de contenido de detalle.
+         */
+        function toggleContent(contentId, isChecked) {
+            const contentDiv = document.getElementById(contentId);
+            if (isChecked) {
+                contentDiv.classList.remove('hidden');
+            } else {
+                contentDiv.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
