@@ -1,51 +1,65 @@
-Guía de Configuración de Cluster OpenHPC con Rocky Linux 10 en Raspberry Pi 4
-Por David Alejandro López Torres
+# Guía de Configuración de Cluster OpenHPC con Rocky Linux 10 en Raspberry Pi 4
+**Por David Alejandro López Torres**
 
-
+<br>
 Esta documentación describe el proceso completo para configurar un cluster de computación de alto rendimiento utilizando OpenHPC sobre Rocky Linux 10, implementado en cuatro Raspberry Pi 4 Model B. El cluster está compuesto por un nodo de gestión (SMS - System Management Server) y tres nodos de cómputo.
-Tabla de Contenidos
-Variables de Configuración
-Configuración Inicial del Servidor SMS
-Configuración de Red
-Configuración de NFS
-Configuración de DNSMASQ y TFTP
-Preparación del Sistema Base para Nodos de Cómputo
-Instalación de OpenHPC
-Configuración de SLURM
-Configuración de los Nodos de Cómputo
-Configuración de SSH
-Instalación de OpenMPI
-Prueba de Validación del Cluster
-Variables de Configuración
+
+## Tabla de Contenidos
+
+1. [Variables de Configuración](#variables-de-configuración)
+2. [Configuración Inicial del Servidor SMS](#configuración-inicial-del-servidor-sms)
+3. [Configuración de Red](#configuración-de-red)
+4. [Configuración de NFS](#configuración-de-nfs)
+5. [Configuración de DNSMASQ y TFTP](#configuración-de-dnsmasq-y-tftp)
+6. [Preparación del Sistema Base para Nodos de Cómputo](#preparación-del-sistema-base-para-nodos-de-cómputo)
+7. [Instalación de OpenHPC](#instalación-de-openhpc)
+8. [Configuración de SLURM](#configuración-de-slurm)
+9. [Configuración de los Nodos de Cómputo](#configuración-de-los-nodos-de-cómputo)
+10. [Configuración de SSH](#configuración-de-ssh)
+11. [Instalación de OpenMPI](#instalación-de-openmpi)
+12. [Prueba de Validación del Cluster](#prueba-de-validación-del-cluster)
+
+---
+
+## Variables de Configuración
+
 Las siguientes variables definen la configuración de red y los parámetros del cluster:
 
-Variable	Valor	Descripción
-sms_name	sms	Nombre del servidor de gestión
-sms_ip	192.168.1.1	Dirección IP del servidor SMS
-sms_eth_internal	end0	Interfaz de red interna
-internal_network	192.168.1.0	Red interna del cluster
-internal_netmask	255.255.255.0	Máscara de subred
-ntp_server	mx.pool.ntp.org	Servidor de sincronización de tiempo
-num_computes	3	Número de nodos de cómputo
-c_ips	192.168.1.11, 192.168.1.12, 192.168.1.13	IPs de los nodos
-c_macs	dc:a6:32:21:55:72, dc:a6:32:20:44:6d, dc:a6:32:20:2f:a0	Direcciones MAC
-c_names	node1, node2, node3	Nombres de los nodos
-Configuración Inicial del Servidor SMS
-1.1. Descarga e Instalación del Sistema Operativo
+| Variable | Valor | Descripción |
+|----------|-------|-------------|
+| `sms_name` | sms | Nombre del servidor de gestión |
+| `sms_ip` | 192.168.1.1 | Dirección IP del servidor SMS |
+| `sms_eth_internal` | end0 | Interfaz de red interna |
+| `internal_network` | 192.168.1.0 | Red interna del cluster |
+| `internal_netmask` | 255.255.255.0 | Máscara de subred |
+| `ntp_server` | mx.pool.ntp.org | Servidor de sincronización de tiempo |
+| `num_computes` | 3 | Número de nodos de cómputo |
+| `c_ips` | 192.168.1.11, 192.168.1.12, 192.168.1.13 | IPs de los nodos |
+| `c_macs` | dc:a6:32:21:55:72, dc:a6:32:20:44:6d, dc:a6:32:20:2f:a0 | Direcciones MAC |
+| `c_names` | node1, node2, node3 | Nombres de los nodos |
+
+---
+
+## Configuración Inicial del Servidor SMS
+
+### 1.1. Descarga e Instalación del Sistema Operativo
+
 Esta sección describe la preparación inicial del servidor de gestión (SMS), que actuará como controlador principal del cluster.
 
-Pasos previos:
+**Pasos previos:**
+1. Descargar la imagen de Rocky Linux 10 para Raspberry Pi desde: https://rockylinux.org/download?arch=aarch64
+2. Descargar Balena Etcher desde: https://etcher.balena.io/#download-etcher
+3. Flashear la imagen en la tarjeta SD del SMS
 
-Descargar la imagen de Rocky Linux 10 para Raspberry Pi desde: https://rockylinux.org/download?arch=aarch64
-Descargar Balena Etcher desde: https://etcher.balena.io/#download-etcher
-Flashear la imagen en la tarjeta SD del SMS
-Credenciales por defecto:
+**Credenciales por defecto:**
+- Usuario: `rocky`
+- Contraseña: `rockylinux`
 
-Usuario: rocky
-Contraseña: rockylinux
-1.2. Configuración Básica del Sistema
+### 1.2. Configuración Básica del Sistema
+
 Una vez iniciado el sistema, se procede a expandir el sistema de archivos, establecer el nombre del servidor y reiniciar.
 
+```bash
 # Expandir el sistema de archivos a toda la tarjeta SD
 rootfs-expand
 
@@ -54,9 +68,15 @@ hostnamectl set-hostname sms
 
 # Reiniciar el sistema
 reboot
-Configuración de Red
+```
+
+---
+
+## Configuración de Red
+
 Esta sección configura la interfaz de red que conectará el servidor SMS con los nodos de cómputo, estableciendo una red privada para el cluster.
 
+```bash
 # Crear conexión de red para la LAN del cluster
 nmcli con add type ethernet con-name "Cluster-LAN" ifname end0 ip4 192.168.1.1/24
 
@@ -65,10 +85,17 @@ nmcli con mod "Cluster-LAN" ipv4.method manual connection.autoconnect yes
 
 # Activar la conexión
 nmcli con up "Cluster-LAN"
-Configuración de NFS
+```
+
+---
+
+## Configuración de NFS
+
 NFS (Network File System) permite compartir sistemas de archivos entre el servidor SMS y los nodos de cómputo, facilitando el arranque por red y el acceso compartido a datos.
 
-4.1. Instalación y Configuración de NFS
+### 4.1. Instalación y Configuración de NFS
+
+```bash
 # Instalar utilidades NFS
 dnf install nfs-utils -y
 
@@ -96,9 +123,13 @@ systemctl restart nfs-server
 
 # Exportar los directorios compartidos
 exportfs -arv
-4.2. Prueba de Funcionamiento de NFS
+```
+
+### 4.2. Prueba de Funcionamiento de NFS
+
 Estos comandos verifican que NFS está funcionando correctamente antes de continuar con la configuración.
 
+```bash
 # Crear directorio de prueba
 mkdir /mnt/test_nfs
 
@@ -117,16 +148,30 @@ umount /mnt/test_nfs
 # Limpiar directorios y archivos de prueba
 rm /mnt/test_nfs -rf
 rm /srv/nfs/rpi4/hello_cluster
-Configuración de DNSMASQ y TFTP
+```
+
+---
+
+## Configuración de DNSMASQ y TFTP
+
 DNSMASQ proporciona servicios de DHCP y DNS para el cluster, mientras que TFTP permite el arranque por red de los nodos de cómputo.
 
-5.1. Instalación de DNSMASQ y TFTP
+### 5.1. Instalación de DNSMASQ y TFTP
+
+```bash
 # Instalar DNSMASQ y servidor TFTP
 dnf install dnsmasq tftp -y
-5.2. Configuración de DNSMASQ
-Editar el archivo /etc/dnsmasq.conf con el siguiente contenido:
+```
 
+### 5.2. Configuración de DNSMASQ
+
+Editar el archivo `/etc/dnsmasq.conf` con el siguiente contenido:
+
+```bash
 vi /etc/dnsmasq.conf
+```
+
+```conf
 # --- Interface Settings ---
 # Solo escuchar en la interfaz LAN del cluster
 interface=end0
@@ -180,12 +225,20 @@ dhcp-mac=set:node3,dc:a6:32:20:2f:a0
 dhcp-option=tag:node1,option:root-path,"192.168.1.1:/srv/nfs/node1,rw"
 dhcp-option=tag:node2,option:root-path,"192.168.1.1:/srv/nfs/node2,rw"
 dhcp-option=tag:node3,option:root-path,"192.168.1.1:/srv/nfs/node3,rw"
-5.3. Iniciar DNSMASQ
+```
+
+### 5.3. Iniciar DNSMASQ
+
+```bash
 # Habilitar e iniciar el servicio DNSMASQ
 systemctl enable --now dnsmasq
-5.4. Prueba de Funcionamiento de DNSMASQ y TFTP
+```
+
+### 5.4. Prueba de Funcionamiento de DNSMASQ y TFTP
+
 Estos comandos verifican que los servicios DHCP y TFTP están operativos.
 
+```bash
 # Verificar que DNSMASQ está escuchando en los puertos UDP
 ss -ulpn | grep dnsmasq
 
@@ -201,10 +254,17 @@ cat test.txt
 
 # Revisar los logs de DNSMASQ
 journalctl -u dnsmasq | tail -n 10
-Preparación del Sistema Base para Nodos de Cómputo
+```
+
+---
+
+## Preparación del Sistema Base para Nodos de Cómputo
+
 Esta sección prepara una imagen base del sistema operativo que será compartida con los nodos de cómputo mediante NFS, permitiendo el arranque por red.
 
-6.1. Descarga y Extracción de la Imagen
+### 6.1. Descarga y Extracción de la Imagen
+
+```bash
 # Instalar herramientas necesarias
 dnf install kpartx rsync -y
 
@@ -225,7 +285,11 @@ mount /dev/mapper/loop0p1 /mnt/tmp_boot
 
 # Montar la partición raíz
 mount /dev/mapper/loop0p3 /mnt/tmp_root
-6.2. Copia de Archivos a Directorios de Red
+```
+
+### 6.2. Copia de Archivos a Directorios de Red
+
+```bash
 # Copiar archivos de arranque a TFTP
 cp -r /mnt/tmp_boot/* /srv/tftp/
 
@@ -241,22 +305,37 @@ kpartx -d rocky.img
 
 # Limpiar directorios temporales
 rmdir /mnt/tmp_boot /mnt/tmp_root
-6.3. Configuración de Arranque por Red
-Editar el archivo /srv/nfs/rpi4/etc/fstab para comentar todas las líneas (el sistema arrancará desde NFS):
+```
 
+### 6.3. Configuración de Arranque por Red
+
+Editar el archivo `/srv/nfs/rpi4/etc/fstab` para comentar todas las líneas (el sistema arrancará desde NFS):
+
+```bash
 vi /srv/nfs/rpi4/etc/fstab
+```
+
 Contenido (todas las líneas comentadas):
-
+```
 # Todas las líneas originales deben estar comentadas con #
-Editar el archivo /srv/tftp/cmdline.txt con los parámetros de arranque:
+```
 
+Editar el archivo `/srv/tftp/cmdline.txt` con los parámetros de arranque:
+
+```bash
 vi /srv/tftp/cmdline.txt
-Contenido:
+```
 
+Contenido:
+```
 console=serial0,115200 console=tty1 root=dhcp rootwait elevation=0 selinux=0 cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1 swapaccount=1
-6.4. Creación del Sistema de Archivos Inicial (initramfs)
+```
+
+### 6.4. Creación del Sistema de Archivos Inicial (initramfs)
+
 El initramfs es necesario para que los nodos puedan arrancar desde NFS.
 
+```bash
 # Montar sistemas de archivos virtuales en el entorno chroot
 mount --bind /proc /srv/nfs/rpi4/proc
 mount --bind /sys /srv/nfs/rpi4/sys
@@ -280,13 +359,19 @@ cp /srv/nfs/rpi4/boot/initramfs-6.6.77-8.el10.altarch.aarch64+16k.img /srv/tftp/
 
 # Establecer permisos correctos
 chmod 644 /srv/tftp/initramfs8
-6.5. Configuración de Red para Nodos de Cómputo
+```
+
+### 6.5. Configuración de Red para Nodos de Cómputo
+
 Configurar NetworkManager para que los nodos obtengan su nombre de host vía DHCP:
 
+```bash
 chroot /srv/nfs/rpi4
 vi /etc/NetworkManager/system-connections/end0.nmconnection
-Contenido:
+```
 
+Contenido:
+```ini
 [connection]
 id=end0
 type=ethernet
@@ -299,15 +384,25 @@ dhcp-hostname-option=true
 [ipv6]
 addr-gen-mode=default
 method=auto
+```
+
+```bash
 # Limpiar el archivo hostname (se asignará vía DHCP)
 echo "" > /etc/hostname
 
 # Salir del entorno chroot
 exit
-Instalación de OpenHPC
+```
+
+---
+
+## Instalación de OpenHPC
+
 OpenHPC proporciona un conjunto de herramientas y bibliotecas optimizadas para computación de alto rendimiento.
 
-7.1. Instalación en el Servidor SMS
+### 7.1. Instalación en el Servidor SMS
+
+```bash
 # Habilitar el repositorio CodeReady Builder
 dnf config-manager --set-enabled crb
 
@@ -325,7 +420,11 @@ dnf -y install ohpc-base yq
 
 # Instalar MUNGE (autenticación) y SLURM (gestor de trabajos)
 dnf install munge ohpc-slurm-server -y
-7.2. Instalación en los Nodos de Cómputo
+```
+
+### 7.2. Instalación en los Nodos de Cómputo
+
+```bash
 # Instalar utilidades DNF en el sistema raíz compartido
 dnf -y --installroot=/srv/nfs/rpi4 install dnf-utils
 
@@ -343,9 +442,13 @@ dnf -y --installroot=/srv/nfs/rpi4 install ohpc-base-compute
 
 # Instalar MUNGE y cliente SLURM
 dnf -y --installroot=/srv/nfs/rpi4 install munge ohpc-slurm-client
-7.3. Configuración de MUNGE
+```
+
+### 7.3. Configuración de MUNGE
+
 MUNGE proporciona autenticación entre los nodos del cluster.
 
+```bash
 # Generar clave de autenticación MUNGE
 dd if=/dev/urandom bs=1 count=1024 > /etc/munge/munge.key
 
@@ -361,15 +464,24 @@ chroot /srv/nfs/rpi4 chmod 400 /etc/munge/munge.key
 
 # Habilitar e iniciar el servicio MUNGE
 systemctl enable --now munge
-Configuración de SLURM
+```
+
+---
+
+## Configuración de SLURM
+
 SLURM (Simple Linux Utility for Resource Management) es el gestor de colas y recursos del cluster.
 
-8.1. Configuración Principal de SLURM
-Editar el archivo /etc/slurm/slurm.conf:
+### 8.1. Configuración Principal de SLURM
 
+Editar el archivo `/etc/slurm/slurm.conf`:
+
+```bash
 vi /etc/slurm/slurm.conf
-Contenido:
+```
 
+Contenido:
+```conf
 ClusterName=rocky-pi
 SlurmctldHost=sms
 # Configurar la IP del SMS explícitamente
@@ -402,12 +514,18 @@ ProctrackType=proctrack/cgroup
 
 # Task Launching (Affinity permite fijación de CPU, Cgroup permite contención de recursos)
 TaskPlugin=task/affinity,task/cgroup
-8.2. Configuración de Cgroups para SLURM
-Editar el archivo /etc/slurm/cgroup.conf:
+```
 
+### 8.2. Configuración de Cgroups para SLURM
+
+Editar el archivo `/etc/slurm/cgroup.conf`:
+
+```bash
 vi /etc/slurm/cgroup.conf
-Contenido:
+```
 
+Contenido:
+```conf
 ###
 #
 # Archivo de configuración de soporte cgroup para Slurm
@@ -419,7 +537,11 @@ ConstrainCores=yes
 ConstrainDevices=yes
 ConstrainRAMSpace=yes
 ConstrainSwapSpace=no
-8.3. Preparación de Directorios y Permisos
+```
+
+### 8.3. Preparación de Directorios y Permisos
+
+```bash
 # Crear archivo de log del controlador SLURM
 touch /var/log/slurmctld.log
 chown slurm:slurm /var/log/slurmctld.log
@@ -436,18 +558,34 @@ chmod 755 /var/spool/slurm
 
 # Reiniciar el controlador SLURM
 systemctl restart slurmctld
-Configuración de los Nodos de Cómputo
-9.1. Habilitación del Arranque PXE en las Raspberry Pi
+```
+
+---
+
+## Configuración de los Nodos de Cómputo
+
+### 9.1. Habilitación del Arranque PXE en las Raspberry Pi
+
 En cada Raspberry Pi que actuará como nodo de cómputo, se debe configurar el arranque por red:
 
+```bash
 # Editar la configuración de EEPROM
 sudo -E rpi-eeprom-config --edit
-Agregar la siguiente línea:
+```
 
+Agregar la siguiente línea:
+```
 BOOT_ORDER=0x21
+```
+
+```bash
 # Reiniciar para aplicar los cambios
 sudo reboot
-9.2. Creación de Sistemas de Archivos Individuales por Nodo
+```
+
+### 9.2. Creación de Sistemas de Archivos Individuales por Nodo
+
+```bash
 # Sincronizar el sistema base a cada nodo
 rsync -xa /srv/nfs/rpi4/ /srv/nfs/node1
 rsync -xa /srv/nfs/rpi4/ /srv/nfs/node2
@@ -470,10 +608,17 @@ echo "192.168.1.1 sms" >> /srv/nfs/node3/etc/hosts
 cp /etc/slurm/cgroup.conf /srv/nfs/node1/etc/slurm/
 cp /etc/slurm/cgroup.conf /srv/nfs/node2/etc/slurm/
 cp /etc/slurm/cgroup.conf /srv/nfs/node3/etc/slurm/
-Configuración de SSH
+```
+
+---
+
+## Configuración de SSH
+
 Esta sección configura el acceso SSH sin contraseña desde el servidor SMS a los nodos de cómputo.
 
-10.1. Configuración de SSH en los Nodos
+### 10.1. Configuración de SSH en los Nodos
+
+```bash
 # Habilitar el login root y autenticación por contraseña en todos los nodos
 for dir in node1 node2 node3; do
     CONFIG_FILE="/srv/nfs/$dir/etc/ssh/sshd_config"
@@ -482,7 +627,11 @@ for dir in node1 node2 node3; do
     sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' $CONFIG_FILE
     echo "Updated SSH config for $dir"
 done
-10.2. Generación e Inyección de Claves SSH
+```
+
+### 10.2. Generación e Inyección de Claves SSH
+
+```bash
 # Generar par de claves SSH
 ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ""
 
@@ -497,42 +646,74 @@ for dir in node1 node2 node3; do
     chmod 600 /srv/nfs/$dir/root/.ssh/authorized_keys
     echo "Injected SSH key for $dir"
 done
-10.3. Deshabilitar Firewall en los Nodos
+```
+
+### 10.3. Deshabilitar Firewall en los Nodos
+
+```bash
 # Detener y deshabilitar firewalld en todos los nodos
 for ip in 192.168.1.11 192.168.1.12 192.168.1.13; do
     echo "Stopping firewall on $ip..."
     ssh root@$ip "systemctl stop firewalld; systemctl disable firewalld"
 done
-10.4. Prueba del Cluster con SLURM
+```
+
+### 10.4. Prueba del Cluster con SLURM
+
+```bash
 # Ejecutar un comando simple en todos los nodos para verificar conectividad
 srun -N3 -l hostname
-Instalación de OpenMPI
+```
+
+---
+
+## Instalación de OpenMPI
+
 OpenMPI es una implementación de la interfaz de paso de mensajes (MPI) para programación paralela.
 
-11.1. Instalación en el Servidor SMS
+### 11.1. Instalación en el Servidor SMS
+
+```bash
 # Instalar OpenMPI, herramientas de desarrollo y compilador
 dnf install openmpi openmpi-devel gcc -y
-11.2. Instalación en los Nodos de Cómputo
+```
+
+### 11.2. Instalación en los Nodos de Cómputo
+
+```bash
 # Instalar OpenMPI en cada nodo
 for dir in node1 node2 node3; do
     echo "Installing OpenMPI on $dir..."
     dnf --installroot=/srv/nfs/$dir install openmpi -y
 done
-11.3. Configuración de Bibliotecas Compartidas
+```
+
+### 11.3. Configuración de Bibliotecas Compartidas
+
+```bash
 # Configurar las rutas de bibliotecas de OpenMPI
 for dir in node1 node2 node3; do
     echo "/usr/lib64/openmpi/lib" > /srv/nfs/$dir/etc/ld.so.conf.d/openmpi.conf
     chroot /srv/nfs/$dir ldconfig
 done
-Prueba de Validación del Cluster
+```
+
+---
+
+## Prueba de Validación del Cluster
+
 Esta sección implementa y ejecuta un programa MPI que calcula el valor de Pi mediante el método de Monte Carlo, verificando el funcionamiento completo del cluster.
 
-12.1. Creación del Programa de Prueba
-Crear el archivo pi_mpi.c:
+### 12.1. Creación del Programa de Prueba
 
+Crear el archivo `pi_mpi.c`:
+
+```bash
 vi pi_mpi.c
-Contenido:
+```
 
+Contenido:
+```c
 #include <mpi.h>
 #include <stdio.h>
 #include <math.h>
@@ -582,28 +763,45 @@ int main(int argc, char* argv[]) {
     MPI_Finalize();
     return 0;
 }
-12.2. Compilación del Programa
+```
+
+### 12.2. Compilación del Programa
+
+```bash
 # Compilar el programa con el compilador MPI
 /usr/lib64/openmpi/bin/mpicc pi_mpi.c -o pi_mpi -lm
-12.3. Ejecución de Pruebas
+```
+
+### 12.3. Ejecución de Pruebas
+
+```bash
 # Prueba con un solo nodo y una tarea
 srun --mpi=pmi2 -N1 -n1 /root/pi_mpi
 
 # Prueba con los tres nodos y 12 tareas (4 por nodo)
 srun --mpi=pmi2 -N3 -n12 /root/pi_mpi
-Conclusión
+```
+
+---
+
+## Conclusión
+
 Esta guía ha documentado el proceso completo de configuración de un cluster de computación de alto rendimiento utilizando OpenHPC sobre Rocky Linux 10, implementado en hardware Raspberry Pi 4. El cluster resultante es capaz de ejecutar aplicaciones paralelas mediante MPI y gestionar cargas de trabajo a través del sistema de colas SLURM.
 
-Componentes Instalados
-Sistema Operativo: Rocky Linux 10 (aarch64)
-Gestor de Recursos: SLURM
-Autenticación: MUNGE
-Sistema de Archivos Compartido: NFS
-Arranque por Red: TFTP/DNSMASQ
-Computación Paralela: OpenMPI
-Framework HPC: OpenHPC 4
-Arquitectura del Cluster
-1 Servidor SMS: 192.168.1.1 (Gestión y Control)
-3 Nodos de Cómputo: 192.168.1.11-13 (Ejecución de Trabajos)
-Total de Núcleos: 16 (4 núcleos × 4 nodos)
+### Componentes Instalados
+
+- **Sistema Operativo:** Rocky Linux 10 (aarch64)
+- **Gestor de Recursos:** SLURM
+- **Autenticación:** MUNGE
+- **Sistema de Archivos Compartido:** NFS
+- **Arranque por Red:** TFTP/DNSMASQ
+- **Computación Paralela:** OpenMPI
+- **Framework HPC:** OpenHPC 4
+
+### Arquitectura del Cluster
+
+- **1 Servidor SMS:** 192.168.1.1 (Gestión y Control)
+- **3 Nodos de Cómputo:** 192.168.1.11-13 (Ejecución de Trabajos)
+- **Total de Núcleos:** 16 (4 núcleos × 4 nodos)
+
 El cluster está ahora operativo y listo para ejecutar cargas de trabajo de computación paralela.
