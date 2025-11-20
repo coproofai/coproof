@@ -1,0 +1,212 @@
+-- =============================================================================
+-- ESQUEMA PARA LA BASE DE DATOS COPROOF EN POSTGRESQL
+-- Versión: 1.0
+-- Descripción: Implementación del esquema Entidad-Relación Coproof
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- CONFIGURACIÓN INICIAL Y DE SEGURIDAD
+-- -----------------------------------------------------------------------------
+
+-- TODO: superusuario configurar SCRAM-SHA-256
+-- TODO: configurar limitado 'listen_addresses' y 'pg_hba.conf' adecuadamente.
+
+-- 1. Crear un esquema dedicado para aislar los objetos de la aplicación.
+CREATE SCHEMA IF NOT EXISTS coproof_schema;
+
+-- 2. Crear roles con privilegios mínimos.
+-- Rol para la aplicación web: puede leer y escribir datos.
+CREATE ROLE coproof_app_user LOGIN PASSWORD 'una_contraseña_muy_segura_y_larga';
+-- Rol para tareas de administración y migraciones de esquema.
+CREATE ROLE coproof_admin LOGIN PASSWORD 'otra_contraseña_fuerte_para_admin';
+
+-- 3. Habilitar la extensión para generar UUIDs.
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- Establecer el esquema por defecto para las siguientes operaciones.
+SET search_path TO coproof_schema;
+
+-- -----------------------------------------------------------------------------
+-- DEFINICIÓN DE TIPOS (ENUMS)
+-- -----------------------------------------------------------------------------
+
+CREATE TYPE proyecto_visibilidad AS ENUM ('publico', 'privado');
+CREATE TYPE nodo_estado AS ENUM ('pendiente', 'en_revision', 'demostrado', 'error');
+CREATE TYPE nodo_tipo AS ENUM ('meta_global', 'teorema', 'lema', 'corolario', 'evaluacion_numerica');
+CREATE TYPE solicitud_estado AS ENUM ('pendiente', 'aprobado', 'rechazado');
+CREATE TYPE cambio_tipo_entidad AS ENUM ('nodo', 'premisa_global');
+CREATE TYPE trabajo_tipo AS ENUM ('validacion_externa', 'agente_demostracion', 'agente_plan', 'agente_exploracion_logica', 'cluster_experimento', 'cluster_exploracion_numerica');
+CREATE TYPE trabajo_estado AS ENUM ('encolado', 'en_progreso', 'completado', 'fallido');
+CREATE TYPE demostracion_formato AS ENUM ('pdf', 'latex', 'imagen', 'lean');
+CREATE TYPE demostracion_estado_validacion AS ENUM ('pendiente', 'procesando', 'valida', 'invalida', 'error');
+
+-- -----------------------------------------------------------------------------
+-- CREACIÓN DE TABLAS
+-- -----------------------------------------------------------------------------
+
+-- Tabla de Usuarios
+CREATE TABLE usuarios (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nombre TEXT NOT NULL,
+    correo TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    correo_verificado BOOLEAN NOT NULL DEFAULT FALSE,
+    token_verificacion TEXT,
+    token_reseteo_pass TEXT,
+    token_expiracion TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_usuarios_correo ON usuarios(correo);
+
+-- Tabla de Configuraciones de Usuario (Relación 1-a-1)
+CREATE TABLE configuraciones_usuario (
+    user_id UUID PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+    idioma TEXT NOT NULL DEFAULT 'es',
+    tema_visual TEXT NOT NULL DEFAULT 'claro',
+    config_agentes_ia JSONB NOT NULL DEFAULT '{}'::jsonb,
+    config_cluster JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+-- Tabla de Proyectos
+CREATE TABLE proyectos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nombre TEXT NOT NULL,
+    descripcion TEXT,
+    visibilidad proyecto_visibilidad NOT NULL,
+    lider_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_proyectos_lider_id ON proyectos(lider_id);
+CREATE INDEX idx_proyectos_visibilidad ON proyectos(visibilidad);
+
+-- Tabla de Unión para Colaboradores (Relación *-*)
+CREATE TABLE colaboradores (
+    proyecto_id UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    fecha_invitacion TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (proyecto_id, user_id)
+);
+CREATE INDEX idx_colaboradores_user_id ON colaboradores(user_id);
+
+-- Tabla de Nodos del Grafo
+CREATE TABLE nodos_grafo (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proyecto_id UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
+    titulo TEXT NOT NULL,
+    enunciado_nl TEXT NOT NULL,
+    codigo_lean TEXT,
+    estado nodo_estado NOT NULL DEFAULT 'pendiente',
+    tipo nodo_tipo NOT NULL,
+    datos_numericos JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_nodos_grafo_proyecto_id ON nodos_grafo(proyecto_id);
+CREATE INDEX idx_nodos_grafo_datos_numericos ON nodos_grafo USING GIN(datos_numericos); -- GIN index para JSONB
+
+-- Tabla de Dependencias entre Nodos (Aristas del Grafo, Relación *-*)
+CREATE TABLE dependencias_nodos (
+    nodo_dependiente_id UUID NOT NULL REFERENCES nodos_grafo(id) ON DELETE CASCADE,
+    nodo_prerequisito_id UUID NOT NULL REFERENCES nodos_grafo(id) ON DELETE CASCADE,
+    PRIMARY KEY (nodo_dependiente_id, nodo_prerequisito_id)
+);
+CREATE INDEX idx_dependencias_nodos_prerequisito_id ON dependencias_nodos(nodo_prerequisito_id);
+
+-- Tabla de Solicitudes de Cambio
+CREATE TABLE solicitudes_cambio (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proyecto_id UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
+    solicitante_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    estado solicitud_estado NOT NULL DEFAULT 'pendiente',
+    descripcion TEXT NOT NULL,
+    fecha_revision TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_solicitudes_cambio_proyecto_id_estado ON solicitudes_cambio(proyecto_id, estado);
+CREATE INDEX idx_solicitudes_cambio_solicitante_id ON solicitudes_cambio(solicitante_id);
+
+-- Tabla de Cambios Propuestos
+CREATE TABLE cambios_propuestos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    solicitud_id UUID NOT NULL REFERENCES solicitudes_cambio(id) ON DELETE CASCADE,
+    id_entidad_afectada UUID NOT NULL,
+    tipo_entidad cambio_tipo_entidad NOT NULL,
+    datos_anteriores JSONB,
+    datos_nuevos JSONB NOT NULL
+);
+CREATE INDEX idx_cambios_propuestos_solicitud_id ON cambios_propuestos(solicitud_id);
+
+-- Tabla de Premisas Globales
+CREATE TABLE premisas_globales (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proyecto_id UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
+    contenido_lean TEXT NOT NULL,
+    descripcion_nl TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_premisas_globales_proyecto_id ON premisas_globales(proyecto_id);
+
+-- Tabla de Trabajos Asíncronos
+CREATE TABLE trabajos_asincronos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE SET NULL,
+    tipo trabajo_tipo NOT NULL,
+    id_recurso_asociado UUID,
+    estado trabajo_estado NOT NULL DEFAULT 'encolado',
+    resultado JSONB,
+    logs TEXT,
+    fecha_finalizacion TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- Nota: Esta tabla es una buena candidata para particionamiento por fecha (created_at) si el volumen crece.
+CREATE INDEX idx_trabajos_asincronos_user_id ON trabajos_asincronos(user_id);
+CREATE INDEX idx_trabajos_asincronos_estado ON trabajos_asincronos(estado);
+
+-- Tabla de Demostraciones Externas
+CREATE TABLE demostraciones_externas (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    nombre_archivo_original TEXT NOT NULL,
+    path_almacenamiento TEXT NOT NULL,
+    formato demostracion_formato NOT NULL,
+    estado_validacion demostracion_estado_validacion NOT NULL DEFAULT 'pendiente',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_demostraciones_externas_user_id ON demostraciones_externas(user_id);
+
+
+-- -----------------------------------------------------------------------------
+-- TRIGGERS PARA CAMPOS AUTO-CALCULADOS
+-- -----------------------------------------------------------------------------
+
+-- 1. Función para actualizar el campo 'updated_at' en cualquier tabla.
+CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 2. Aplicar el trigger a las tablas relevantes.
+CREATE TRIGGER set_timestamp_usuarios BEFORE UPDATE ON usuarios FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+CREATE TRIGGER set_timestamp_proyectos BEFORE UPDATE ON proyectos FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+CREATE TRIGGER set_timestamp_nodos_grafo BEFORE UPDATE ON nodos_grafo FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+CREATE TRIGGER set_timestamp_solicitudes_cambio BEFORE UPDATE ON solicitudes_cambio FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+CREATE TRIGGER set_timestamp_premisas_globales BEFORE UPDATE ON premisas_globales FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+
+-- -----------------------------------------------------------------------------
+-- GESTIÓN DE PERMISOS (RBAC)
+-- -----------------------------------------------------------------------------
+
+-- Permisos para el rol de la aplicación
+GRANT USAGE ON SCHEMA coproof_schema TO coproof_app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA coproof_schema TO coproof_app_user;
+
+-- Permisos para el rol de administrador
+GRANT ALL PRIVILEGES ON SCHEMA coproof_schema TO coproof_admin;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA coproof_schema TO coproof_admin;
