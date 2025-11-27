@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    command: python run.py # Use dev server for local
+    volumes:
+      - .:/usr/src/app
+    ports:
+      - "5001:5000"
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  celery_worker:
+    build: .
+    command: celery -A celery_worker.celery worker --loglevel=info
+    volumes:
+      - .:/usr/src/app
+    environment:
+      - DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
+      - REDIS_URL=redis://redis:6379/0
+      - REPO_STORAGE_PATH=/tmp/coproof-storage
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=coproof
+      - POSTGRES_PASSWORD=coproofpass
+      - POSTGRES_DB=coproof_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:

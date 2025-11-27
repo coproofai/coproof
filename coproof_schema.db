@@ -1,212 +1,244 @@
 -- =============================================================================
--- ESQUEMA PARA LA BASE DE DATOS COPROOF EN POSTGRESQL
--- Versión: 1.0
--- Descripción: Implementación del esquema Entidad-Relación Coproof
+-- COPROOF BACKEND - POSTGRESQL SCHEMA (GIT-INDEX ARCHITECTURE)
+-- Version: 2.0 (Stateless/Git-Based)
+-- Description: Defines the Relational Index for the CoProof Graph.
+--              Content is stored in Git; this DB stores metadata, relationships,
+--              and sync status.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- CONFIGURACIÓN INICIAL Y DE SEGURIDAD
+-- 1. EXTENSIONS & SCHEMA SETUP
 -- -----------------------------------------------------------------------------
 
--- TODO: superusuario configurar SCRAM-SHA-256
--- TODO: configurar limitado 'listen_addresses' y 'pg_hba.conf' adecuadamente.
-
--- 1. Crear un esquema dedicado para aislar los objetos de la aplicación.
+-- Create a dedicated schema to isolate application data
 CREATE SCHEMA IF NOT EXISTS coproof_schema;
 
--- 2. Crear roles con privilegios mínimos.
--- Rol para la aplicación web: puede leer y escribir datos.
-CREATE ROLE coproof_app_user LOGIN PASSWORD 'una_contraseña_muy_segura_y_larga';
--- Rol para tareas de administración y migraciones de esquema.
-CREATE ROLE coproof_admin LOGIN PASSWORD 'otra_contraseña_fuerte_para_admin';
-
--- 3. Habilitar la extensión para generar UUIDs.
+-- Enable UUID generation (v4)
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Establecer el esquema por defecto para las siguientes operaciones.
+-- Set search path to prioritize our schema
 SET search_path TO coproof_schema;
 
 -- -----------------------------------------------------------------------------
--- DEFINICIÓN DE TIPOS (ENUMS)
+-- 2. ENUMS (TYPE SAFETY)
 -- -----------------------------------------------------------------------------
 
-CREATE TYPE proyecto_visibilidad AS ENUM ('publico', 'privado');
-CREATE TYPE nodo_estado AS ENUM ('pendiente', 'en_revision', 'demostrado', 'error');
-CREATE TYPE nodo_tipo AS ENUM ('meta_global', 'teorema', 'lema', 'corolario', 'evaluacion_numerica');
-CREATE TYPE solicitud_estado AS ENUM ('pendiente', 'aprobado', 'rechazado');
-CREATE TYPE cambio_tipo_entidad AS ENUM ('nodo', 'premisa_global');
-CREATE TYPE trabajo_tipo AS ENUM ('validacion_externa', 'agente_demostracion', 'agente_plan', 'agente_exploracion_logica', 'cluster_experimento', 'cluster_exploracion_numerica');
-CREATE TYPE trabajo_estado AS ENUM ('encolado', 'en_progreso', 'completado', 'fallido');
-CREATE TYPE demostracion_formato AS ENUM ('pdf', 'latex', 'imagen', 'lean');
-CREATE TYPE demostracion_estado_validacion AS ENUM ('pendiente', 'procesando', 'valida', 'invalida', 'error');
+CREATE TYPE project_visibility_enum AS ENUM ('public', 'private');
+
+-- Node status in the verification pipeline
+CREATE TYPE node_status_enum AS ENUM ('pending', 'in_review', 'verified', 'error');
+
+-- Semantic type of the node (Metadata for the Graph)
+CREATE TYPE node_type_enum AS ENUM ('global_goal', 'theorem', 'lemma', 'corollary', 'definition', 'numerical_eval');
+
+-- Status of async jobs (Agent, Git Sync, etc.)
+CREATE TYPE job_status_enum AS ENUM ('queued', 'processing', 'completed', 'failed');
+
+-- Types of background jobs
+CREATE TYPE job_type_enum AS ENUM ('git_push', 'git_clone', 'rag_sync', 'agent_exploration', 'cluster_experiment');
 
 -- -----------------------------------------------------------------------------
--- CREACIÓN DE TABLAS
+-- 3. TABLES (DDL)
 -- -----------------------------------------------------------------------------
 
--- Tabla de Usuarios
-CREATE TABLE usuarios (
+-- [USERS]
+-- Identity management. Passwords should be hashed (Argon2/Bcrypt) by the App.
+CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    nombre TEXT NOT NULL,
-    correo TEXT NOT NULL UNIQUE,
+    full_name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    correo_verificado BOOLEAN NOT NULL DEFAULT FALSE,
-    token_verificacion TEXT,
-    token_reseteo_pass TEXT,
-    token_expiracion TIMESTAMPTZ,
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_usuarios_correo ON usuarios(correo);
 
--- Tabla de Configuraciones de Usuario (Relación 1-a-1)
-CREATE TABLE configuraciones_usuario (
-    user_id UUID PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
-    idioma TEXT NOT NULL DEFAULT 'es',
-    tema_visual TEXT NOT NULL DEFAULT 'claro',
-    config_agentes_ia JSONB NOT NULL DEFAULT '{}'::jsonb,
-    config_cluster JSONB NOT NULL DEFAULT '{}'::jsonb
-);
-
--- Tabla de Proyectos
-CREATE TABLE proyectos (
+-- [PROJECTS]
+-- Metadata container. The 'remote_repo_url' is the Single Source of Truth.
+CREATE TABLE projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    nombre TEXT NOT NULL,
-    descripcion TEXT,
-    visibilidad proyecto_visibilidad NOT NULL,
-    lider_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+    name TEXT NOT NULL,
+    description TEXT,
+    visibility project_visibility_enum NOT NULL DEFAULT 'private',
+    leader_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    
+    -- GIT CONFIGURATION
+    remote_repo_url TEXT,     -- URL to GitHub/GitLab
+    default_branch TEXT NOT NULL DEFAULT 'main',
+    
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_proyectos_lider_id ON proyectos(lider_id);
-CREATE INDEX idx_proyectos_visibilidad ON proyectos(visibilidad);
 
--- Tabla de Unión para Colaboradores (Relación *-*)
-CREATE TABLE colaboradores (
-    proyecto_id UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    fecha_invitacion TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (proyecto_id, user_id)
+-- [COLLABORATORS]
+-- Junction table for Many-to-Many relationship (Users <-> Projects)
+CREATE TABLE collaborators (
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (project_id, user_id)
 );
-CREATE INDEX idx_colaboradores_user_id ON colaboradores(user_id);
 
--- Tabla de Nodos del Grafo
-CREATE TABLE nodos_grafo (
+-- [GRAPH_INDEX] (Formerly nodos_grafo)
+-- The Index pointing to the Git content. 
+-- It does NOT store the proof text. It stores where to find it.
+CREATE TABLE graph_index (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    proyecto_id UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
-    titulo TEXT NOT NULL,
-    enunciado_nl TEXT NOT NULL,
-    codigo_lean TEXT,
-    estado nodo_estado NOT NULL DEFAULT 'pendiente',
-    tipo nodo_tipo NOT NULL,
-    datos_numericos JSONB,
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    
+    -- METADATA
+    title TEXT NOT NULL,
+    node_type node_type_enum NOT NULL,
+    status node_status_enum NOT NULL DEFAULT 'pending',
+    
+    -- GIT POINTERS (The Link to Truth)
+    file_path TEXT NOT NULL,    -- Relative path in repo (e.g., 'src/thm_1.lean')
+    start_line INTEGER,         -- Line number start in file
+    end_line INTEGER,           -- Line number end in file
+    commit_hash TEXT,           -- The Git Commit Hash this index represents
+    
+    -- AGENT/RAG METADATA
+    rag_synced_at TIMESTAMPTZ,  -- When was this last sent to the Agent's Vector DB?
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    -- Constraint: Only one node per file? usually no, multiple theorems per file.
+    -- But (project_id, title) should likely be unique to avoid ambiguity.
+    UNIQUE (project_id, title)
+);
+
+-- [DEPENDENCIES] (Edges)
+-- Adjacency list for the graph structure.
+CREATE TABLE dependencies (
+    source_id UUID NOT NULL REFERENCES graph_index(id) ON DELETE CASCADE,
+    target_id UUID NOT NULL REFERENCES graph_index(id) ON DELETE CASCADE,
+    
+    -- Prevent self-loops and duplicate edges
+    CHECK (source_id != target_id),
+    PRIMARY KEY (source_id, target_id)
+);
+
+-- [CHANGE_REQUESTS] (Branches/PRs)
+-- Maps internal "Change Requests" to Git Branches.
+CREATE TABLE change_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    requester_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    
+    title TEXT NOT NULL,
+    description TEXT,
+    
+    -- GIT MAPPING
+    source_branch TEXT NOT NULL, -- The feature branch (e.g., 'feat/user-x-lemma')
+    target_branch TEXT NOT NULL DEFAULT 'main',
+    pr_number INTEGER,           -- If linked to a GitHub PR
+    
+    status TEXT NOT NULL CHECK (status IN ('open', 'merged', 'closed')),
+    
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_nodos_grafo_proyecto_id ON nodos_grafo(proyecto_id);
-CREATE INDEX idx_nodos_grafo_datos_numericos ON nodos_grafo USING GIN(datos_numericos); -- GIN index para JSONB
 
--- Tabla de Dependencias entre Nodos (Aristas del Grafo, Relación *-*)
-CREATE TABLE dependencias_nodos (
-    nodo_dependiente_id UUID NOT NULL REFERENCES nodos_grafo(id) ON DELETE CASCADE,
-    nodo_prerequisito_id UUID NOT NULL REFERENCES nodos_grafo(id) ON DELETE CASCADE,
-    PRIMARY KEY (nodo_dependiente_id, nodo_prerequisito_id)
-);
-CREATE INDEX idx_dependencias_nodos_prerequisito_id ON dependencias_nodos(nodo_prerequisito_id);
-
--- Tabla de Solicitudes de Cambio
-CREATE TABLE solicitudes_cambio (
+-- [ASYNC_JOBS]
+-- Tracks Celery tasks for UI feedback.
+CREATE TABLE async_jobs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    proyecto_id UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
-    solicitante_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    estado solicitud_estado NOT NULL DEFAULT 'pendiente',
-    descripcion TEXT NOT NULL,
-    fecha_revision TIMESTAMPTZ,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    
+    celery_task_id TEXT NOT NULL, -- The ID from Celery
+    job_type job_type_enum NOT NULL,
+    status job_status_enum NOT NULL DEFAULT 'queued',
+    
+    result_metadata JSONB,        -- Store small results (e.g., {"next_step": "..."})
+    error_log TEXT,
+    
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_solicitudes_cambio_proyecto_id_estado ON solicitudes_cambio(proyecto_id, estado);
-CREATE INDEX idx_solicitudes_cambio_solicitante_id ON solicitudes_cambio(solicitante_id);
-
--- Tabla de Cambios Propuestos
-CREATE TABLE cambios_propuestos (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    solicitud_id UUID NOT NULL REFERENCES solicitudes_cambio(id) ON DELETE CASCADE,
-    id_entidad_afectada UUID NOT NULL,
-    tipo_entidad cambio_tipo_entidad NOT NULL,
-    datos_anteriores JSONB,
-    datos_nuevos JSONB NOT NULL
-);
-CREATE INDEX idx_cambios_propuestos_solicitud_id ON cambios_propuestos(solicitud_id);
-
--- Tabla de Premisas Globales
-CREATE TABLE premisas_globales (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    proyecto_id UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
-    contenido_lean TEXT NOT NULL,
-    descripcion_nl TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX idx_premisas_globales_proyecto_id ON premisas_globales(proyecto_id);
-
--- Tabla de Trabajos Asíncronos
-CREATE TABLE trabajos_asincronos (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE SET NULL,
-    tipo trabajo_tipo NOT NULL,
-    id_recurso_asociado UUID,
-    estado trabajo_estado NOT NULL DEFAULT 'encolado',
-    resultado JSONB,
-    logs TEXT,
-    fecha_finalizacion TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
--- Nota: Esta tabla es una buena candidata para particionamiento por fecha (created_at) si el volumen crece.
-CREATE INDEX idx_trabajos_asincronos_user_id ON trabajos_asincronos(user_id);
-CREATE INDEX idx_trabajos_asincronos_estado ON trabajos_asincronos(estado);
-
--- Tabla de Demostraciones Externas
-CREATE TABLE demostraciones_externas (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    nombre_archivo_original TEXT NOT NULL,
-    path_almacenamiento TEXT NOT NULL,
-    formato demostracion_formato NOT NULL,
-    estado_validacion demostracion_estado_validacion NOT NULL DEFAULT 'pendiente',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX idx_demostraciones_externas_user_id ON demostraciones_externas(user_id);
-
 
 -- -----------------------------------------------------------------------------
--- TRIGGERS PARA CAMPOS AUTO-CALCULADOS
+-- 4. INDEXES (PERFORMANCE)
 -- -----------------------------------------------------------------------------
 
--- 1. Función para actualizar el campo 'updated_at' en cualquier tabla.
-CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+-- Users
+CREATE INDEX idx_users_email ON users(email);
+
+-- Projects
+CREATE INDEX idx_projects_leader ON projects(leader_id);
+CREATE INDEX idx_projects_public ON projects(id) WHERE visibility = 'public';
+
+-- Graph Index
+CREATE INDEX idx_graph_project ON graph_index(project_id);
+CREATE INDEX idx_graph_file_path ON graph_index(file_path); -- Fast file lookups
+CREATE INDEX idx_graph_rag_sync ON graph_index(rag_synced_at) WHERE rag_synced_at IS NULL; -- Find unsynced nodes
+
+-- Dependencies
+CREATE INDEX idx_deps_target ON dependencies(target_id); -- Find "Used By" (Reverse Lookup)
+
+-- Jobs
+CREATE INDEX idx_jobs_user_status ON async_jobs(user_id, status);
+
+-- -----------------------------------------------------------------------------
+-- 5. AUTOMATIC TIMESTAMP TRIGGER
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
+   NEW.updated_at = NOW();
+   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ language 'plpgsql';
 
--- 2. Aplicar el trigger a las tablas relevantes.
-CREATE TRIGGER set_timestamp_usuarios BEFORE UPDATE ON usuarios FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
-CREATE TRIGGER set_timestamp_proyectos BEFORE UPDATE ON proyectos FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
-CREATE TRIGGER set_timestamp_nodos_grafo BEFORE UPDATE ON nodos_grafo FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
-CREATE TRIGGER set_timestamp_solicitudes_cambio BEFORE UPDATE ON solicitudes_cambio FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
-CREATE TRIGGER set_timestamp_premisas_globales BEFORE UPDATE ON premisas_globales FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER trg_projects_updated BEFORE UPDATE ON projects FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER trg_graph_index_updated BEFORE UPDATE ON graph_index FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER trg_change_req_updated BEFORE UPDATE ON change_requests FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER trg_async_jobs_updated BEFORE UPDATE ON async_jobs FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 
 -- -----------------------------------------------------------------------------
--- GESTIÓN DE PERMISOS (RBAC)
+-- 6. SECURITY ROLES (LEAST PRIVILEGE)
 -- -----------------------------------------------------------------------------
 
--- Permisos para el rol de la aplicación
+-- Role for the Flask Application
+-- DO NOT grant SUPERUSER. Only DML permissions on this schema.
+CREATE ROLE coproof_app_user WITH LOGIN PASSWORD 'CHANGE_THIS_IN_PRODUCTION';
+
 GRANT USAGE ON SCHEMA coproof_schema TO coproof_app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA coproof_schema TO coproof_app_user;
+-- Grant usage on any sequences if used (though we use UUIDs mostly)
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA coproof_schema TO coproof_app_user;
 
--- Permisos para el rol de administrador
+-- Role for Migrations/Admin
+CREATE ROLE coproof_admin WITH LOGIN PASSWORD 'CHANGE_THIS_ADMIN_PASS';
 GRANT ALL PRIVILEGES ON SCHEMA coproof_schema TO coproof_admin;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA coproof_schema TO coproof_admin;
+
+-- -----------------------------------------------------------------------------
+-- 7. ROW LEVEL SECURITY (RLS) - OPTIONAL / ADVANCED
+-- -----------------------------------------------------------------------------
+-- RLS enforces that users can only query projects they have access to.
+-- NOTE: For this to work, the Flask App must set a config variable per request:
+-- SET LOCAL app.current_user_id = 'uuid';
+
+/*
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY project_access_policy ON projects
+FOR SELECT
+USING (
+    visibility = 'public'
+    OR leader_id = current_setting('app.current_user_id', true)::uuid
+    OR EXISTS (
+        SELECT 1 FROM collaborators 
+        WHERE project_id = projects.id 
+        AND user_id = current_setting('app.current_user_id', true)::uuid
+    )
+);
+
+-- Similar policies would be needed for graph_index, change_requests, etc.
+-- For the initial implementation, we often handle this in the Application Service Layer 
+-- to reduce complexity, but RLS is the gold standard for security.
+*/

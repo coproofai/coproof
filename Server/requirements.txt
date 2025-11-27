@@ -1,27 +1,44 @@
-# --- Core Framework ---
-Flask==3.0.*            # The main microframework
-python-dotenv==1.0.*    # To load variables from .env file (Config)
+# Core Framework
+Flask
+Werkzeug
+python-dotenv
 
-# --- Database & ORM (PostgreSQL) ---
-Flask-SQLAlchemy==3.1.* # ORM to map Python classes to SQL tables
-Flask-Migrate==4.0.*    # To handle DB migrations (Alembic wrapper)
-psycopg2-binary==2.9.*  # PostgreSQL adapter for Python (The actual driver)
+# Database & ORM
+Flask-SQLAlchemy
+SQLAlchemy
+Flask-Migrate
+psycopg2-binary
 
-# --- Authentication & Security ---
-Flask-JWT-Extended==4.5.* # For handling JSON Web Tokens (Login/Auth)
-Flask-Cors==4.0.*       # Essential for allowing the Angular Client to talk to Flask
-email-validator==2.1.*  # To validate email format (RF-017)
+# Authentication & Security
+Flask-JWT-Extended
+Flask-Cors
+email-validator
 
-# --- Async Tasks & Caching (Redis) ---
-Celery==5.3.*           # Distributed task queue (for AI & Cluster jobs)
-Flask-Caching==2.1.*    # Caching mechanism (for Public Projects list)
-redis==5.0.*            # Python client for Redis (used by Celery & Caching)
+# Async Tasks & Caching & Realtime
+Celery
+redis
+Flask-Caching
+Flask-SocketIO
+simple-websocket
 
-# --- Production Server ---
-gunicorn==21.2.*        # WSGI HTTP Server for UNIX (Production)
-gevent==23.9.*          # Async worker class for Gunicorn (Performance)
+# Validation & Serialization
+Flask-Marshmallow
+marshmallow-sqlalchemy
+marshmallow
 
-# --- Development & Quality Code ---
-pytest==7.4.*           # For Unit and Integration Testing
-black==23.12.*          # Code Formatter (PEP 8)
-flake8==7.0.*           # Linter to catch syntax errors/bugs
+# Production Server
+gunicorn
+gevent
+
+# Git Integration (Phase 3 Prep)
+GitPython
+
+# AI/Agent Integration (Phase 6 Prep)
+requests
+
+# Testing & Quality
+pytest
+pytest-flask
+pytest-mock
+black
+flake8
