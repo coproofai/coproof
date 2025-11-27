@@ -3,8 +3,12 @@ from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy.sql import func
 from app.extensions import db
 
-# Define Enum in Python to match DB
-visibility_enum = ENUM('public', 'private', name='project_visibility_enum', create_type=False)
+# FIX: Bind ENUM to db.metadata so create_all/drop_all handles it automatically
+visibility_enum = ENUM(
+    'public', 'private', 
+    name='project_visibility_enum', 
+    metadata=db.metadata  # <--- THIS FIXES THE ERROR
+)
 
 # Association Table for Many-to-Many
 collaborators = db.Table('collaborators',
@@ -19,12 +23,13 @@ class Project(db.Model):
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.Text, nullable=False)
     description = db.Column(db.Text)
+    # Use the bound enum
     visibility = db.Column(visibility_enum, default='private', nullable=False)
     
     # Foreign Keys
     leader_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
     
-    # Git Config (Source of Truth)
+    # Git Config
     remote_repo_url = db.Column(db.Text)
     default_branch = db.Column(db.Text, default='main', nullable=False)
     

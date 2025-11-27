@@ -3,8 +3,18 @@ from sqlalchemy.dialects.postgresql import UUID, ENUM, JSONB
 from sqlalchemy.sql import func
 from app.extensions import db
 
-job_status_enum = ENUM('queued', 'processing', 'completed', 'failed', name='job_status_enum', create_type=False)
-job_type_enum = ENUM('git_push', 'git_clone', 'rag_sync', 'agent_exploration', 'cluster_experiment', name='job_type_enum', create_type=False)
+# FIX: Bind ENUMs to db.metadata
+job_status_enum = ENUM(
+    'queued', 'processing', 'completed', 'failed', 
+    name='job_status_enum', 
+    metadata=db.metadata
+)
+
+job_type_enum = ENUM(
+    'git_push', 'git_clone', 'rag_sync', 'agent_exploration', 'cluster_experiment', 
+    name='job_type_enum', 
+    metadata=db.metadata
+)
 
 class AsyncJob(db.Model):
     __tablename__ = 'async_jobs'

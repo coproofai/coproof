@@ -2,11 +2,10 @@ import os
 from flask import Flask, jsonify
 from app.extensions import db, migrate, jwt, ma, socketio, celery, cache # <-- ADD cache
 from app.exceptions import CoProofError
-from config import DevelopmentConfig
-from dotenv import load_dotenv
+from config import DevelopmentConfig, TestingConfig
 
 
-def create_app(config_class=DevelopmentConfig):
+def create_app(config_class=TestingConfig):
     """
     Application Factory Pattern.
     """
@@ -34,7 +33,7 @@ def create_app(config_class=DevelopmentConfig):
 
     @app.route('/health')
     def health_check():
-        return jsonify({"status": "healthy", "env": app.config['ENVIRONMENT_NAME']})
+        return jsonify({"status": "healthy", "env": os.getenv('FLASK_ENV', 'unkown')}), 200
 
     #TODO: Register Blueprints
 
