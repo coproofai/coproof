@@ -35,7 +35,20 @@ def create_app(config_class=TestingConfig):
     def health_check():
         return jsonify({"status": "healthy", "env": os.getenv('FLASK_ENV', 'unkown')}), 200
 
-    #TODO: Register Blueprints
+    #TODO: Check all blueprints are registered here
+    from app.api.auth import auth_bp
+    from app.api.projects import projects_bp
+    from app.api.nodes import nodes_bp
+    from app.api.agent_interaction import agent_bp 
+    from app.api.webhooks import webhooks_bp       
+    
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(projects_bp)
+    app.register_blueprint(nodes_bp)
+    app.register_blueprint(agent_bp)    
+    app.register_blueprint(webhooks_bp) 
+
+
 
     return app
 
