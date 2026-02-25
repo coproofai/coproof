@@ -254,6 +254,35 @@ def verifyLeanProof(leanCode, filename='proof.lean'):
                 'processingTimeSeconds': round(endTime - startTime, 3)
             }
 
+def toCompilerContentResponse(leanCode, filename='Main.lean'):
+    result = verifyLeanProof(leanCode, filename)
+    errors = [m.get('message', '') for m in result.get('messages', []) if m.get('severity') == 'error']
+    return {
+        'compile_success': result.get('verified', False),
+        'contains_sorry': bool(re.search(r'\bsorry\b', leanCode or '')),
+        'errors': '\n'.join(errors) if errors else result.get('feedback', {}).get('stderr', '')
+    }
+
+def toCompilerSnippetResponse(leanCode, filename='snippet.lean'):
+    result = verifyLeanProof(leanCode, filename)
+    errors = [
+        {
+            'line': m.get('line', 0),
+            'column': m.get('column', 0),
+            'message': m.get('message', '')
+        }
+        for m in result.get('messages', [])
+        if m.get('severity') == 'error'
+    ]
+    return {
+        'valid': result.get('verified', False),
+        'errors': errors,
+        'processing_time_seconds': result.get('processingTimeSeconds', 0.0),
+        'return_code': result.get('returnCode', -1),
+        'message_count': len(result.get('messages', [])),
+        'theorem_count': len(result.get('theorems', []))
+    }
+
 @app.route('/health', methods=['GET'])
 def healthCheck():
     return jsonify({'status': 'healthy'}), 200
@@ -320,6 +349,57 @@ def verifyProof():
             'theorems': [],
             'messages': []
         }), 500
+
+@app.route('/v1/verify/content', methods=['POST'])
+def verifyContentV1():
+    try:
+        data = request.get_json(silent=True) or {}
+        leanCode = data.get('code') or data.get('content')
+        if not leanCode:
+            return jsonify({
+                'compile_success': False,
+                'contains_sorry': False,
+                'errors': 'No code provided in request body'
+            }), 400
+
+        result = toCompilerContentResponse(leanCode, 'Main.lean')
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({
+            'compile_success': False,
+            'contains_sorry': False,
+            'errors': str(e)
+        }), 500
+
+@app.route('/v1/verify/snippet', methods=['POST'])
+def verifySnippetV1():
+    try:
+        data = request.get_json(silent=True) or {}
+        leanCode = data.get('code')
+        if not leanCode:
+            return jsonify({'valid': False, 'errors': [{'line': 0, 'column': 0, 'message': 'No code provided in request body'}]}), 400
+
+        result = toCompilerSnippetResponse(leanCode, data.get('filename', 'snippet.lean'))
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'valid': False, 'errors': [{'line': 0, 'column': 0, 'message': str(e)}]}), 500
+
+@app.route('/v1/translate', methods=['POST'])
+def translateV1():
+    data = request.get_json(silent=True) or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'lean_code': ''}), 200
+    return jsonify({'lean_code': f'-- TODO: NL translation\n-- input: {text}\nby\n  sorry'}), 200
+
+@app.route('/v1/verify/project', methods=['POST'])
+def verifyProjectV1():
+    data = request.get_json(silent=True) or {}
+    repoUrl = data.get('repo_url')
+    commit = data.get('commit')
+    if not repoUrl or not commit:
+        return jsonify({'job_id': None, 'status': 'invalid_request'}), 400
+    return jsonify({'job_id': f'not-implemented-{int(time.time())}', 'status': 'queued'}), 202
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)

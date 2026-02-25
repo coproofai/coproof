@@ -62,7 +62,7 @@ def async_merge_proposal(self, proposal_id):
                     return _fail_proposal(proposal, f"Merge Aborted: Conflict with main. {e}")
 
                 # Generate File
-                main_path = file_service.FileOps.generate_main_file(wt_path, ordered_paths)
+                main_path = file_service.FileService.generate_main_file(wt_path, ordered_paths)
                 with open(main_path, 'r') as f:
                     full_code = f.read()
 

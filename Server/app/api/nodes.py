@@ -164,6 +164,31 @@ def verify_snippet_preview():
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 503
+
+
+@nodes_bp.route('/tools/verify-snippet/public', methods=['POST'])
+def verify_snippet_public():
+    """
+    Dev-only endpoint for end-to-end smoke testing:
+    Client -> Backend -> Lean compiler service -> Backend -> Client.
+    """
+    if os.getenv('FLASK_ENV') != 'development':
+        return jsonify({"error": "Public verify endpoint is disabled outside development"}), 403
+
+    data = request.get_json() or {}
+    code = data.get('code')
+
+    if not code:
+        return jsonify({"error": "No code provided"}), 400
+
+    try:
+        result = CompilerClient.verify_code_snippet(code)
+        return jsonify({
+            "flow": "client -> backend -> lean -> backend -> client",
+            "result": result
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
     
 
 

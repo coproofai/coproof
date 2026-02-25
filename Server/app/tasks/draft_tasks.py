@@ -7,7 +7,7 @@ from app.extensions import celery, db
 from app.models.project import Project
 from app.models.user import User
 from app.models.proposed_node import ProposedNode
-from app.services.git_engine import repo_pool, transaction, locking, file_ops, file_service
+from app.services.git_engine import repo_pool, transaction, locking, file_service
 from app.services.verification_service import VerificationService
 from app.services.auth_service import AuthService
 from app.services.integrations import CompilerClient, GitHubService
@@ -181,7 +181,7 @@ def _verify_ephemeral_dag_and_compile(project, proposal, token):
     bare_path = repo_pool.RepoPool.get_storage_path(str(project.id))
     
     with transaction.read_only_worktree(bare_path, branch=proposal.branch_name) as wt:
-        main_path = file_ops.FileOps.generate_main_file(wt, ordered_paths)
+        main_path = file_service.FileService.generate_main_file(wt, ordered_paths)
         with open(main_path, 'r') as f:
             code = f.read()
 

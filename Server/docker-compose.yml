@@ -13,11 +13,14 @@ services:
       - FLASK_ENV=development
       - DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
       - REDIS_URL=redis://redis:6379/0
+      - COMPILER_SERVICE_URL=${COMPILER_SERVICE_URL:-http://lean-compiler:5000}
     depends_on:
       db:
         condition: service_healthy # <-- CRITICAL FIX: Wait for DB to be ready
       redis:
         condition: service_started
+      lean-compiler:
+        condition: service_healthy
 
   celery_worker:
     build: .
@@ -28,11 +31,26 @@ services:
       - DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
       - REDIS_URL=redis://redis:6379/0
       - REPO_STORAGE_PATH=/tmp/coproof-storage
+      - COMPILER_SERVICE_URL=${COMPILER_SERVICE_URL:-http://lean-compiler:5000}
     depends_on:
       db:
         condition: service_healthy # <-- CRITICAL FIX: Wait for DB to be ready
       redis:
         condition: service_started
+      lean-compiler:
+        condition: service_healthy
+
+  lean-compiler:
+    build:
+      context: ../lean
+      dockerfile: Dockerfile
+    ports:
+      - "8002:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   db:
     image: postgres:15-alpine

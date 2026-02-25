@@ -1,6 +1,7 @@
 import requests
 import logging
 import os
+import time
 from app.exceptions import CoProofError
 
 logger = logging.getLogger(__name__)
@@ -94,9 +95,20 @@ class CompilerClient:
             "dependencies": dependencies or []
         }
         try:
+            started = time.perf_counter()
             resp = requests.post(f"{CompilerClient.BASE_URL}/v1/verify/snippet", json=payload, timeout=10)
             resp.raise_for_status()
-            return resp.json() # Expected: {"valid": Bool, "errors": []}
+            elapsed = time.perf_counter() - started
+            data = resp.json()
+
+            if "processing_time_seconds" not in data:
+                data["processing_time_seconds"] = round(elapsed, 6)
+                data["timing_source"] = "backend_fallback"
+            else:
+                data["timing_source"] = "lean_server"
+
+            data["roundtrip_time_seconds"] = round(elapsed, 6)
+            return data # Expected: {"valid": Bool, "errors": []}
         except Exception as e:
             logger.error(f"Verification failed: {e}")
             raise CoProofError(f"Compiler Service Unavailable: {str(e)}", code=503)

@@ -30,6 +30,7 @@ Create `.env` or set in Docker Compose:
 FLASK_ENV=development
 DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
 REDIS_URL=redis://redis:6379/0
+COMPILER_SERVICE_URL=http://lean-compiler:5000
 GITHUB_CLIENT_ID=<your-client-id>
 GITHUB_CLIENT_SECRET=<your-client-secret>
 JWT_SECRET_KEY=<some-secret>
@@ -48,6 +49,20 @@ docker-compose up -d --build
 * `celery_worker` → Async tasks
 * `db` → PostgreSQL
 * `redis` → Redis broker
+* `lean-compiler` → Lean verification microservice
+
+The backend talks to Lean through `COMPILER_SERVICE_URL`.
+For local compose use:
+
+```env
+COMPILER_SERVICE_URL=http://lean-compiler:5000
+```
+
+If Lean runs on a dedicated machine, point to that host instead, for example:
+
+```env
+COMPILER_SERVICE_URL=http://192.168.1.50:8002
+```
 
 ---
 
@@ -160,5 +175,28 @@ irm -Method POST -Uri "http://localhost:5001/api/v1/projects/PROJECT_ID/nodes" `
 * **Access / Refresh Tokens**: Always refresh access token if expired.
 * **Branches**: Consider using per-user branch locks for collaborative `.latex` editing.
 * **Feature workflow**: Each developer works in their own branch. Project owner merges `.latex` branches into main.
+
+---
+
+## Lean roundtrip smoke test (terminal)
+
+This checks the full path:
+
+`Client script -> Backend API -> Lean compiler container -> Backend API -> Client script`
+
+It uses a development-only endpoint: `POST /api/v1/projects/tools/verify-snippet/public`.
+No user registration/login is required for this smoke test.
+
+From `server/` run:
+
+```powershell
+./scripts/lean_roundtrip_demo.ps1
+```
+
+Optional custom backend URL:
+
+```powershell
+./scripts/lean_roundtrip_demo.ps1 -BackendUrl http://localhost:5001
+```
 
 ---
