@@ -13,6 +13,59 @@ class CompilerClient:
     # URL of your external microservice container
     BASE_URL = os.environ.get('COMPILER_SERVICE_URL', 'http://localhost:8002')
 
+
+
+    @staticmethod
+    def verify_project_content(full_source_code: str):
+        """
+        Sends the fully concatenated Lean project code for verification.
+        
+        Lean service must:
+         - Wrap content in a temporary Lean project
+         - Provide correct imports / lakefile context
+        
+        Make sure your compiler service:
+         - Creates ephemeral project
+         - Places main.lean inside
+         - Runs lake build
+
+        Returns:
+        {
+            "compile_success": bool,
+            "contains_sorry": bool,
+            "errors": str
+        }
+        """
+        # We wrap the content in a JSON payload. 
+        # Ensure the compiler service accepts "code" or "content".
+        payload = {
+            "code": full_source_code
+        }
+
+
+        try:
+            # We use a specific endpoint for full package verification via content
+            resp = requests.post(f"{CompilerClient.BASE_URL}/v1/verify/content", json=payload, timeout=120)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "compile_success": data.get("compile_success", False),
+                    "contains_sorry": data.get("contains_sorry", False),
+                    "errors": data.get("errors", "")
+                }
+            else:
+                logger.error(f"Compiler service returned {resp.status_code}: {resp.text}")
+                return {
+                    "compile_success": False,
+                    "contains_sorry": False,
+                    "errors": f"System Error: Compiler service returned {resp.status_code}"
+                }
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Compiler connection failed: {e}")
+            raise CoProofError(f"Compiler Service Unavailable: {str(e)}", code=503)
+
     @staticmethod
     def translate_nl_to_lean(nl_text: str, context: str = ""):
         """

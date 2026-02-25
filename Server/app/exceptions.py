@@ -29,6 +29,12 @@ class GitOperationError(CoProofError):
     def __init__(self, message="Git operation failed", payload=None):
         super().__init__(message, code=500, payload=payload)
 
+
+class GitMergeError(CoProofError):
+    """Raised when a git merge fails due to conflicts or non-fast-forward."""
+    def __init__(self, message="Git merge failed due to conflicts", payload=None):
+        super().__init__(message, code=409, payload=payload)
+
 # --- Agent/AI Exceptions ---
 
 class AgentTimeoutError(CoProofError):

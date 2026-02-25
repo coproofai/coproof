@@ -7,7 +7,7 @@ class AgentRequestSchema(Schema):
     """
     # The user can optionally provide extra context or hints to the agent
     hint = fields.String(allow_none=True)
-    strategy = fields.String(validate=validate.OneOf(["direct", "contradiction", "induction"]), missing="direct")
+    strategy = fields.String(validate=validate.OneOf(["direct", "contradiction", "induction"]),  load_default="direct")
 
 class AgentResponseSchema(Schema):
     """

@@ -1,11 +1,17 @@
 import logging
-from Server.app.models.async_job import AsyncJob
-from Server.app.services.graph_engine.indexer import GraphIndexer
+import os
+from app.models.async_job import AsyncJob
+from app.services.auth_service import AuthService
+from app.services.graph_engine.indexer import GraphIndexer
 from app.extensions import celery, db
 from app.models.project import Project
+from app.models.user import User
 from app.services.git_engine import RepoPool
 from app.services.integrations import CompilerClient
 from app.exceptions import GitOperationError
+from app.services.git_engine import git_transaction
+from app.services.git_engine import repo_pool, transaction, locking
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +40,84 @@ def async_push_changes(self, project_id):
     # For the 'Stateless Transaction' model, push happens inline.
     # This is reserved for retry mechanisms or batching.
     pass
+
+
+@celery.task(bind=True, max_retries=3)
+def async_save_node(self, project_id, user_id, file_path, content, branch='main'):
+    """
+    Background Microservice Task:
+    1. Locks Project
+    2. Pulls/Resets Git State
+    3. Writes File -> Commit -> Push
+    4. Updates Postgres Index
+    """
+    logger.info(f"Starting async save for {file_path} on branch {branch}")
+    
+    # 1. Fetch Metadata (Must happen inside task context)
+    project = Project.query.get(project_id)
+    user = User.query.get(user_id)
+
+    
+    if not project or not user:
+        logger.error("Project or User not found in async task")
+        return {"status": "failed", "error": "Metadata missing"}
+
+    if not project.remote_repo_url:
+        return {"status": "failed", "error": "No remote URL configured"}
+
+    # git_token = AuthService.refresh_github_token_if_needed(user)
+    git_token = user.github_access_token
+    if git_token:
+        logger.info(f"User {user.id} has GitHub token (Length: {len(git_token)})")
+    else:
+        logger.error(f"User {user.id} HAS NO GITHUB TOKEN. Git operations will likely fail.")
+
+
+    try:
+        # 1. Acquire Lock (Ensures atomicity for the whole block)
+        with locking.acquire_project_lock(project_id):
+            
+            # 2. Ensure Repo Exists and is Updated (OUTSIDE transaction)
+            # Step 2a: Ensure it's cloned
+            bare_repo_path = repo_pool.RepoPool.ensure_repo_exists(
+                project_id, project.remote_repo_url, auth_token=git_token
+            )
+        
+        with locking.acquire_branch_lock(project_id, branch):
+
+            try: 
+            # Step 2b: Fetch latest updates
+                repo_pool.RepoPool.update_repo(
+                    project_id, project.remote_repo_url, auth_token=git_token
+                )
+            except Exception as e:
+                logger.error(f"Fetch failed inside branch lock: {e}")
+                raise e
+            
+            # 3. Start the Transaction (NO fetching happens inside)
+            with transaction.git_transaction(
+                bare_repo_path,
+                author_name=user.full_name,
+                author_email=user.email,
+                branch=branch
+            ) as worktree_root:
+                
+                # 4. Write File
+                full_path = os.path.join(worktree_root, file_path)
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                with open(full_path, 'w') as f:
+                    f.write(content)
+            
+        # 5. Index Update (After successful transaction)
+        GraphIndexer.index_file_content(str(project.id), file_path, "latest", content)
+        
+        logger.info(f"Async save successful for {file_path}")
+        
+        return {"status": "success", "file": file_path}
+
+    except Exception as e:
+        logger.error(f"Async save failed: {e}")
+        raise self.retry(exc=e, countdown=5)
 
 @celery.task(bind=True)
 def async_compile_project(self, remote_url, commit_hash):

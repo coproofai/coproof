@@ -1,3 +1,4 @@
+import os
 import requests
 import logging
 from config import Config

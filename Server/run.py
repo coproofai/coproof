@@ -3,7 +3,7 @@ from app import create_app, socketio
 from config import DevelopmentConfig, TestingConfig
 
 # Create the application instance using Development Config
-app = create_app(config_class=TestingConfig)
+app = create_app(config_class=DevelopmentConfig)
 
 if __name__ == '__main__':
     # We use socketio.run instead of app.run to support WebSockets

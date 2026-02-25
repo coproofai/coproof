@@ -1,9 +1,13 @@
 from flask import Blueprint, request, jsonify
+from flask_caching import logger
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from Server.app.models.async_job import AsyncJob
-from Server.app.services.integrations.compiler_client import CompilerClient
-from Server.app.tasks.agent_tasks import task_translate_nl
-from Server.app.tasks.git_tasks import task_verify_lean_code
+from app.models.user import User
+from app.services.auth_service import AuthService
+from app.services.git_engine.reader import GitReader
+from app.models.async_job import AsyncJob
+from app.services.integrations.compiler_client import CompilerClient
+from app.tasks.agent_tasks import task_translate_nl
+from app.tasks.git_tasks import task_verify_lean_code
 from app.models.graph_index import GraphNode
 from app.models.project import Project
 from app.services.git_engine import git_transaction
@@ -11,6 +15,7 @@ from app.services.graph_engine import GraphIndexer
 from app.schemas import GraphNodeSchema
 from app.exceptions import CoProofError
 from app.extensions import db
+from app.tasks.git_tasks import async_save_node
 import os
 
 nodes_bp = Blueprint('nodes', __name__, url_prefix='/api/v1/projects')
@@ -33,44 +38,82 @@ def get_project_graph(project_id):
 @jwt_required()
 def create_or_update_node(project_id):
     """
-    Writes content to Git (Stateless Transaction) -> Updates Index.
+    API Gateway Endpoint:
+    Receives save request, validates payload, and dispatches to Git Microservice (Celery).
+    Non-blocking.
     """
     user_id = get_jwt_identity()
-    # TODO: Fetch user details for Git Author (Name/Email) from DB
-    
     data = request.get_json()
+    
     file_path = data.get('file_path')
     content = data.get('content')
+    branch = data.get('branch', 'main') # Support different branches
     
+    # 1. Basic Validation
+    if not file_path or content is None:
+        return jsonify({"error": "Missing payload (file_path or content)"}), 400
+
+    # 2. Dispatch to Celery (Microservice Layer)
+    # We pass IDs (strings) because Celery arguments must be JSON serializable
+    task = async_save_node.delay(
+        project_id=str(project_id),
+        user_id=user_id,
+        file_path=file_path,
+        content=content,
+        branch=branch
+    )
+    
+    # 3. Return 202 Accepted
+    # The client can poll /jobs/<task_id> if we implement a generic job status endpoint,
+    # or listen via WebSockets for completion.
+    return jsonify({
+        "message": "Save operation queued",
+        "task_id": task.id,
+        "status": "processing",
+        "branch": branch
+    }), 202
+
+
+@nodes_bp.route('/<uuid:project_id>/nodes/<uuid:node_id>', methods=['GET'])
+@jwt_required()
+def get_node_details(project_id, node_id):
+    """
+    Retrieves metadata and file content.
+    Delegates Git logic to GitReader service.
+    """
+    # 1. Auth & Metadata
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    token = AuthService.refresh_github_token_if_needed(user)
+    
+    node = GraphNode.query.filter_by(id=node_id, project_id=project_id).first_or_404()
     project = Project.query.get_or_404(project_id)
     
-    if not project.remote_repo_url:
-        raise CoProofError("Project has no remote repo configured", code=400)
-
-    # 1. GIT TRANSACTION (Stateless)
-    # This clones/pulls -> creates worktree -> yields path -> commits -> pushes
-    with git_transaction(
-        str(project.id), 
-        project.remote_repo_url, 
-        author_name="User " + str(user_id), # Placeholder
-        author_email="user@coproof.com"
-    ) as worktree_root:
-        
-        # 2. Write File to Ephemeral Worktree
-        full_path = os.path.join(worktree_root, file_path)
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        
-        with open(full_path, 'w') as f:
-            f.write(content)
-            
-    # 3. INDEX UPDATE (Sync)
-    # Ideally, we get the commit hash from the transaction return, 
-    # but for now we re-parse.
-    # TODO: Pass commit hash from transaction to indexer.
-    GraphIndexer.index_file_content(str(project_id), file_path, "latest", content)
+    # 2. Call Service (Synchronous)
+    content_data = { "lean": "", "latex": "" }
     
-    return jsonify({"message": "Node saved and indexed", "file": file_path}), 201
-
+    try:
+        #TODO must be an internal net REST call for git microservice
+        content_data = GitReader.read_node_files(
+            project_id=str(project.id),
+            remote_url=project.remote_repo_url,
+            token=token,
+            file_path=node.file_path,
+            latex_path=node.latex_file_path,
+            commit_hash=node.commit_hash
+        )
+    except Exception as e:
+        # Log error but return metadata (Graceful degradation)
+        logger.error(f"Git Read Error: {e}")
+    
+    # 3. Serialize
+    schema = GraphNodeSchema()
+    data = schema.dump(node)
+    
+    return jsonify({
+        "node": data,
+        "content": content_data
+    }), 200
 
 
 @nodes_bp.route('/tools/translate', methods=['POST'])

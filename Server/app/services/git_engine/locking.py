@@ -38,3 +38,22 @@ def acquire_project_lock(project_id: str, timeout: int = 10, expire: int = 60):
             except LockError:
                 # Lock might have expired already, which is fine
                 pass
+
+@contextmanager
+def acquire_branch_lock(project_id: str, branch_name: str, timeout: int = 10, expire: int = 60):
+    """
+    Branch-Level Lock: Used for Fetch, Commit, Push on a specific branch.
+    Allows parallel work on different branches of the same project.
+    """
+    lock_name = f"lock:project:{project_id}:branch:{branch_name}"
+    lock = redis_client.lock(lock_name, timeout=expire, blocking_timeout=timeout)
+    
+    if not lock.acquire():
+        raise GitLockError(f"Could not acquire BRANCH lock for {branch_name} in {project_id}")
+    try:
+        yield
+    finally:
+        try:
+            lock.release()
+        except redis.exceptions.LockError:
+            pass

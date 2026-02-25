@@ -3,17 +3,26 @@ from app import create_app
 from app.extensions import db
 from config import TestingConfig
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='session')
 def app():
     """
     Creates a Flask app instance for testing.
     Scope: Module (created once per test file to save time).
     """
     app = create_app(TestingConfig)
-    
-    # Push an application context for the tests
+    app.config.update({
+        "TESTING": True,
+    })
+    return app
+
+@pytest.fixture(autouse=True)
+def app_context(app):
+    """
+    Push app context per test.
+    Prevents context leaking between tests.
+    """
     with app.app_context():
-        yield app
+        yield
 
 @pytest.fixture(scope='module')
 def client(app):
@@ -29,7 +38,7 @@ def init_db(app):
     Ensures tests are isolated.
     """
     db.create_all()
-    yield db
+    yield db.session
     db.session.remove()
     db.drop_all()
 

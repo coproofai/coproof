@@ -5,7 +5,7 @@ from app.exceptions import CoProofError
 from config import DevelopmentConfig, TestingConfig
 
 
-def create_app(config_class=TestingConfig):
+def create_app(config_class=DevelopmentConfig):
     """
     Application Factory Pattern.
     """

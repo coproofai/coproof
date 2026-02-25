@@ -3,18 +3,21 @@ version: '3.8'
 services:
   web:
     build: .
-    command: python run.py # Use dev server for local
+    command: python run.py
     volumes:
       - .:/usr/src/app
     ports:
       - "5001:5000"
     environment:
+      # These are now correctly read by the updated config.py
       - FLASK_ENV=development
       - DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
       - REDIS_URL=redis://redis:6379/0
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy # <-- CRITICAL FIX: Wait for DB to be ready
+      redis:
+        condition: service_started
 
   celery_worker:
     build: .
@@ -26,8 +29,10 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - REPO_STORAGE_PATH=/tmp/coproof-storage
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy # <-- CRITICAL FIX: Wait for DB to be ready
+      redis:
+        condition: service_started
 
   db:
     image: postgres:15-alpine
@@ -39,11 +44,21 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck: # <-- CRITICAL FIX: Defines what "healthy" means
+      test: ["CMD-SHELL", "pg_isready -U coproof -d coproof_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck: # <-- Good practice to add for Redis too
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:

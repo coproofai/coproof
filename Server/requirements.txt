@@ -2,6 +2,7 @@
 Flask
 Werkzeug
 python-dotenv
+networkx
 
 # Database & ORM
 Flask-SQLAlchemy
@@ -13,6 +14,7 @@ psycopg2-binary
 Flask-JWT-Extended
 Flask-Cors
 email-validator
+cryptography
 
 # Async Tasks & Caching & Realtime
 Celery
