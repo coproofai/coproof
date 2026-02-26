@@ -1,37 +1,15 @@
-import {
-  AfterViewInit,
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  ElementRef,
-  NgZone,
-  OnDestroy,
-  ViewChild
-} from '@angular/core';
-import { NgClass, NgFor, NgIf } from '@angular/common';
+import { Component, OnInit } from '@angular/core';
+import { JsonPipe, NgClass, NgFor, NgIf } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
+import { NewNodeDto, PullRequestItem, TaskService } from '../task.service';
 
-interface Goal {
-  id: string;
-  name: string;
-}
-
-interface NodeItem {
-  id: string;
-  name: string;
-  type: string;
-  status: 'proven' | 'in-progress' | 'unproven';
-  parent: string | null;
-}
-
-interface SimNode extends NodeItem {
+interface ViewNode extends NewNodeDto {
   x: number;
   y: number;
-  vx: number;
-  vy: number;
 }
 
-interface GraphLink {
+interface ViewEdge {
   x1: number;
   y1: number;
   x2: number;
@@ -41,85 +19,106 @@ interface GraphLink {
 @Component({
   selector: 'app-workspace-page',
   standalone: true,
-  imports: [NgFor, NgIf, NgClass],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [NgIf, NgFor, NgClass, FormsModule, JsonPipe],
   template: `
     <header class="top-header">
       <div>
-        <h1>Proyecto: {{ projectName }}</h1>
+        <h1>Proyecto: {{ projectName || 'Workspace' }}</h1>
         <small>{{ sessionLabel }}</small>
       </div>
-      <div class="header-right">
-        <button (click)="status = 'Cambios guardados (simulado).'">Guardar Cambios (Commit)</button>
-        <div class="badges">
-          <span>User_Current</span>
-          <span>AdaLovelace</span>
-        </div>
+      <div class="header-actions">
+        <button (click)="reloadAll()">Recargar</button>
       </div>
     </header>
 
-    <div class="workspace-grid">
-      <aside class="panel goals-panel">
-        <h2>Metas del Proyecto</h2>
-        <ul>
-          <li *ngFor="let goal of goals" [class.selected]="goal.id === selectedGoalId" (click)="selectGoal(goal.id)">
-            {{ goal.name }}
-          </li>
-        </ul>
-      </aside>
+    <p *ngIf="status" class="status">{{ status }}</p>
 
-      <main class="panel graph-panel">
+    <div class="workspace-grid" *ngIf="projectId; else noProjectSelected">
+      <section class="panel graph-panel">
         <h2>Grafo de Dependencias</h2>
-        <div class="graph-canvas">
-          <svg
-            #graphSvg
-            class="graph-lines"
-            viewBox="0 0 980 520"
-            preserveAspectRatio="xMidYMid meet"
-            (wheel)="onWheel($event)"
-            (pointerdown)="onBackgroundPointerDown($event)"
-          >
-            <g [attr.transform]="transform">
-              <line
-                *ngFor="let edge of currentEdges"
-                class="graph-link"
-                [attr.x1]="edge.x1"
-                [attr.y1]="edge.y1"
-                [attr.x2]="edge.x2"
-                [attr.y2]="edge.y2"
-              ></line>
+        <div class="graph-canvas" *ngIf="viewNodes.length > 0; else emptyGraph">
+          <svg viewBox="0 0 980 520" preserveAspectRatio="xMidYMid meet">
+            <line
+              *ngFor="let edge of edges"
+              class="graph-link"
+              [attr.x1]="edge.x1"
+              [attr.y1]="edge.y1"
+              [attr.x2]="edge.x2"
+              [attr.y2]="edge.y2"
+            ></line>
 
-              <g
-                *ngFor="let node of simNodes"
-                class="graph-node"
-                [class.selected]="selectedNode?.id === node.id"
-                [ngClass]="node.status"
-                (pointerdown)="onNodePointerDown($event, node.id)"
-                (click)="selectNode(node)"
-              >
-                <circle [attr.cx]="node.x" [attr.cy]="node.y" r="30"></circle>
-                <text [attr.x]="node.x" [attr.y]="node.y + 52">{{ node.name }}</text>
-              </g>
+            <g
+              *ngFor="let node of viewNodes"
+              class="graph-node"
+              [class.selected]="selectedNode?.id === node.id"
+              [ngClass]="node.state"
+              (click)="selectNode(node)"
+            >
+              <circle [attr.cx]="node.x" [attr.cy]="node.y" r="28"></circle>
+              <text [attr.x]="node.x" [attr.y]="node.y + 44">{{ node.name }}</text>
             </g>
           </svg>
         </div>
-      </main>
 
-      <aside class="panel details" *ngIf="selectedNode">
-        <h2>Detalles del Nodo</h2>
-        <p class="name">{{ selectedNode.name }}</p>
-        <p class="meta">Tipo: {{ selectedNode.type }}</p>
-        <p class="meta">Estado: {{ selectedNode.status }}</p>
-        <h3>Acciones Disponibles</h3>
-        <div class="actions">
-          <button *ngFor="let action of actions" (click)="status = 'Acción ejecutada: ' + action + ' (simulado).'">
-            {{ action }}
-          </button>
+        <ng-template #emptyGraph>
+          <p>No hay nodos en este proyecto.</p>
+        </ng-template>
+      </section>
+
+      <section class="panel editor-panel">
+        <h2>Editor de Nodo</h2>
+        <ng-container *ngIf="selectedNode; else selectNodeHint">
+          <p class="meta"><strong>Nodo:</strong> {{ selectedNode.name }}</p>
+          <p class="meta"><strong>Estado:</strong> {{ selectedNode.state }}</p>
+          <p class="meta"><strong>Archivo:</strong> {{ nodePath || '...' }}</p>
+
+          <textarea
+            [(ngModel)]="leanCode"
+            name="leanCode"
+            rows="14"
+            placeholder="Contenido .lean del nodo seleccionado"
+          ></textarea>
+
+          <div class="actions">
+            <button (click)="verifySelectedNode()">Verify</button>
+            <button (click)="submitSolve()">Submit Solve</button>
+            <button (click)="submitSplit()">Submit Split</button>
+          </div>
+
+          <pre *ngIf="lastResponse" class="response">{{ lastResponse | json }}</pre>
+        </ng-container>
+
+        <ng-template #selectNodeHint>
+          <p>Selecciona un nodo del grafo para cargar su archivo .lean.</p>
+        </ng-template>
+      </section>
+
+      <section class="panel pr-panel">
+        <h2>Pull Requests Abiertos</h2>
+        <div class="pr-list" *ngIf="openPulls.length > 0; else emptyPrs">
+          <div class="pr-item" *ngFor="let pr of openPulls">
+            <div>
+              <p class="pr-title">#{{ pr.number }} - {{ pr.title }}</p>
+              <p class="pr-meta">{{ pr.head }} → {{ pr.base }} · {{ pr.author }}</p>
+            </div>
+            <div class="pr-actions">
+              <a [href]="pr.url" target="_blank" rel="noopener">Abrir</a>
+              <button (click)="mergePullRequest(pr)">Merge</button>
+            </div>
+          </div>
         </div>
-      </aside>
+
+        <ng-template #emptyPrs>
+          <p>No hay PRs abiertos para este proyecto.</p>
+        </ng-template>
+      </section>
     </div>
 
-    <p *ngIf="status" class="status">{{ status }}</p>
+    <ng-template #noProjectSelected>
+      <div class="panel">
+        <p>Falta projectId en la URL. Ve a "Open Workspace" y selecciona un proyecto.</p>
+      </div>
+    </ng-template>
   `,
   styles: [`
     .top-header {
@@ -135,8 +134,7 @@ interface GraphLink {
       flex-wrap: wrap;
     }
     h1 { margin: 0; font-size: 1.2rem; }
-    .header-right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .header-right button {
+    .header-actions button {
       border: none;
       border-radius: 8px;
       background: #111827;
@@ -145,31 +143,14 @@ interface GraphLink {
       padding: 9px 12px;
       cursor: pointer;
     }
-    .badges span {
-      background: #e5e7eb;
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-size: 0.8rem;
-      margin-right: 6px;
-      font-weight: 600;
-    }
     .workspace-grid {
       display: grid;
-      grid-template-columns: 260px 1fr 320px;
+      grid-template-columns: 1.2fr 1.2fr 1fr;
       gap: 12px;
       min-height: 65vh;
     }
     .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; }
     h2 { margin: 0 0 10px 0; color: #555; font-size: 1rem; }
-    ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
-    li {
-      border-radius: 8px;
-      padding: 8px;
-      cursor: pointer;
-      border: 1px solid transparent;
-    }
-    li:hover { background: #f3f4f6; }
-    li.selected { background: #e5e7eb; border-color: #cbd5e1; font-weight: 700; }
     .graph-canvas {
       position: relative;
       min-height: 520px;
@@ -178,15 +159,7 @@ interface GraphLink {
       border-radius: 10px;
       overflow: hidden;
     }
-    .graph-lines {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      touch-action: none;
-      cursor: grab;
-    }
-    .graph-lines:active { cursor: grabbing; }
+    svg { width: 100%; height: 100%; }
     .graph-link {
       stroke: #9ca3af;
       stroke-width: 2;
@@ -198,9 +171,8 @@ interface GraphLink {
       stroke-width: 2;
       fill: #eee;
     }
-    .graph-node.proven circle { fill: #dcfce7; }
-    .graph-node.in-progress circle { fill: #fef9c3; }
-    .graph-node.unproven circle { fill: #fee2e2; }
+    .graph-node.validated circle { fill: #dcfce7; }
+    .graph-node.sorry circle { fill: #fee2e2; }
     .graph-node.selected circle { stroke: #111827; stroke-width: 3; }
     .graph-node text {
       font-size: 11px;
@@ -210,20 +182,88 @@ interface GraphLink {
       user-select: none;
       pointer-events: none;
     }
-    .name { margin: 0 0 8px 0; font-size: 1.05rem; font-weight: 700; }
-    .meta { margin: 0 0 6px 0; color: #555; }
-    h3 { margin: 10px 0 8px 0; }
-    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .actions button {
+    .meta {
+      margin: 0 0 6px 0;
+      color: #444;
+      font-size: 0.9rem;
+    }
+    textarea {
+      width: 100%;
       border: 1px solid #d1d5db;
       border-radius: 8px;
-      padding: 8px;
-      background: #fff;
+      padding: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.84rem;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .actions button {
+      border: none;
+      border-radius: 8px;
+      background: #1f2937;
+      color: #fff;
+      padding: 8px;
       cursor: pointer;
+      font-size: 0.83rem;
+      font-weight: 700;
+    }
+    .response {
+      margin-top: 10px;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px;
+      max-height: 220px;
+      overflow: auto;
+      font-size: 0.8rem;
+    }
+    .pr-list { display: flex; flex-direction: column; gap: 8px; }
+    .pr-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .pr-title {
+      margin: 0 0 5px 0;
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: #333;
+    }
+    .pr-meta {
+      margin: 0;
+      color: #666;
+      font-size: 0.8rem;
+    }
+    .pr-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 86px;
+    }
+    .pr-actions a,
+    .pr-actions button {
+      text-align: center;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 6px;
+      background: #fff;
+      color: #111827;
+      text-decoration: none;
+      cursor: pointer;
+      font-size: 0.8rem;
     }
     .status {
-      margin-top: 10px;
+      margin: 10px 0;
       background: #eff6ff;
       border: 1px solid #bfdbfe;
       border-radius: 8px;
@@ -231,96 +271,46 @@ interface GraphLink {
       color: #1e3a8a;
       font-weight: 600;
     }
-    @media (max-width: 1180px) {
+    @media (max-width: 1280px) {
       .workspace-grid { grid-template-columns: 1fr; }
     }
   `]
 })
-export class WorkspacePageComponent implements AfterViewInit, OnDestroy {
-  @ViewChild('graphSvg', { static: true }) graphSvg!: ElementRef<SVGSVGElement>;
-
-  status = '';
-  selectedGoalId = 'g1';
-  projectName = 'Cálculo de Límites';
+export class WorkspacePageComponent implements OnInit {
+  projectId = '';
+  projectName = '';
   sessionLabel = 'Sesión Individual';
 
-  zoom = 1;
-  offsetX = 0;
-  offsetY = 0;
-
-  private rafId: number | null = null;
-  private lastRenderTs = 0;
-  private readonly targetFrameMs = 1000 / 30;
-  private draggingNodeId: string | null = null;
-  private dragPointerId: number | null = null;
-  private panning = false;
-  private panPointerId: number | null = null;
-  private panStartX = 0;
-  private panStartY = 0;
-  private panOriginX = 0;
-  private panOriginY = 0;
-
-  readonly goals: Goal[] = [
-    { id: 'g1', name: 'Teorema Fundamental del Cálculo (Parte I)' },
-    { id: 'g2', name: 'Límite de una Sucesión Convergente' },
-    { id: 'g3', name: 'Propiedades de Números Reales' }
-  ];
-
-  readonly nodesByGoal: Record<string, NodeItem[]> = {
-    g1: [
-      { id: 'n1', name: 'Demostrar TFC (Parte I)', type: 'Teorema', status: 'unproven', parent: null },
-      { id: 'n2', name: 'Función Acotada', type: 'Lema', status: 'proven', parent: 'n1' },
-      { id: 'n3', name: 'Continuidad de Integral', type: 'Corolario', status: 'in-progress', parent: 'n1' },
-      { id: 'n4', name: 'Axioma Delta-Épsilon', type: 'Axioma', status: 'proven', parent: 'n3' },
-      { id: 'n5', name: 'Lema Sumas de Riemann', type: 'Lema', status: 'unproven', parent: 'n3' }
-    ],
-    g2: [
-      { id: 'n6', name: 'Definición de Límite Épsilon', type: 'Axioma', status: 'proven', parent: null },
-      { id: 'n7', name: 'Unicidad del Límite', type: 'Teorema', status: 'unproven', parent: 'n6' }
-    ],
-    g3: [{ id: 'n8', name: 'Orden Total de R', type: 'Axioma', status: 'proven', parent: null }]
-  };
-
-  readonly actions = [
-    'Cargar Demostración',
-    'Solicitar Demostración (AI)',
-    'Cargar Plan',
-    'Solicitar Plan (AI)',
-    'Cargar Datos',
-    'Solicitar Datos (AI)'
-  ];
-
-  simNodes: SimNode[] = [];
-  selectedNode: SimNode | null = null;
+  status = '';
+  nodes: NewNodeDto[] = [];
+  viewNodes: ViewNode[] = [];
+  selectedNode: NewNodeDto | null = null;
+  nodePath = '';
+  leanCode = '';
+  lastResponse: unknown = null;
+  openPulls: PullRequestItem[] = [];
 
   constructor(
     private readonly route: ActivatedRoute,
-    private readonly cdr: ChangeDetectorRef,
-    private readonly zone: NgZone
-  ) {
+    private readonly taskService: TaskService
+  ) {}
+
+  ngOnInit(): void {
     this.route.queryParamMap.subscribe((params) => {
-      const name = params.get('projectName');
+      this.projectId = params.get('projectId') || '';
+      this.projectName = params.get('projectName') || '';
       const sessionType = params.get('sessionType');
-
-      if (name) {
-        this.projectName = name;
-      }
-
       this.sessionLabel = sessionType === 'collaborative' ? 'Sesión Colaborativa' : 'Sesión Individual';
-      this.cdr.markForCheck();
+      this.reloadAll();
     });
   }
 
-  get transform(): string {
-    return `translate(${this.offsetX} ${this.offsetY}) scale(${this.zoom})`;
-  }
-
-  get currentEdges(): GraphLink[] {
-    const byId = new Map(this.simNodes.map((node) => [node.id, node]));
-    return this.simNodes
-      .filter((node) => node.parent)
+  get edges(): ViewEdge[] {
+    const byId = new Map(this.viewNodes.map((node) => [node.id, node]));
+    return this.viewNodes
+      .filter((node) => node.parent_node_id)
       .map((node) => {
-        const parent = byId.get(node.parent as string);
+        const parent = byId.get(node.parent_node_id || '');
         if (!parent) {
           return null;
         }
@@ -331,131 +321,187 @@ export class WorkspacePageComponent implements AfterViewInit, OnDestroy {
           y2: node.y
         };
       })
-      .filter((edge): edge is GraphLink => edge != null);
+      .filter((edge): edge is ViewEdge => edge != null);
   }
 
-  ngAfterViewInit() {
-    this.seedNodes();
-    this.zone.runOutsideAngular(() => {
-      window.addEventListener('pointermove', this.onPointerMove);
-      window.addEventListener('pointerup', this.onPointerUp);
-      this.startSimulation();
+  reloadAll() {
+    if (!this.projectId) {
+      return;
+    }
+    if (!this.taskService.getAccessToken()) {
+      this.status = 'No hay access token. Cárgalo desde Auth para usar el workspace.';
+      return;
+    }
+
+    this.status = 'Cargando grafo y PRs...';
+    this.loadGraph();
+    this.loadOpenPulls();
+  }
+
+  private loadGraph() {
+    this.taskService.getSimpleGraph(this.projectId).subscribe({
+      next: (response) => {
+        this.projectName = response.project_name || this.projectName;
+        this.nodes = response.nodes || [];
+        this.viewNodes = this.buildLayout(this.nodes);
+
+        if (this.selectedNode) {
+          const stillExists = this.nodes.find((node) => node.id === this.selectedNode?.id);
+          this.selectedNode = stillExists || null;
+        }
+        if (!this.selectedNode && this.nodes.length > 0) {
+          this.selectNode(this.nodes[0]);
+        }
+
+        this.status = `Grafo cargado: ${this.nodes.length} nodos.`;
+      },
+      error: (error) => {
+        this.status = error?.error?.error || 'No se pudo cargar el grafo.';
+      }
     });
   }
 
-  ngOnDestroy() {
-    if (this.rafId != null) {
-      cancelAnimationFrame(this.rafId);
-    }
-    window.removeEventListener('pointermove', this.onPointerMove);
-    window.removeEventListener('pointerup', this.onPointerUp);
-  }
-
-  selectGoal(goalId: string) {
-    this.selectedGoalId = goalId;
-    this.seedNodes();
-    this.cdr.markForCheck();
-  }
-
-  selectNode(node: SimNode) {
-    this.selectedNode = node;
-    this.cdr.markForCheck();
-  }
-
-  onWheel(event: WheelEvent) {
-    event.preventDefault();
-    const point = this.pointerToGraph(event.clientX, event.clientY);
-    const delta = event.deltaY < 0 ? 1.12 : 0.88;
-    this.zoom = Math.max(0.45, Math.min(2.8, this.zoom * delta));
-    this.offsetX = point.screenX - point.graphX * this.zoom;
-    this.offsetY = point.screenY - point.graphY * this.zoom;
-  }
-
-  onBackgroundPointerDown(event: PointerEvent) {
-    if (event.button !== 0) {
-      return;
-    }
-    this.panning = true;
-    this.panPointerId = event.pointerId;
-    this.panStartX = event.clientX;
-    this.panStartY = event.clientY;
-    this.panOriginX = this.offsetX;
-    this.panOriginY = this.offsetY;
-  }
-
-  onNodePointerDown(event: PointerEvent, nodeId: string) {
-    event.stopPropagation();
-    this.draggingNodeId = nodeId;
-    this.dragPointerId = event.pointerId;
-  }
-
-  private onPointerMove = (event: PointerEvent) => {
-    if (this.dragPointerId === event.pointerId && this.draggingNodeId != null) {
-      const point = this.pointerToGraph(event.clientX, event.clientY);
-      const node = this.simNodes.find((item) => item.id === this.draggingNodeId);
-      if (!node) {
-        return;
+  private loadOpenPulls() {
+    this.taskService.listOpenPullRequests(this.projectId).subscribe({
+      next: (response) => {
+        this.openPulls = response.pulls || [];
+      },
+      error: () => {
+        this.openPulls = [];
       }
+    });
+  }
 
-      node.x = point.graphX;
-      node.y = point.graphY;
-      node.vx = 0;
-      node.vy = 0;
+  selectNode(node: NewNodeDto) {
+    this.selectedNode = node;
+    this.nodePath = '';
+    this.leanCode = '';
+    this.lastResponse = null;
+
+    this.taskService.getNodeLeanFile(this.projectId, node.id).subscribe({
+      next: (response) => {
+        this.nodePath = response.path;
+        this.leanCode = response.content || '';
+      },
+      error: (error) => {
+        this.status = error?.error?.error || 'No se pudo cargar el archivo .lean del nodo.';
+      }
+    });
+  }
+
+  verifySelectedNode() {
+    if (!this.selectedNode) {
       return;
     }
+    this.status = 'Verificando nodo/import tree...';
+    this.taskService.verifyNode(this.projectId, this.selectedNode.id).subscribe({
+      next: (response) => {
+        this.lastResponse = response;
+        this.status = 'Verificación completada.';
+      },
+      error: (error) => {
+        this.lastResponse = error?.error || error;
+        this.status = 'La verificación devolvió error.';
+      }
+    });
+  }
 
-    if (this.panning && this.panPointerId === event.pointerId) {
-      this.offsetX = this.panOriginX + (event.clientX - this.panStartX);
-      this.offsetY = this.panOriginY + (event.clientY - this.panStartY);
+  submitSolve() {
+    if (!this.selectedNode || !this.leanCode.trim()) {
+      return;
     }
-  };
+    this.status = 'Enviando solve...';
+    this.taskService.solveNode(this.projectId, this.selectedNode.id, this.leanCode).subscribe({
+      next: (response) => {
+        this.lastResponse = response;
+        this.status = 'Solve enviado. Se creó un PR.';
+        this.loadOpenPulls();
+      },
+      error: (error) => {
+        this.lastResponse = error?.error || error;
+        this.status = 'Solve con error.';
+      }
+    });
+  }
 
-  private onPointerUp = (event: PointerEvent) => {
-    if (this.dragPointerId === event.pointerId) {
-      this.dragPointerId = null;
-      this.draggingNodeId = null;
+  submitSplit() {
+    if (!this.selectedNode || !this.leanCode.trim()) {
+      return;
+    }
+    this.status = 'Enviando split...';
+    this.taskService.splitNode(this.projectId, this.selectedNode.id, this.leanCode).subscribe({
+      next: (response) => {
+        this.lastResponse = response;
+        this.status = 'Split enviado. Se creó un PR.';
+        this.loadOpenPulls();
+      },
+      error: (error) => {
+        this.lastResponse = error?.error || error;
+        this.status = 'Split con error.';
+      }
+    });
+  }
+
+  mergePullRequest(pr: PullRequestItem) {
+    this.status = `Mergeando PR #${pr.number}...`;
+    this.taskService.mergePullRequest(this.projectId, pr.number).subscribe({
+      next: (response) => {
+        this.lastResponse = response;
+        this.status = `PR #${pr.number} mergeado.`;
+        this.loadOpenPulls();
+        this.loadGraph();
+      },
+      error: (error) => {
+        this.lastResponse = error?.error || error;
+        this.status = `No se pudo mergear PR #${pr.number}.`;
+      }
+    });
+  }
+
+  private buildLayout(nodes: NewNodeDto[]): ViewNode[] {
+    if (nodes.length === 0) {
+      return [];
     }
 
-    if (this.panPointerId === event.pointerId) {
-      this.panPointerId = null;
-      this.panning = false;
-    }
-  };
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    const levelMemo = new Map<string, number>();
 
-  private seedNodes() {
-    const sourceNodes = this.nodesByGoal[this.selectedGoalId] ?? [];
-    const levelById = new Map<string, number>();
-
-    const resolveLevel = (node: NodeItem): number => {
-      const cached = levelById.get(node.id);
+    const resolveLevel = (node: NewNodeDto): number => {
+      const cached = levelMemo.get(node.id);
       if (cached != null) {
         return cached;
       }
-      if (!node.parent) {
-        levelById.set(node.id, 0);
+      if (!node.parent_node_id) {
+        levelMemo.set(node.id, 0);
         return 0;
       }
-      const parent = sourceNodes.find((item) => item.id === node.parent);
-      const level = parent ? resolveLevel(parent) + 1 : 0;
-      levelById.set(node.id, level);
+
+      const parent = byId.get(node.parent_node_id);
+      if (!parent) {
+        levelMemo.set(node.id, 0);
+        return 0;
+      }
+
+      const level = resolveLevel(parent) + 1;
+      levelMemo.set(node.id, level);
       return level;
     };
 
-    sourceNodes.forEach((node) => resolveLevel(node));
+    nodes.forEach((node) => resolveLevel(node));
 
-    const levels = new Map<number, NodeItem[]>();
-    sourceNodes.forEach((node) => {
-      const level = levelById.get(node.id) ?? 0;
-      const bucket = levels.get(level) ?? [];
-      bucket.push(node);
-      levels.set(level, bucket);
-    });
+    const buckets = new Map<number, NewNodeDto[]>();
+    for (const node of nodes) {
+      const level = levelMemo.get(node.id) ?? 0;
+      const existing = buckets.get(level) || [];
+      existing.push(node);
+      buckets.set(level, existing);
+    }
 
-    const maxLevel = Math.max(...Array.from(levels.keys()), 0);
+    const maxLevel = Math.max(...Array.from(buckets.keys()), 0);
 
-    this.simNodes = sourceNodes.map((node) => {
-      const level = levelById.get(node.id) ?? 0;
-      const bucket = levels.get(level) ?? [];
+    return nodes.map((node) => {
+      const level = levelMemo.get(node.id) ?? 0;
+      const bucket = buckets.get(level) || [];
       const index = bucket.findIndex((item) => item.id === node.id);
       const xStep = 860 / (bucket.length + 1);
       const yStep = maxLevel === 0 ? 0 : 360 / maxLevel;
@@ -463,115 +509,8 @@ export class WorkspacePageComponent implements AfterViewInit, OnDestroy {
       return {
         ...node,
         x: 60 + xStep * (index + 1),
-        y: 80 + yStep * level,
-        vx: 0,
-        vy: 0
+        y: 80 + yStep * level
       };
     });
-
-    this.selectedNode = this.simNodes[0] ?? null;
-    this.zoom = 1;
-    this.offsetX = 0;
-    this.offsetY = 0;
-    this.cdr.markForCheck();
-  }
-
-  private pointerToGraph(clientX: number, clientY: number) {
-    const rect = this.graphSvg.nativeElement.getBoundingClientRect();
-    const screenX = ((clientX - rect.left) / rect.width) * 980;
-    const screenY = ((clientY - rect.top) / rect.height) * 520;
-
-    return {
-      screenX,
-      screenY,
-      graphX: (screenX - this.offsetX) / this.zoom,
-      graphY: (screenY - this.offsetY) / this.zoom
-    };
-  }
-
-  private startSimulation() {
-    const tick = (timestamp: number) => {
-      this.simulateStep();
-
-      if (timestamp - this.lastRenderTs >= this.targetFrameMs) {
-        this.lastRenderTs = timestamp;
-        this.zone.run(() => this.cdr.detectChanges());
-      }
-
-      this.rafId = requestAnimationFrame(tick);
-    };
-    this.rafId = requestAnimationFrame(tick);
-  }
-
-  private simulateStep() {
-    if (this.simNodes.length === 0) {
-      return;
-    }
-
-    const byId = new Map(this.simNodes.map((node) => [node.id, node]));
-
-    for (let i = 0; i < this.simNodes.length; i++) {
-      for (let j = i + 1; j < this.simNodes.length; j++) {
-        const a = this.simNodes[i];
-        const b = this.simNodes[j];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const distSq = dx * dx + dy * dy + 0.01;
-        const force = 1450 / distSq;
-        const dist = Math.sqrt(distSq);
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-
-        a.vx -= fx;
-        a.vy -= fy;
-        b.vx += fx;
-        b.vy += fy;
-      }
-    }
-
-    const springLength = 160;
-    const springK = 0.012;
-    for (const node of this.simNodes) {
-      if (!node.parent) {
-        continue;
-      }
-      const parent = byId.get(node.parent);
-      if (!parent) {
-        continue;
-      }
-
-      const dx = node.x - parent.x;
-      const dy = node.y - parent.y;
-      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-      const stretch = distance - springLength;
-      const force = stretch * springK;
-      const fx = (dx / distance) * force;
-      const fy = (dy / distance) * force;
-
-      parent.vx += fx;
-      parent.vy += fy;
-      node.vx -= fx;
-      node.vy -= fy;
-    }
-
-    const centerX = 490;
-    const centerY = 260;
-    for (const node of this.simNodes) {
-      if (this.draggingNodeId === node.id) {
-        continue;
-      }
-
-      node.vx += (centerX - node.x) * 0.0007;
-      node.vy += (centerY - node.y) * 0.0007;
-
-      node.vx *= 0.92;
-      node.vy *= 0.92;
-
-      node.x += node.vx;
-      node.y += node.vy;
-
-      node.x = Math.max(50, Math.min(930, node.x));
-      node.y = Math.max(50, Math.min(470, node.y));
-    }
   }
 }

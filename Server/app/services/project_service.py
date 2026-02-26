@@ -2,6 +2,7 @@ import base64
 import re
 import uuid
 import requests
+from sqlalchemy import or_
 from app.models.new_project import NewProject
 from app.models.new_node import NewNode
 from app.extensions import db
@@ -68,10 +69,6 @@ class ProjectService:
             'Initialize def.lean with project goal', default_branch,
         )
         ProjectService._create_or_update_repo_file(
-            github_token, full_name, 'Def.lean', def_content,
-            'Initialize Def.lean compatibility module', default_branch,
-        )
-        ProjectService._create_or_update_repo_file(
             github_token, full_name, 'root/main.lean', main_lean,
             'Initialize root/main.lean', default_branch,
         )
@@ -122,6 +119,16 @@ class ProjectService:
             .order_by(NewProject.created_at.desc())\
             .paginate(page=page, per_page=per_page, error_out=False)
         return pagination
+
+    @staticmethod
+    def get_accessible_projects(user_id):
+        return NewProject.query.filter(
+            or_(
+                NewProject.visibility == 'public',
+                NewProject.author_id == user_id,
+                NewProject.contributor_ids.any(user_id),
+            )
+        ).order_by(NewProject.created_at.desc()).all()
 
     @staticmethod
     def _build_repo_name(project_name):
@@ -204,7 +211,7 @@ class ProjectService:
     @staticmethod
     def _generate_root_main_lean():
         return (
-            "import Def\n\n"
+            "import def\n\n"
             "theorem root : GoalDef := by\n"
             "  sorry\n"
         )

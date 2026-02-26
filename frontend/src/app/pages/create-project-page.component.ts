@@ -1,11 +1,13 @@
 import { Component } from '@angular/core';
-import { NgFor, NgIf } from '@angular/common';
+import { NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { TaskService } from '../task.service';
 
 @Component({
   selector: 'app-create-project-page',
   standalone: true,
-  imports: [NgFor, NgIf, FormsModule],
+  imports: [NgIf, FormsModule],
   template: `
     <div class="max-wrap">
       <h1>Crear Nuevo Proyecto de Formalización</h1>
@@ -17,6 +19,16 @@ import { FormsModule } from '@angular/forms';
         </div>
 
         <div class="field">
+          <label>Objetivo lógico (goal) *</label>
+          <textarea [(ngModel)]="goal" name="goal" rows="4" placeholder="Ej: ∀ a b : Nat, a + b = b + a"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Descripción</label>
+          <textarea [(ngModel)]="description" name="description" rows="3" placeholder="Descripción opcional"></textarea>
+        </div>
+
+        <div class="field">
           <label>Grado de Visibilidad</label>
           <div class="row">
             <label><input type="radio" name="visibility" value="public" [(ngModel)]="visibility" /> Público</label>
@@ -24,31 +36,9 @@ import { FormsModule } from '@angular/forms';
           </div>
         </div>
 
-        <div class="field light-box">
-          <label><input type="checkbox" [(ngModel)]="importEnabled" name="importEnabled" /> Importar premisas de un proyecto existente</label>
-          <select *ngIf="importEnabled" [(ngModel)]="importProject" name="importProject">
-            <option value="">Selecciona un proyecto...</option>
-            <option value="Lean 4 Core Library">Lean 4 Core Library</option>
-            <option value="Matemática Elemental Verificada">Matemática Elemental Verificada</option>
-            <option value="Teoría de Categorías">Teoría de Categorías</option>
-          </select>
-        </div>
-
-        <div *ngIf="visibility === 'private'" class="field light-red">
-          <label>Añadir Colaboradores</label>
-          <div class="tags">
-            <span class="tag" *ngFor="let collaborator of collaborators">
-              {{ collaborator }}
-              <button type="button" (click)="removeCollaborator(collaborator)">×</button>
-            </span>
-          </div>
-          <div class="row">
-            <input [(ngModel)]="collaboratorInput" name="collaboratorInput" placeholder="Usuario" (keyup.enter)="addCollaborator()" />
-            <button type="button" class="btn-secondary" (click)="addCollaborator()">Añadir</button>
-          </div>
-        </div>
-
-        <button class="btn-primary" type="button" (click)="createProject()">Crear Proyecto</button>
+        <button class="btn-primary" type="button" [disabled]="loading" (click)="createProject()">
+          {{ loading ? 'Creando...' : 'Crear Proyecto' }}
+        </button>
         <p *ngIf="statusMessage" class="status">{{ statusMessage }}</p>
       </form>
     </div>
@@ -71,27 +61,15 @@ import { FormsModule } from '@angular/forms';
       padding: 10px;
       font-size: 0.95rem;
     }
+    textarea {
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.95rem;
+      resize: vertical;
+      font-family: inherit;
+    }
     .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .light-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }
-    .light-red { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; }
-    .tags { display: flex; gap: 8px; flex-wrap: wrap; }
-    .tag {
-      background: #e5e7eb;
-      border-radius: 999px;
-      padding: 5px 10px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.85rem;
-    }
-    .tag button {
-      border: none;
-      background: transparent;
-      cursor: pointer;
-      font-size: 1rem;
-      line-height: 1;
-      color: #444;
-    }
     .btn-primary {
       border: none;
       background: #333;
@@ -101,14 +79,7 @@ import { FormsModule } from '@angular/forms';
       padding: 10px 18px;
       cursor: pointer;
     }
-    .btn-secondary {
-      border: none;
-      background: #555;
-      color: #fff;
-      border-radius: 8px;
-      padding: 10px 14px;
-      cursor: pointer;
-    }
+    .btn-primary:disabled { opacity: 0.7; cursor: default; }
     .status {
       margin: 12px 0 0 0;
       background: #ecfdf5;
@@ -123,26 +94,16 @@ import { FormsModule } from '@angular/forms';
 })
 export class CreateProjectPageComponent {
   projectName = '';
+  goal = '';
+  description = '';
   visibility: 'public' | 'private' = 'public';
-  importEnabled = false;
-  importProject = '';
-  collaboratorInput = '';
-  collaborators: string[] = ['usuario_ejemplo1', 'usuario_ejemplo2'];
   statusMessage = '';
+  loading = false;
 
-  addCollaborator() {
-    const value = this.collaboratorInput.trim();
-    if (!value || this.collaborators.includes(value)) {
-      return;
-    }
-
-    this.collaborators = [...this.collaborators, value];
-    this.collaboratorInput = '';
-  }
-
-  removeCollaborator(username: string) {
-    this.collaborators = this.collaborators.filter((item) => item !== username);
-  }
+  constructor(
+    private readonly taskService: TaskService,
+    private readonly router: Router
+  ) {}
 
   createProject() {
     if (!this.projectName.trim()) {
@@ -150,6 +111,40 @@ export class CreateProjectPageComponent {
       return;
     }
 
-    this.statusMessage = `¡Proyecto '${this.projectName}' creado exitosamente!`;
+    if (!this.goal.trim()) {
+      this.statusMessage = 'El objetivo lógico (goal) es obligatorio.';
+      return;
+    }
+
+    if (!this.taskService.getAccessToken()) {
+      this.statusMessage = 'No hay access token. Agrégalo en Auth antes de crear proyectos.';
+      return;
+    }
+
+    this.loading = true;
+    this.statusMessage = 'Creando proyecto en backend...';
+
+    this.taskService.createProject({
+      name: this.projectName.trim(),
+      goal: this.goal.trim(),
+      description: this.description.trim() || undefined,
+      visibility: this.visibility
+    }).subscribe({
+      next: (project) => {
+        this.loading = false;
+        this.statusMessage = `Proyecto '${project.name}' creado.`;
+        this.router.navigate(['/workspace'], {
+          queryParams: {
+            projectId: project.id,
+            projectName: project.name,
+            sessionType: 'individual'
+          }
+        });
+      },
+      error: (error) => {
+        this.loading = false;
+        this.statusMessage = error?.error?.error || 'No se pudo crear el proyecto.';
+      }
+    });
   }
 }

@@ -2,13 +2,7 @@ import { Component } from '@angular/core';
 import { NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-
-interface Project {
-  id: number;
-  name: string;
-  visibility: string;
-  collaborators: string[];
-}
+import { NewProjectDto, TaskService } from '../task.service';
 
 @Component({
   selector: 'app-open-workspace-page',
@@ -24,9 +18,10 @@ interface Project {
           <select [(ngModel)]="selectedProjectId" name="projectId">
             <option value="">Selecciona un proyecto...</option>
             <option *ngFor="let project of accessibleProjects" [value]="project.id">
-              {{ project.name }} ({{ project.visibility }})
+              {{ project.name }} ({{ project.visibility === 'public' ? 'Público' : 'Privado' }})
             </option>
           </select>
+          <small *ngIf="loading">Cargando proyectos...</small>
         </div>
 
         <div class="field">
@@ -90,36 +85,41 @@ interface Project {
   `]
 })
 export class OpenWorkspacePageComponent {
-  readonly currentUser = 'User_Current';
-
-  readonly projects: Project[] = [
-    { id: 1, name: 'Teoría de la Computación', visibility: 'Público', collaborators: ['AlanTuring', 'AdaLovelace'] },
-    {
-      id: 2,
-      name: 'Geometría Algebraica Avanzada',
-      visibility: 'Privado',
-      collaborators: ['User_Current', 'EvaristeGalois', 'SophieGermain']
-    },
-    {
-      id: 3,
-      name: 'Fundamentos de la Lógica Matemática',
-      visibility: 'Público',
-      collaborators: ['KurtGoedel', 'BertrandRussel']
-    }
-  ];
+  projects: NewProjectDto[] = [];
 
   selectedProjectId = '';
   sessionType: 'individual' | 'collaborative' = 'individual';
   message = '';
+  loading = false;
 
-  constructor(private readonly router: Router) {}
+  constructor(
+    private readonly router: Router,
+    private readonly taskService: TaskService
+  ) {
+    this.loadProjects();
+  }
 
-  get accessibleProjects(): Project[] {
-    return this.projects.filter(
-      (project) =>
-        project.visibility === 'Público' ||
-        (project.visibility === 'Privado' && project.collaborators.includes(this.currentUser))
-    );
+  get accessibleProjects(): NewProjectDto[] {
+    return this.projects;
+  }
+
+  private loadProjects() {
+    if (!this.taskService.getAccessToken()) {
+      this.message = 'No hay access token. Agrégalo en Auth para listar proyectos.';
+      return;
+    }
+
+    this.loading = true;
+    this.taskService.getAccessibleProjects().subscribe({
+      next: (response) => {
+        this.projects = response.projects;
+        this.loading = false;
+      },
+      error: (error) => {
+        this.loading = false;
+        this.message = error?.error?.error || 'No se pudieron cargar los proyectos.';
+      }
+    });
   }
 
   openWorkspace() {

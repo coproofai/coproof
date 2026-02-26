@@ -37,3 +37,16 @@ def list_public_projects():
         "pages": pagination.pages,
         "current_page": page
     }), 200
+
+
+@projects_bp.route('/accessible', methods=['GET'])
+@jwt_required()
+def list_accessible_projects():
+    current_user_id = get_jwt_identity()
+    projects = ProjectService.get_accessible_projects(current_user_id)
+
+    schema = ProjectSchema(many=True)
+    return jsonify({
+        "projects": schema.dump(projects),
+        "total": len(projects),
+    }), 200

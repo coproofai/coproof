@@ -257,9 +257,16 @@ def to_compiler_snippet_response(lean_code: str, filename: str = "snippet.lean")
 
 def verify_lean_project(file_map: dict, entry_file: str):
     start_time = time.time()
-    lean_executable = find_lean_executable()
-
-    if not lean_executable:
+    try:
+        lake_check = subprocess.run(
+            ["lake", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if lake_check.returncode != 0:
+            raise FileNotFoundError("lake command failed")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         end_time = time.time()
         return {
             "verified": False,
@@ -271,12 +278,12 @@ def verify_lean_project(file_map: dict, entry_file: str):
                     "line": 0,
                     "column": 0,
                     "severity": "error",
-                    "message": "Lean executable not found. Please install Lean 4 via elan.",
+                    "message": "Lake executable not found. Please install Lean 4 with lake.",
                 }
             ],
             "feedback": {
                 "stdout": "",
-                "stderr": "Lean executable not found. Please install Lean 4 via elan.",
+                "stderr": "Lake executable not found. Please install Lean 4 with lake.",
             },
             "processingTimeSeconds": round(end_time - start_time, 3),
         }
@@ -288,6 +295,10 @@ def verify_lean_project(file_map: dict, entry_file: str):
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
             with open(full_path, "w", encoding="utf-8") as file_handle:
                 file_handle.write(content)
+
+        lakefile_content = "import Lake\nopen Lake DSL\n\npackage temp_verify\n"
+        with open(os.path.join(temp_dir, "lakefile.lean"), "w", encoding="utf-8") as lakefile_handle:
+            lakefile_handle.write(lakefile_content)
 
         safe_entry_file = entry_file.strip().lstrip('/').replace('\\', '/')
         entry_path = os.path.join(temp_dir, safe_entry_file)
@@ -315,7 +326,7 @@ def verify_lean_project(file_map: dict, entry_file: str):
 
         try:
             result = subprocess.run(
-                [lean_executable, safe_entry_file],
+                ["lake", "env", "lean", safe_entry_file],
                 capture_output=True,
                 text=True,
                 timeout=90,
