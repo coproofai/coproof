@@ -51,54 +51,8 @@ class CompilerClient:
             raise CoProofError(f'Lean Worker Unavailable: {str(e)}', code=503)
 
 
-
     @staticmethod
-    def verify_project_content(full_source_code: str):
-        """
-        Sends the fully concatenated Lean project code for verification.
-        
-        Lean service must:
-         - Wrap content in a temporary Lean project
-         - Provide correct imports / lakefile context
-        
-        Make sure your compiler service:
-         - Creates ephemeral project
-         - Places main.lean inside
-         - Runs lake build
-
-        Returns:
-        {
-            "compile_success": bool,
-            "contains_sorry": bool,
-            "errors": str
-        }
-        """
-        data = CompilerClient._dispatch_task(
-            'tasks.verify_content',
-            [full_source_code, 'Main.lean'],
-            timeout=120,
-            queue_name=CompilerClient.LEAN_QUEUE_NAME,
-        )
-        return {
-            'compile_success': data.get('compile_success', False),
-            'contains_sorry': data.get('contains_sorry', False),
-            'errors': data.get('errors', ''),
-        }
-
-    @staticmethod
-    def translate_nl_to_lean(nl_text: str, context: str = ""):
-        """
-        Sends Natural Language -> Returns Lean Code.
-        """
-        return CompilerClient._dispatch_task(
-            'tasks.translate',
-            [nl_text, context],
-            timeout=30,
-            queue_name=CompilerClient.LEAN_QUEUE_NAME,
-        )
-
-    @staticmethod
-    def verify_code_snippet(lean_code: str, dependencies: list = None):
+    def verify_snippet(lean_code: str, dependencies: list = None):
         """
         Ephemeral Check: Sends raw code to check for syntax/type errors.
         Does NOT require a full Git repo sync.
@@ -128,13 +82,36 @@ class CompilerClient:
             raise CoProofError(f'Compiler Service Unavailable: {str(e)}', code=503)
 
     @staticmethod
-    def compile_project_repo(remote_url: str, commit_hash: str):
+    def verify_project_files(file_map: dict, entry_file: str):
         """
-        Full Project Check: Tells the compiler to pull the repo and build.
+        Project-aware verification: compiles one entry file with all provided Lean files available,
+        so imports are resolved consistently.
         """
-        return CompilerClient._dispatch_task(
-            'tasks.verify_project',
-            [remote_url, commit_hash],
-            timeout=10,
-            queue_name=CompilerClient.LEAN_QUEUE_NAME,
-        )
+        if not isinstance(file_map, dict) or not file_map:
+            raise CoProofError('file_map must be a non-empty dictionary', code=400)
+        if not entry_file:
+            raise CoProofError('entry_file is required', code=400)
+
+        try:
+            started = time.perf_counter()
+            data = CompilerClient._dispatch_task(
+                'tasks.verify_project_files',
+                [file_map, entry_file],
+                timeout=45,
+                queue_name=CompilerClient.LEAN_QUEUE_NAME,
+            )
+            elapsed = time.perf_counter() - started
+
+            if 'processing_time_seconds' not in data:
+                data['processing_time_seconds'] = round(elapsed, 6)
+                data['timing_source'] = 'backend_fallback'
+            else:
+                data['timing_source'] = 'lean_worker'
+
+            data['roundtrip_time_seconds'] = round(elapsed, 6)
+            return data
+        except CoProofError:
+            raise
+        except Exception as e:
+            logger.error(f'Project verification failed: {e}')
+            raise CoProofError(f'Compiler Service Unavailable: {str(e)}', code=503)

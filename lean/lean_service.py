@@ -233,20 +233,6 @@ def verify_lean_proof(lean_code: str, filename: str = "proof.lean"):
             }
 
 
-def to_compiler_content_response(lean_code: str, filename: str = "Main.lean"):
-    result = verify_lean_proof(lean_code, filename)
-    errors = [
-        message.get("message", "")
-        for message in result.get("messages", [])
-        if message.get("severity") == "error"
-    ]
-    return {
-        "compile_success": result.get("verified", False),
-        "contains_sorry": bool(re.search(r"\bsorry\b", lean_code or "")),
-        "errors": "\n".join(errors) if errors else result.get("feedback", {}).get("stderr", ""),
-    }
-
-
 def to_compiler_snippet_response(lean_code: str, filename: str = "snippet.lean"):
     result = verify_lean_proof(lean_code, filename)
     errors = [
@@ -269,16 +255,154 @@ def to_compiler_snippet_response(lean_code: str, filename: str = "snippet.lean")
     }
 
 
-def translate_nl_to_lean(text: str):
-    clean_text = (text or "").strip()
-    if not clean_text:
-        return {"lean_code": ""}
+def verify_lean_project(file_map: dict, entry_file: str):
+    start_time = time.time()
+    lean_executable = find_lean_executable()
+
+    if not lean_executable:
+        end_time = time.time()
+        return {
+            "verified": False,
+            "returnCode": -1,
+            "theorems": [],
+            "messages": [
+                {
+                    "file": entry_file,
+                    "line": 0,
+                    "column": 0,
+                    "severity": "error",
+                    "message": "Lean executable not found. Please install Lean 4 via elan.",
+                }
+            ],
+            "feedback": {
+                "stdout": "",
+                "stderr": "Lean executable not found. Please install Lean 4 via elan.",
+            },
+            "processingTimeSeconds": round(end_time - start_time, 3),
+        }
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for rel_path, content in file_map.items():
+            safe_rel_path = rel_path.strip().lstrip("/")
+            full_path = os.path.join(temp_dir, safe_rel_path)
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, "w", encoding="utf-8") as file_handle:
+                file_handle.write(content)
+
+        safe_entry_file = entry_file.strip().lstrip('/').replace('\\', '/')
+        entry_path = os.path.join(temp_dir, safe_entry_file)
+        if not os.path.exists(entry_path):
+            end_time = time.time()
+            return {
+                "verified": False,
+                "returnCode": -1,
+                "theorems": [],
+                "messages": [
+                    {
+                        "file": safe_entry_file,
+                        "line": 0,
+                        "column": 0,
+                        "severity": "error",
+                        "message": f"Entry file not found in payload: {safe_entry_file}",
+                    }
+                ],
+                "feedback": {
+                    "stdout": "",
+                    "stderr": f"Entry file not found in payload: {safe_entry_file}",
+                },
+                "processingTimeSeconds": round(end_time - start_time, 3),
+            }
+
+        try:
+            result = subprocess.run(
+                [lean_executable, safe_entry_file],
+                capture_output=True,
+                text=True,
+                timeout=90,
+                cwd=temp_dir,
+            )
+
+            verified = result.returncode == 0
+            end_time = time.time()
+
+            messages = parse_lean_messages(result.stdout, result.stderr, safe_entry_file)
+            theorem_scan_code = file_map.get(safe_entry_file, "")
+            theorems = parse_theorem_info(theorem_scan_code)
+
+            return {
+                "verified": verified,
+                "returnCode": result.returncode,
+                "theorems": theorems,
+                "messages": messages,
+                "feedback": {
+                    "stdout": result.stdout.strip(),
+                    "stderr": result.stderr.strip(),
+                },
+                "processingTimeSeconds": round(end_time - start_time, 3),
+            }
+        except subprocess.TimeoutExpired:
+            end_time = time.time()
+            return {
+                "verified": False,
+                "returnCode": -1,
+                "theorems": [],
+                "messages": [
+                    {
+                        "file": safe_entry_file,
+                        "line": 0,
+                        "column": 0,
+                        "severity": "error",
+                        "message": "Project verification timeout after 90 seconds",
+                    }
+                ],
+                "feedback": {
+                    "stdout": "",
+                    "stderr": "Project verification timeout after 90 seconds",
+                },
+                "processingTimeSeconds": round(end_time - start_time, 3),
+            }
+        except Exception as error:
+            end_time = time.time()
+            return {
+                "verified": False,
+                "returnCode": -1,
+                "theorems": [],
+                "messages": [
+                    {
+                        "file": safe_entry_file,
+                        "line": 0,
+                        "column": 0,
+                        "severity": "error",
+                        "message": str(error),
+                    }
+                ],
+                "feedback": {
+                    "stdout": "",
+                    "stderr": str(error),
+                },
+                "processingTimeSeconds": round(end_time - start_time, 3),
+            }
+
+
+def to_compiler_project_response(file_map: dict, entry_file: str):
+    result = verify_lean_project(file_map, entry_file)
+    errors = [
+        {
+            "line": message.get("line", 0),
+            "column": message.get("column", 0),
+            "message": message.get("message", ""),
+        }
+        for message in result.get("messages", [])
+        if message.get("severity") == "error"
+    ]
+
     return {
-        "lean_code": f"-- TODO: NL translation\n-- input: {clean_text}\nby\n  sorry"
+        "valid": result.get("verified", False),
+        "errors": errors,
+        "processing_time_seconds": result.get("processingTimeSeconds", 0.0),
+        "return_code": result.get("returnCode", -1),
+        "message_count": len(result.get("messages", [])),
+        "theorem_count": len(result.get("theorems", [])),
     }
 
 
-def verify_project(repo_url: str, commit: str):
-    if not repo_url or not commit:
-        return {"job_id": None, "status": "invalid_request"}
-    return {"job_id": f"not-implemented-{int(time.time())}", "status": "queued"}

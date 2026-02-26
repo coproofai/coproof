@@ -6,6 +6,7 @@ from app.extensions import cache
 
 projects_bp = Blueprint('projects', __name__, url_prefix='/api/v1/projects')
 
+# In use
 @projects_bp.route('', methods=['POST'])
 @jwt_required()
 def create_project():

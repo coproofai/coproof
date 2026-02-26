@@ -31,7 +31,6 @@ ENV LEAN_PATH="/tmp/mathlib4/.lake/build/lib:/tmp/mathlib4/.lake/packages/Qq/.la
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY app.py .
 COPY lean_service.py celery_service.py tasks.py ./
 
 CMD ["celery", "-A", "celery_service.celery", "worker", "-Q", "lean_queue", "--loglevel=info"]

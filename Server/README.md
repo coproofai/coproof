@@ -34,9 +34,12 @@ CELERY_LEAN_QUEUE=lean_queue
 CELERY_GIT_ENGINE_QUEUE=git_engine_queue
 GITHUB_CLIENT_ID=<your-client-id>
 GITHUB_CLIENT_SECRET=<your-client-secret>
+GITHUB_REDIRECT_URI=<optional-callback-url>
 JWT_SECRET_KEY=<some-secret>
 SECRET_KEY=<some-secret>
 ```
+
+`GITHUB_REDIRECT_URI` is optional. If omitted, GitHub uses the callback URL configured in your OAuth App settings.
 
 ---
 
@@ -124,13 +127,13 @@ irm -Method POST -Uri "http://localhost:5001/api/v1/auth/refresh" `
 ## 8. Create a new project
 
 ```powershell
-$access_token = (Get-Content .\respuesta.json | ConvertFrom-Json).access_token
+access_token = (Get-Content .\respuesta.json | ConvertFrom-Json).access_token
 irm -Method POST -Uri "http://localhost:5001/api/v1/projects" `
   -Headers @{
       "Authorization" = "Bearer $access_token"
       "Content-Type"  = "application/json"
   } `
-  -Body '{ "name":"Algebraic Topology", "description":"A study on simplicial complexes", "visibility":"private" }'
+  -Body '{ "name":"Algebraic Topology", "description":"A study on simplicial complexes", "visibility":"private" }'$
 ```
 
 * Returns the `project_id` for subsequent operations.

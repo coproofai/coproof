@@ -132,10 +132,14 @@ class AuthService:
         base_url = "https://github.com/login/oauth/authorize"
         params = {
             "client_id": os.environ.get('GITHUB_CLIENT_ID'),
-            "redirect_uri": os.environ.get('GITHUB_REDIRECT_URI'),
             "scope": os.environ.get('GITHUB_OAUTH_SCOPES', "repo,read:user,user:email"),
             "state": "random_string_to_prevent_csrf" # In prod, generate random string
         }
+
+        redirect_uri = os.environ.get('GITHUB_REDIRECT_URI')
+        if redirect_uri:
+            params["redirect_uri"] = redirect_uri
+
         return f"{base_url}?{urlencode(params)}"
 
     @staticmethod
@@ -149,8 +153,12 @@ class AuthService:
             "client_id": os.environ.get('GITHUB_CLIENT_ID'),
             "client_secret": os.environ.get('GITHUB_CLIENT_SECRET'),
             "code": code,
-            "redirect_uri": os.environ.get('GITHUB_REDIRECT_URI')
         }
+
+        redirect_uri = os.environ.get('GITHUB_REDIRECT_URI')
+        if redirect_uri:
+            payload["redirect_uri"] = redirect_uri
+
         headers = {"Accept": "application/json"}
         
         resp = requests.post(token_url, json=payload, headers=headers)

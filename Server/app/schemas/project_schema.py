@@ -1,19 +1,20 @@
 from app.extensions import ma
-from app.models.project import Project
+from app.models.new_project import NewProject
 from marshmallow import fields, validate
 
 class ProjectSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        model = Project
+        model = NewProject
         load_instance = True
         include_fk = True 
     
     # Custom validations
     visibility = fields.String(validate=validate.OneOf(["public", "private"]))
+    goal = fields.String(required=True)
     
-    # Nested Leader info (ReadOnly)
+    # Nested author info (ReadOnly)
     # Reference by string name to avoid circular import issues with __init__
-    leader = fields.Nested("UserSchema", only=("id", "full_name", "email"), dump_only=True)
+    author = fields.Nested("UserSchema", only=("id", "full_name", "email"), dump_only=True)
     
     # Git info
-    remote_repo_url = fields.Url(allow_none=True)
+    remote_repo_url = fields.Url(required=True)

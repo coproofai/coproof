@@ -17,4 +17,9 @@ frontend/.env.*
 
 *.log
 
+.example/
+.test/
+
+refreshed.json
+respuesta.json
 
