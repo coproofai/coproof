@@ -4,8 +4,17 @@
 __pycache__/
 
 
-Server/.env
-Server/.env.example
-Server/migrations/__pycache__/
+server/.env
+server/.env.*
+!server/.env.example
+server/migrations/__pycache__/
+
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/.env
+frontend/.env.*
+
+*.log
 
 

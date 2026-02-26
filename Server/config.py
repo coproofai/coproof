@@ -27,6 +27,8 @@ class Config:
     # Celery
     CELERY_BROKER_URL = REDIS_URL
     CELERY_RESULT_BACKEND = REDIS_URL
+    CELERY_LEAN_QUEUE = os.environ.get('CELERY_LEAN_QUEUE', 'lean_queue')
+    CELERY_GIT_ENGINE_QUEUE = os.environ.get('CELERY_GIT_ENGINE_QUEUE', 'git_engine_queue')
     
     # Stateless Git Engine Storage
     REPO_STORAGE_PATH = os.environ.get('REPO_STORAGE_PATH', '/tmp/coproof-storage')

@@ -1,18 +1,54 @@
-import requests
 import logging
 import os
 import time
+from celery import Celery
+from celery.exceptions import CeleryError, TimeoutError
 from app.exceptions import CoProofError
 
 logger = logging.getLogger(__name__)
 
 class CompilerClient:
     """
-    Interface for the External Lean Compiler & Translation Microservice.
+    Interface for the external Lean worker via Celery.
     """
-    
-    # URL of your external microservice container
-    BASE_URL = os.environ.get('COMPILER_SERVICE_URL', 'http://localhost:8002')
+    REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
+    LEAN_QUEUE_NAME = os.environ.get('CELERY_LEAN_QUEUE', 'lean_queue')
+    _celery = None
+
+    @classmethod
+    def _get_celery(cls):
+        if cls._celery is None:
+            cls._celery = Celery(
+                'compiler_client',
+                broker=cls.REDIS_URL,
+                backend=cls.REDIS_URL,
+            )
+        return cls._celery
+
+    @classmethod
+    def _dispatch_task(
+        cls,
+        task_name: str,
+        args: list,
+        timeout: int,
+        queue_name: str | None = None,
+    ):
+        try:
+            task = cls._get_celery().send_task(
+                task_name,
+                args=args,
+                queue=queue_name or cls.LEAN_QUEUE_NAME,
+            )
+            return task.get(timeout=timeout)
+        except TimeoutError as e:
+            logger.error(f'Lean worker task timeout ({task_name}): {e}')
+            raise CoProofError('Lean Worker Timeout', code=504)
+        except CeleryError as e:
+            logger.error(f'Lean worker task failure ({task_name}): {e}')
+            raise CoProofError(f'Lean Worker Unavailable: {str(e)}', code=503)
+        except Exception as e:
+            logger.error(f'Lean worker dispatch error ({task_name}): {e}')
+            raise CoProofError(f'Lean Worker Unavailable: {str(e)}', code=503)
 
 
 
@@ -37,52 +73,29 @@ class CompilerClient:
             "errors": str
         }
         """
-        # We wrap the content in a JSON payload. 
-        # Ensure the compiler service accepts "code" or "content".
-        payload = {
-            "code": full_source_code
+        data = CompilerClient._dispatch_task(
+            'tasks.verify_content',
+            [full_source_code, 'Main.lean'],
+            timeout=120,
+            queue_name=CompilerClient.LEAN_QUEUE_NAME,
+        )
+        return {
+            'compile_success': data.get('compile_success', False),
+            'contains_sorry': data.get('contains_sorry', False),
+            'errors': data.get('errors', ''),
         }
-
-
-        try:
-            # We use a specific endpoint for full package verification via content
-            resp = requests.post(f"{CompilerClient.BASE_URL}/v1/verify/content", json=payload, timeout=120)
-            
-            if resp.status_code == 200:
-                data = resp.json()
-                return {
-                    "compile_success": data.get("compile_success", False),
-                    "contains_sorry": data.get("contains_sorry", False),
-                    "errors": data.get("errors", "")
-                }
-            else:
-                logger.error(f"Compiler service returned {resp.status_code}: {resp.text}")
-                return {
-                    "compile_success": False,
-                    "contains_sorry": False,
-                    "errors": f"System Error: Compiler service returned {resp.status_code}"
-                }
-                
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Compiler connection failed: {e}")
-            raise CoProofError(f"Compiler Service Unavailable: {str(e)}", code=503)
 
     @staticmethod
     def translate_nl_to_lean(nl_text: str, context: str = ""):
         """
         Sends Natural Language -> Returns Lean Code.
         """
-        payload = {
-            "text": nl_text,
-            "context": context # e.g., previous lemmas
-        }
-        try:
-            resp = requests.post(f"{CompilerClient.BASE_URL}/v1/translate", json=payload, timeout=30)
-            resp.raise_for_status()
-            return resp.json() # Expected: {"lean_code": "..."}
-        except Exception as e:
-            logger.error(f"Translation failed: {e}")
-            raise CoProofError(f"Translation Service Unavailable: {str(e)}", code=503)
+        return CompilerClient._dispatch_task(
+            'tasks.translate',
+            [nl_text, context],
+            timeout=30,
+            queue_name=CompilerClient.LEAN_QUEUE_NAME,
+        )
 
     @staticmethod
     def verify_code_snippet(lean_code: str, dependencies: list = None):
@@ -90,42 +103,38 @@ class CompilerClient:
         Ephemeral Check: Sends raw code to check for syntax/type errors.
         Does NOT require a full Git repo sync.
         """
-        payload = {
-            "code": lean_code,
-            "dependencies": dependencies or []
-        }
         try:
             started = time.perf_counter()
-            resp = requests.post(f"{CompilerClient.BASE_URL}/v1/verify/snippet", json=payload, timeout=10)
-            resp.raise_for_status()
+            data = CompilerClient._dispatch_task(
+                'tasks.verify_snippet',
+                [lean_code, 'snippet.lean'],
+                timeout=15,
+                queue_name=CompilerClient.LEAN_QUEUE_NAME,
+            )
             elapsed = time.perf_counter() - started
-            data = resp.json()
 
-            if "processing_time_seconds" not in data:
-                data["processing_time_seconds"] = round(elapsed, 6)
-                data["timing_source"] = "backend_fallback"
+            if 'processing_time_seconds' not in data:
+                data['processing_time_seconds'] = round(elapsed, 6)
+                data['timing_source'] = 'backend_fallback'
             else:
-                data["timing_source"] = "lean_server"
+                data['timing_source'] = 'lean_worker'
 
-            data["roundtrip_time_seconds"] = round(elapsed, 6)
-            return data # Expected: {"valid": Bool, "errors": []}
+            data['roundtrip_time_seconds'] = round(elapsed, 6)
+            return data
+        except CoProofError:
+            raise
         except Exception as e:
-            logger.error(f"Verification failed: {e}")
-            raise CoProofError(f"Compiler Service Unavailable: {str(e)}", code=503)
+            logger.error(f'Verification failed: {e}')
+            raise CoProofError(f'Compiler Service Unavailable: {str(e)}', code=503)
 
     @staticmethod
     def compile_project_repo(remote_url: str, commit_hash: str):
         """
         Full Project Check: Tells the compiler to pull the repo and build.
         """
-        payload = {
-            "repo_url": remote_url,
-            "commit": commit_hash
-        }
-        # This is likely a long-running job, so we might get a Job ID back
-        try:
-            resp = requests.post(f"{CompilerClient.BASE_URL}/v1/verify/project", json=payload, timeout=5)
-            resp.raise_for_status()
-            return resp.json() # Expected: {"job_id": "..."}
-        except Exception as e:
-            raise CoProofError(f"Compiler Job Submission Failed: {str(e)}", code=503)
+        return CompilerClient._dispatch_task(
+            'tasks.verify_project',
+            [remote_url, commit_hash],
+            timeout=10,
+            queue_name=CompilerClient.LEAN_QUEUE_NAME,
+        )

@@ -30,7 +30,8 @@ Create `.env` or set in Docker Compose:
 FLASK_ENV=development
 DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
 REDIS_URL=redis://redis:6379/0
-COMPILER_SERVICE_URL=http://lean-compiler:5000
+CELERY_LEAN_QUEUE=lean_queue
+CELERY_GIT_ENGINE_QUEUE=git_engine_queue
 GITHUB_CLIENT_ID=<your-client-id>
 GITHUB_CLIENT_SECRET=<your-client-secret>
 JWT_SECRET_KEY=<some-secret>
@@ -49,20 +50,9 @@ docker-compose up -d --build
 * `celery_worker` → Async tasks
 * `db` → PostgreSQL
 * `redis` → Redis broker
-* `lean-compiler` → Lean verification microservice
+* `lean-worker` → Lean verification Celery worker (`lean_queue`)
 
-The backend talks to Lean through `COMPILER_SERVICE_URL`.
-For local compose use:
-
-```env
-COMPILER_SERVICE_URL=http://lean-compiler:5000
-```
-
-If Lean runs on a dedicated machine, point to that host instead, for example:
-
-```env
-COMPILER_SERVICE_URL=http://192.168.1.50:8002
-```
+The backend talks to Lean through Redis/Celery (`REDIS_URL`) by dispatching tasks to `lean_queue`.
 
 ---
 
@@ -80,7 +70,7 @@ docker-compose exec web flask db upgrade
 ## 6. Start Celery worker
 
 ```bash
-docker-compose exec celery_worker celery -A celery_worker.celery worker --loglevel=info
+docker-compose exec celery_worker celery -A celery_worker.celery worker -Q git_engine_queue --loglevel=info
 ```
 
 * Needed for async Git tasks like commits or cloning.
@@ -182,7 +172,7 @@ irm -Method POST -Uri "http://localhost:5001/api/v1/projects/PROJECT_ID/nodes" `
 
 This checks the full path:
 
-`Client script -> Backend API -> Lean compiler container -> Backend API -> Client script`
+`Client script -> Backend API -> Lean worker (Celery) -> Backend API -> Client script`
 
 It uses a development-only endpoint: `POST /api/v1/projects/tools/verify-snippet/public`.
 No user registration/login is required for this smoke test.

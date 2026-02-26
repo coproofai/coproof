@@ -32,7 +32,6 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY app.py .
+COPY lean_service.py celery_service.py tasks.py ./
 
-EXPOSE 5000
-
-CMD ["python3", "app.py"]
+CMD ["celery", "-A", "celery_service.celery", "worker", "-Q", "lean_queue", "--loglevel=info"]

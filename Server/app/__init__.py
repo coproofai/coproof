@@ -1,4 +1,5 @@
 import os
+from kombu import Exchange, Queue
 from flask import Flask, jsonify
 from app.extensions import db, migrate, jwt, ma, socketio, celery, cache # <-- ADD cache
 from app.exceptions import CoProofError
@@ -23,9 +24,19 @@ def create_app(config_class=DevelopmentConfig):
     socketio.init_app(app, message_queue=app.config['REDIS_URL'])
     
     # Initialize Celery
+    git_queue = app.config['CELERY_GIT_ENGINE_QUEUE']
+    lean_queue = app.config['CELERY_LEAN_QUEUE']
     app.config['CELERY_CONFIG'] = {
         'broker_url': app.config['CELERY_BROKER_URL'],
         'result_backend': app.config['CELERY_RESULT_BACKEND'],
+        'task_default_queue': git_queue,
+        'task_queues': (
+            Queue(git_queue, Exchange(git_queue, type='direct'), routing_key=git_queue),
+            Queue(lean_queue, Exchange(lean_queue, type='direct'), routing_key=lean_queue),
+        ),
+        'task_routes': {
+            'app.tasks.*': {'queue': git_queue},
+        },
     }
     celery.conf.update(app.config['CELERY_CONFIG'])
 
