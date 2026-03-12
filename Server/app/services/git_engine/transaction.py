@@ -26,13 +26,22 @@ def read_only_worktree(bare_repo_path, branch='main'):
     
     try:
         os.makedirs(worktree_path, exist_ok=True)
-        
-        # Check if branch exists in bare repo refs
-        if branch not in [h.name for h in bare_repo.heads]:
-             raise GitOperationError(f"Branch {branch} not found for validation.")
+
+        # Prefer remote-tracking ref to avoid stale local heads after external merges.
+        ref_names = [r.name for r in bare_repo.refs]
+        remote_ref = f"origin/{branch}"
+
+        if remote_ref in ref_names:
+            target_ref = remote_ref
+            add_args = ['add', '--detach', worktree_path, target_ref]
+        elif branch in [h.name for h in bare_repo.heads]:
+            target_ref = branch
+            add_args = ['add', worktree_path, target_ref]
+        else:
+            raise GitOperationError(f"Branch {branch} not found for validation.")
 
         # Create Worktree
-        bare_repo.git.worktree('add', worktree_path, branch)
+        bare_repo.git.worktree(*add_args)
         
         yield worktree_path
         

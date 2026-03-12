@@ -29,12 +29,15 @@ export interface NewProjectDto {
   name: string;
   description?: string;
   goal: string;
+  goal_imports?: string[];
+  goal_definitions?: string;
   visibility: 'public' | 'private';
   url: string;
   remote_repo_url: string;
   default_branch: string;
   tags: string[];
   author_id: string;
+  contributor_ids?: string[];
 }
 
 export interface NewNodeDto {
@@ -65,6 +68,45 @@ export interface NodeFileResponse {
   content: string;
 }
 
+export interface DefinitionsFileResponse {
+  project_id: string;
+  path: string;
+  content: string;
+}
+
+export interface VerificationErrorItem {
+  line: number;
+  column: number;
+  message: string;
+}
+
+export interface VerifyCompilerResult {
+  valid: boolean;
+  errors: VerificationErrorItem[];
+  processing_time_seconds?: number;
+  return_code?: number;
+  message_count?: number;
+  theorem_count?: number;
+}
+
+export interface SorryLocationItem {
+  file: string;
+  line: number;
+  snippet: string;
+}
+
+export interface VerifyNodeResponse {
+  status: string;
+  project_id: string;
+  node_id: string;
+  entry_file: string;
+  reachable_file_count: number;
+  reachable_files: string[];
+  verification: VerifyCompilerResult;
+  has_sorry: boolean;
+  sorry_locations: SorryLocationItem[];
+}
+
 export interface PullRequestItem {
   number: number;
   title: string;
@@ -85,6 +127,8 @@ export interface OpenPullsResponse {
 export interface CreateProjectPayload {
   name: string;
   goal: string;
+  goal_imports?: string[];
+  goal_definitions?: string;
   description?: string;
   visibility?: 'public' | 'private';
   tags?: string[];
@@ -110,6 +154,33 @@ export class TaskService {
 
   clearAccessToken() {
     localStorage.removeItem(this.accessTokenKey);
+  }
+
+  getCurrentUserIdFromToken(): string | null {
+    const token = this.getAccessToken();
+    if (!token) {
+      return null;
+    }
+
+    const parts = token.split('.');
+    if (parts.length < 2) {
+      return null;
+    }
+
+    try {
+      const payloadJson = this.decodeBase64Url(parts[1]);
+      const payload = JSON.parse(payloadJson);
+      return typeof payload?.sub === 'string' ? payload.sub : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private decodeBase64Url(input: string): string {
+    const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
+    const padding = (4 - (base64.length % 4)) % 4;
+    const normalized = base64 + '='.repeat(padding);
+    return atob(normalized);
   }
 
   private authHeaders(): Record<string, string> {
@@ -180,8 +251,14 @@ export class TaskService {
     });
   }
 
-  verifyNode(projectId: string, nodeId: string): Observable<unknown> {
-    return this.http.post(`${this.apiBaseUrl}/projects/${projectId}/nodes/${nodeId}/verify`, {}, {
+  getProjectDefinitions(projectId: string): Observable<DefinitionsFileResponse> {
+    return this.http.get<DefinitionsFileResponse>(`${this.apiBaseUrl}/projects/${projectId}/definitions`, {
+      headers: this.authHeaders()
+    });
+  }
+
+  verifyNode(projectId: string, nodeId: string): Observable<VerifyNodeResponse> {
+    return this.http.post<VerifyNodeResponse>(`${this.apiBaseUrl}/projects/${projectId}/nodes/${nodeId}/verify`, {}, {
       headers: this.authHeaders()
     });
   }

@@ -20,6 +20,8 @@ class NewProject(db.Model):
     name = db.Column(db.Text, nullable=False)
     description = db.Column(db.Text, nullable=True)
     goal = db.Column(db.Text, nullable=False)
+    goal_imports = db.Column(MutableList.as_mutable(ARRAY(db.Text)), nullable=False, default=list)
+    goal_definitions = db.Column(db.Text, nullable=True)
     visibility = db.Column(new_project_visibility_enum, nullable=False, default='private')
 
     url = db.Column(db.Text, nullable=False)

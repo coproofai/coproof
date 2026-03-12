@@ -259,12 +259,21 @@ def solve_node(project_id, node_id):
     bare_repo_path = RepoPool.ensure_repo_exists(str(project.id), project.remote_repo_url, auth_token=github_token)
     RepoPool.update_repo(str(project.id), project.remote_repo_url, auth_token=github_token)
 
+    current_node_content = ''
     with read_only_worktree(bare_repo_path, branch=project.default_branch) as worktree_root:
         file_map = _collect_lean_files(worktree_root)
         file_map = _normalize_file_map_for_def_module(file_map)
+        current_node_content = file_map.get(node_main_path, '')
         file_map[node_main_path] = lean_code
-        def_context = _build_goaldef_from_project_goal(project.goal)
-        verification_payload = _build_split_verification_payload(def_context, lean_code, project.goal)
+
+        reachable_files, parent_map = _resolve_import_tree(node_main_path, file_map)
+        reachable_map = {path: file_map[path] for path in reachable_files if path in file_map}
+        verification_payload = _build_verify_payload_from_reachable_map(
+            reachable_map=reachable_map,
+            entry_file=node_main_path,
+            parent_map=parent_map,
+            project_goal=project.goal,
+        )
         verification = CompilerClient.verify_snippet(verification_payload)
 
     if not verification.get('valid'):
@@ -277,6 +286,28 @@ def solve_node(project_id, node_id):
             "verification_payload_preview": payload_preview,
         }), 400
 
+    # If solve content is already in main/default branch, avoid creating a no-op PR.
+    # Persist validation state directly in DB and propagate to ancestors.
+    if _lean_text_equivalent(current_node_content, lean_code):
+        updates = {
+            "action": "solve_node",
+            "updated_nodes": [],
+            "created_nodes": [],
+        }
+        node.state = 'validated'
+        _append_updated_node(updates, node)
+        _propagate_parent_states(node.parent, updates)
+        db.session.commit()
+
+        return jsonify({
+            "status": "already_solved",
+            "action": "solve_node",
+            "project_id": str(project.id),
+            "node_id": str(node.id),
+            "message": "No code changes detected; node state was saved directly in DB.",
+            "db_updates": updates,
+        }), 200
+
     branch_name = f"solve-node-{str(node.id)[:8]}-{uuid.uuid4().hex[:6]}"
     with git_transaction(
         bare_repo_path,
@@ -285,8 +316,8 @@ def solve_node(project_id, node_id):
         branch=branch_name,
         source_branch=project.default_branch,
     ) as worktree_root:
-        if 'def.lean' in file_map:
-            _write_text_file(worktree_root, 'def.lean', file_map['def.lean'])
+        for definitions_path in _definition_file_paths(file_map):
+            _write_text_file(worktree_root, definitions_path, file_map[definitions_path])
         _write_text_file(worktree_root, node_main_path, lean_code)
 
     pr_title = f"Solve node {node.name} ({str(node.id)[:8]})"
@@ -387,7 +418,7 @@ def split_node(project_id, node_id):
         for path, content in lemma_files.items():
             file_map[path] = _normalize_lean_imports(content)
 
-        def_context = _build_goaldef_from_project_goal(project.goal)
+        def_context = _build_goaldef_context_from_project(project)
         verification_payload = _build_split_verification_payload(def_context, lean_code, project.goal)
         verification = CompilerClient.verify_snippet(verification_payload)
 
@@ -409,8 +440,8 @@ def split_node(project_id, node_id):
         branch=branch_name,
         source_branch=project.default_branch,
     ) as worktree_root:
-        if 'def.lean' in file_map:
-            _write_text_file(worktree_root, 'def.lean', file_map['def.lean'])
+        for definitions_path in _definition_file_paths(file_map):
+            _write_text_file(worktree_root, definitions_path, file_map[definitions_path])
         _write_text_file(worktree_root, node_main_path, updated_main)
         for path, content in lemma_files.items():
             _write_text_file(worktree_root, path, content)
@@ -519,7 +550,13 @@ def verify_node_import_tree(project_id, node_id):
     reachable_files, parent_map = _resolve_import_tree(entry_file, all_lean_files)
     reachable_map = {path: all_lean_files[path] for path in reachable_files if path in all_lean_files}
 
-    verification = CompilerClient.verify_project_files(file_map=reachable_map, entry_file=entry_file)
+    verification_payload = _build_verify_payload_from_reachable_map(
+        reachable_map=reachable_map,
+        entry_file=entry_file,
+        parent_map=parent_map,
+        project_goal=project.goal,
+    )
+    verification = CompilerClient.verify_snippet(verification_payload)
     sorry_locations = _collect_sorry_locations(reachable_map)
     sorry_traces = _build_sorry_traces(entry_file, sorry_locations, parent_map)
 
@@ -568,6 +605,55 @@ def get_node_file_content(project_id, node_id):
         "path": node_main_path,
         "content": file_map[node_main_path],
     }), 200
+
+
+@nodes_bp.route('/<uuid:project_id>/definitions', methods=['GET'])
+@jwt_required()
+def get_project_definitions_file(project_id):
+    user_id = get_jwt_identity()
+    user = User.query.get_or_404(user_id)
+    project = NewProject.query.get_or_404(project_id)
+
+    github_token = AuthService.refresh_github_token_if_needed(user)
+    if not github_token:
+        raise CoProofError("You must link your GitHub account.", code=400)
+
+    bare_repo_path = RepoPool.ensure_repo_exists(str(project.id), project.remote_repo_url, auth_token=github_token)
+    RepoPool.update_repo(str(project.id), project.remote_repo_url, auth_token=github_token)
+
+    with read_only_worktree(bare_repo_path, branch=project.default_branch) as worktree_root:
+        file_map = _collect_lean_files(worktree_root)
+        file_map = _normalize_file_map_for_def_module(file_map)
+
+    if 'Definitions.lean' in file_map:
+        return jsonify({
+            "project_id": str(project.id),
+            "path": "Definitions.lean",
+            "content": file_map['Definitions.lean'],
+        }), 200
+
+    if 'definitions.lean' in file_map:
+        return jsonify({
+            "project_id": str(project.id),
+            "path": "definitions.lean",
+            "content": file_map['definitions.lean'],
+        }), 200
+
+    if 'def.lean' in file_map:
+        return jsonify({
+            "project_id": str(project.id),
+            "path": "def.lean",
+            "content": file_map['def.lean'],
+        }), 200
+
+    if 'Def.lean' in file_map:
+        return jsonify({
+            "project_id": str(project.id),
+            "path": "Def.lean",
+            "content": file_map['Def.lean'],
+        }), 200
+
+    raise CoProofError("Definitions file not found (Definitions.lean).", code=404)
 
 
 @nodes_bp.route('/<uuid:project_id>/pulls/open', methods=['GET'])
@@ -767,7 +853,7 @@ def _build_split_files(lemma_blocks):
         lemma_main_path = f"{folder_segment}/main.lean"
         lemma_tex_path = f"{folder_segment}/main.tex"
 
-        lean_files[lemma_main_path] = f"import def\n\n{normalized_decl}\n"
+        lean_files[lemma_main_path] = f"import Definitions\n\n{normalized_decl}\n"
         tex_files[lemma_tex_path] = (
             "\\begin{theorem}[" + lemma_name + "]\n"
             "Auto-generated lemma extracted from split operation.\n"
@@ -781,23 +867,113 @@ def _build_split_files(lemma_blocks):
 
 
 def _normalize_lean_imports(lean_code):
-    normalized = re.sub(r'(?m)^\s*import\s+Def\s*$', 'import def', lean_code)
+    normalized = re.sub(
+        r'(?m)^\s*import\s+(?:Def|def|«def»|Definitions|definitions|«definitions»)\s*$',
+        'import Definitions',
+        lean_code,
+    )
     return normalized
+
+
+def _lean_text_equivalent(existing_code, new_code):
+    left = (existing_code or '').replace('\r\n', '\n').strip()
+    right = (new_code or '').replace('\r\n', '\n').strip()
+    return left == right
+
+
+def _definition_file_paths(file_map):
+    candidates = ['Definitions.lean']
+    return [path for path in candidates if path in file_map]
 
 
 def _build_split_verification_payload(def_content, split_lean_code, project_goal=None):
     cleaned_split = re.sub(r'(?m)^\s*import\s+\S+\s*$', '', split_lean_code).strip()
     cleaned_split = _normalize_lemma_to_theorem(cleaned_split)
+    def_block = def_content.strip()
+
+    # Prefer the project definitions context whenever available.
+    # This keeps imports (e.g. Mathlib) and custom symbols (e.g. PrimeGtThreeSixForm)
+    # visible during split verification.
+    if def_block:
+        return f"{def_block}\n\n{cleaned_split}\n"
+
     expanded_split = _expand_goaldef_in_split_code(cleaned_split, project_goal)
     if expanded_split is not None:
         return expanded_split
 
-    def_block = def_content.strip()
+    return cleaned_split
 
-    if not def_block:
-        return cleaned_split
 
-    return f"{def_block}\n\n{cleaned_split}\n"
+def _build_verify_payload_from_reachable_map(reachable_map, entry_file, parent_map, project_goal=None):
+    definitions_content = _extract_definitions_content(reachable_map)
+    if not definitions_content:
+        definitions_content = _build_goaldef_from_project_goal(project_goal)
+
+    sections = []
+    if definitions_content.strip():
+        sections.append(definitions_content.strip())
+
+    non_definition_files = [
+        path for path in reachable_map.keys()
+        if path not in {'Definitions.lean', 'definitions.lean', 'def.lean', 'Def.lean'}
+    ]
+    ordered_files = sorted(
+        non_definition_files,
+        key=lambda path: (-_import_depth(path, parent_map), path == entry_file, path),
+    )
+
+    for rel_path in ordered_files:
+        cleaned = re.sub(r'(?m)^\s*import\s+\S+\s*$', '', reachable_map.get(rel_path, '')).strip()
+        if cleaned:
+            sections.append(cleaned)
+
+    return "\n\n".join(section for section in sections if section).strip() + "\n"
+
+
+def _import_depth(target_file, parent_map):
+    depth = 0
+    current = target_file
+    seen = set()
+
+    while current in parent_map and parent_map[current] is not None:
+        parent = parent_map[current]
+        if parent in seen:
+            break
+        seen.add(parent)
+        depth += 1
+        current = parent
+
+    return depth
+
+
+def _extract_definitions_content(file_map):
+    for path in ('Definitions.lean', 'definitions.lean', 'def.lean', 'Def.lean'):
+        if path in file_map:
+            return _normalize_goaldef_file_content(file_map[path])
+    return ''
+
+
+def _build_goaldef_context_from_project(project):
+    raw_imports = getattr(project, 'goal_imports', None) or []
+    normalized_imports = []
+
+    for value in raw_imports:
+        if not isinstance(value, str):
+            continue
+        entry = value.strip()
+        if not entry:
+            continue
+        if entry.startswith('import '):
+            entry = entry[7:].strip()
+        if entry and entry not in normalized_imports:
+            normalized_imports.append(entry)
+
+    goal_definitions = (getattr(project, 'goal_definitions', None) or '').strip()
+    return _build_goaldef_from_project_goal(
+        project.goal,
+        goal_imports=normalized_imports,
+        goal_definitions=goal_definitions,
+    )
 
 
 def _normalize_lemma_to_theorem(code):
@@ -844,39 +1020,52 @@ def _extract_goal_binder(project_goal):
     return None
 
 
-def _build_goaldef_from_project_goal(project_goal):
+def _build_goaldef_from_project_goal(project_goal, goal_imports=None, goal_definitions=None):
     goal_expr = _normalize_goal_expression((project_goal or '').strip())
     if not goal_expr:
         return ""
-    return "-- Generated from project goal\nabbrev GoalDef : Prop := " + goal_expr + "\n"
+
+    imports = goal_imports or []
+    definitions = (goal_definitions or '').strip()
+    sections = []
+
+    if imports:
+        sections.extend([f"import {module}" for module in imports])
+        sections.append("")
+
+    sections.append("-- Generated from project goal")
+
+    if definitions:
+        sections.append(definitions.rstrip())
+        sections.append("")
+
+    sections.append("abbrev GoalDef : Prop := " + goal_expr)
+    return "\n".join(sections).rstrip() + "\n"
 
 
 def _normalize_goaldef_file_content(content):
     text = content.strip()
-
-    by_exact_pattern = re.compile(
-        r"def\s+GoalDef\s*:\s*Prop\s*:=\s*by\s*exact\s*\((.*?)\)",
-        re.DOTALL,
-    )
-    direct_pattern = re.compile(
-        r"def\s+GoalDef\s*:\s*Prop\s*:=\s*(.+)",
+    goaldef_pattern = re.compile(
+        r"(?m)^(def|abbrev)\s+GoalDef\s*:\s*Prop\s*:=\s*(.*)$",
         re.DOTALL,
     )
 
-    goal_expr = None
-    match = by_exact_pattern.search(text)
-    if match:
-        goal_expr = match.group(1).strip()
-    else:
-        match = direct_pattern.search(text)
-        if match:
-            goal_expr = match.group(1).strip()
+    match = goaldef_pattern.search(text)
+    if not match:
+        return content
 
+    decl_keyword = match.group(1)
+    goal_expr = match.group(2).strip()
     if not goal_expr:
         return content
 
-    goal_expr = _normalize_goal_expression(goal_expr)
-    return "-- Generated from goal prompt\ndef GoalDef : Prop := " + goal_expr + "\n"
+    normalized_goal_expr = _normalize_goal_expression(goal_expr)
+    prefix = text[:match.start()].rstrip()
+    goaldef_line = f"{decl_keyword} GoalDef : Prop := {normalized_goal_expr}"
+
+    if prefix:
+        return f"{prefix}\n\n{goaldef_line}\n"
+    return goaldef_line + "\n"
 
 
 def _normalize_goal_expression(goal_expr):
@@ -940,12 +1129,10 @@ def _normalize_file_map_for_def_module(file_map):
     for rel_path, content in file_map.items():
         normalized[rel_path] = _normalize_lean_imports(content)
 
-    def_content = normalized.get('def.lean')
-    if def_content is None and 'Def.lean' in normalized:
-        def_content = normalized['Def.lean']
+    definitions_content = normalized.get('Definitions.lean')
 
-    if def_content is not None:
-        normalized['def.lean'] = _normalize_goaldef_file_content(def_content)
+    if definitions_content is not None:
+        normalized['Definitions.lean'] = _normalize_goaldef_file_content(definitions_content)
 
     return normalized
 
@@ -1060,7 +1247,11 @@ def _merge_pull_request(remote_repo_url, token, pr_number):
     )
 
     if response.status_code == 200:
-        return response.json()
+        payload = response.json()
+        if not payload.get('merged', False):
+            message = payload.get('message') or 'PR merge was not completed by GitHub.'
+            raise CoProofError(message, code=409)
+        return payload
     if response.status_code == 405:
         raise CoProofError("PR is not mergeable (possibly conflicts or already merged).", code=409)
     if response.status_code in (401, 403):
@@ -1115,11 +1306,8 @@ def _apply_post_merge_db_updates(project, metadata):
             target = NewNode.query.filter_by(id=target_id, project_id=project.id).first()
             if target:
                 target.state = 'validated'
-                updates["updated_nodes"].append({
-                    "id": str(target.id),
-                    "name": target.name,
-                    "state": target.state,
-                })
+                _append_updated_node(updates, target)
+                _propagate_parent_states(target.parent, updates)
         return updates
 
     if action == 'split_node':
@@ -1129,11 +1317,8 @@ def _apply_post_merge_db_updates(project, metadata):
             base_node = NewNode.query.filter_by(id=base_node_id, project_id=project.id).first()
             if base_node:
                 base_node.state = 'sorry'
-                updates["updated_nodes"].append({
-                    "id": str(base_node.id),
-                    "name": base_node.name,
-                    "state": base_node.state,
-                })
+                _append_updated_node(updates, base_node)
+                _propagate_parent_states(base_node.parent, updates)
 
         affected_nodes = metadata.get("affected_nodes") or []
         if not base_node or not affected_nodes:
@@ -1150,11 +1335,7 @@ def _apply_post_merge_db_updates(project, metadata):
             ).first()
             if existing:
                 existing.state = 'sorry'
-                updates["updated_nodes"].append({
-                    "id": str(existing.id),
-                    "name": existing.name,
-                    "state": existing.state,
-                })
+                _append_updated_node(updates, existing)
                 continue
 
             folder_segment = _to_unique_node_folder_segment(child_name, used_folder_names)
@@ -1176,6 +1357,41 @@ def _apply_post_merge_db_updates(project, metadata):
             })
 
     return updates
+
+
+def _append_updated_node(updates, node):
+    node_id = str(node.id)
+    for entry in updates["updated_nodes"]:
+        if entry.get("id") == node_id:
+            entry["name"] = node.name
+            entry["state"] = node.state
+            return
+
+    updates["updated_nodes"].append({
+        "id": node_id,
+        "name": node.name,
+        "state": node.state,
+    })
+
+
+def _propagate_parent_states(parent_node, updates):
+    current = parent_node
+    while current is not None:
+        children = NewNode.query.filter_by(
+            project_id=current.project_id,
+            parent_node_id=current.id,
+        ).all()
+
+        if not children:
+            current = current.parent
+            continue
+
+        expected_state = 'validated' if all(child.state == 'validated' for child in children) else 'sorry'
+        if current.state != expected_state:
+            current.state = expected_state
+            _append_updated_node(updates, current)
+
+        current = current.parent
 
 
 def _open_pull_request(remote_repo_url, token, title, body, head_branch, base_branch):

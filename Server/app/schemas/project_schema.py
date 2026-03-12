@@ -11,6 +11,8 @@ class ProjectSchema(ma.SQLAlchemyAutoSchema):
     # Custom validations
     visibility = fields.String(validate=validate.OneOf(["public", "private"]))
     goal = fields.String(required=True)
+    goal_imports = fields.List(fields.String(), required=False, allow_none=True)
+    goal_definitions = fields.String(required=False, allow_none=True)
     
     # Nested author info (ReadOnly)
     # Reference by string name to avoid circular import issues with __init__

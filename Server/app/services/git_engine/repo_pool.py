@@ -78,6 +78,16 @@ class RepoPool:
             repo = git.Repo(repo_path)
             logger.info(f"Fetching all updates for {project_id}...")
             repo.remotes.origin.fetch()
+
+            # Mirror remote-tracking refs into local heads to avoid stale local branches.
+            for remote_ref in repo.remotes.origin.refs:
+                remote_head = getattr(remote_ref, 'remote_head', None)
+                if not remote_head or remote_head == 'HEAD':
+                    continue
+                local_ref = f"refs/heads/{remote_head}"
+                repo.git.update_ref(local_ref, remote_ref.commit.hexsha)
+
+            return repo_path
         except git.GitCommandError as e:
             raise GitOperationError(f"Failed to fetch updates: {e}")
 

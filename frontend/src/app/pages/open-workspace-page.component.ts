@@ -17,9 +17,21 @@ import { NewProjectDto, TaskService } from '../task.service';
           <label>Seleccionar Proyecto</label>
           <select [(ngModel)]="selectedProjectId" name="projectId">
             <option value="">Selecciona un proyecto...</option>
-            <option *ngFor="let project of accessibleProjects" [value]="project.id">
-              {{ project.name }} ({{ project.visibility === 'public' ? 'Público' : 'Privado' }})
-            </option>
+            <optgroup label="Mis proyectos" *ngIf="ownedProjects.length > 0">
+              <option *ngFor="let project of ownedProjects" [value]="project.id">
+                {{ project.name }} ({{ project.visibility === 'public' ? 'Público' : 'Privado' }})
+              </option>
+            </optgroup>
+            <optgroup label="Proyectos donde colaboro" *ngIf="collaboratorProjects.length > 0">
+              <option *ngFor="let project of collaboratorProjects" [value]="project.id">
+                {{ project.name }} (Colaborador)
+              </option>
+            </optgroup>
+            <optgroup label="Proyectos públicos" *ngIf="publicProjects.length > 0">
+              <option *ngFor="let project of publicProjects" [value]="project.id">
+                {{ project.name }} (Público)
+              </option>
+            </optgroup>
           </select>
           <small *ngIf="loading">Cargando proyectos...</small>
         </div>
@@ -86,6 +98,7 @@ import { NewProjectDto, TaskService } from '../task.service';
 })
 export class OpenWorkspacePageComponent {
   projects: NewProjectDto[] = [];
+  currentUserId = '';
 
   selectedProjectId = '';
   sessionType: 'individual' | 'collaborative' = 'individual';
@@ -103,11 +116,44 @@ export class OpenWorkspacePageComponent {
     return this.projects;
   }
 
+  get ownedProjects(): NewProjectDto[] {
+    if (!this.currentUserId) {
+      return this.projects;
+    }
+    return this.projects.filter((project) => project.author_id === this.currentUserId);
+  }
+
+  get collaboratorProjects(): NewProjectDto[] {
+    if (!this.currentUserId) {
+      return [];
+    }
+
+    return this.projects.filter((project) => {
+      const contributors = project.contributor_ids || [];
+      return project.author_id !== this.currentUserId && contributors.includes(this.currentUserId);
+    });
+  }
+
+  get publicProjects(): NewProjectDto[] {
+    return this.projects.filter((project) => {
+      if (project.visibility !== 'public') {
+        return false;
+      }
+      if (project.author_id === this.currentUserId) {
+        return false;
+      }
+      const contributors = project.contributor_ids || [];
+      return !contributors.includes(this.currentUserId);
+    });
+  }
+
   private loadProjects() {
     if (!this.taskService.getAccessToken()) {
       this.message = 'No hay access token. Agrégalo en Auth para listar proyectos.';
       return;
     }
+
+    this.currentUserId = this.taskService.getCurrentUserIdFromToken() || '';
 
     this.loading = true;
     this.taskService.getAccessibleProjects().subscribe({
@@ -117,9 +163,26 @@ export class OpenWorkspacePageComponent {
       },
       error: (error) => {
         this.loading = false;
-        this.message = error?.error?.error || 'No se pudieron cargar los proyectos.';
+        if (this.handleAuthError(error)) {
+          return;
+        }
+        this.message = this.getBackendErrorMessage(error) || 'No se pudieron cargar los proyectos.';
       }
     });
+  }
+
+  private getBackendErrorMessage(error: any): string {
+    return error?.error?.message || error?.error?.error || error?.error?.msg || '';
+  }
+
+  private handleAuthError(error: any): boolean {
+    const message = this.getBackendErrorMessage(error);
+    if (message === 'Signature verification failed' || error?.status === 401 || error?.status === 422) {
+      this.taskService.clearAccessToken();
+      this.message = 'Tu sesion expiro o es invalida. Vuelve a Auth para pegar un access token nuevo.';
+      return true;
+    }
+    return false;
   }
 
   openWorkspace() {

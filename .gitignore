@@ -23,3 +23,4 @@ frontend/.env.*
 refreshed.json
 respuesta.json
 .tmp.commands
+.tmp**

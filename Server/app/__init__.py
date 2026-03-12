@@ -1,6 +1,7 @@
 import os
 from kombu import Exchange, Queue
 from flask import Flask, jsonify
+from flask_cors import CORS
 from app.extensions import db, migrate, jwt, ma, socketio, celery, cache # <-- ADD cache
 from app.exceptions import CoProofError
 from config import DevelopmentConfig, TestingConfig
@@ -14,6 +15,14 @@ def create_app(config_class=DevelopmentConfig):
     load_dotenv()
     app = Flask(__name__)
     app.config.from_object(config_class)
+
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": "*"}},
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+    )
+
     # Initialize Extensions
     
     db.init_app(app)

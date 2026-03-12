@@ -62,7 +62,7 @@ class CompilerClient:
             data = CompilerClient._dispatch_task(
                 'tasks.verify_snippet',
                 [lean_code, 'snippet.lean'],
-                timeout=15,
+                timeout=45,
                 queue_name=CompilerClient.LEAN_QUEUE_NAME,
             )
             elapsed = time.perf_counter() - started

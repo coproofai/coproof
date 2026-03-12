@@ -13,7 +13,7 @@ class Config:
     
     # JWT Auth
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'jwt_secret_change_me')
-    JWT_ACCESS_TOKEN_EXPRES = timedelta(hours=1)
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     
     # Redis
     # FIX: Use the Docker service name 'redis'

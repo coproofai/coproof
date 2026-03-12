@@ -14,6 +14,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_LEAN_QUEUE=lean_queue
       - CELERY_GIT_ENGINE_QUEUE=git_engine_queue
+      - JWT_SECRET_KEY=dev_jwt_secret_key_do_not_use_in_prod
+      - SECRET_KEY=dev_secret_key_do_not_use_in_prod
     depends_on:
       db:
         condition: service_healthy
