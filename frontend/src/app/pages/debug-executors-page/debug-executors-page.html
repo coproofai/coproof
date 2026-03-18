@@ -1,0 +1,39 @@
+    <div class="container">
+      <h1>Code Executor</h1>
+
+      <div class="editor-section">
+        <textarea
+          [(ngModel)]="code"
+          placeholder="Paste your Lean4 or C code here..."
+        ></textarea>
+      </div>
+
+      <div class="actions">
+        <button (click)="run('lean')" class="btn-lean">Verify with Lean</button>
+        <button (click)="run('cluster')" class="btn-cluster">Execute on Cluster</button>
+      </div>
+
+      <hr />
+
+      <div class="output-console">
+        <div class="console-header">
+          <strong>Console Output:</strong>
+          <span class="status" [style.color]="statusColor">{{ currentStatus }}</span>
+          <span *ngIf="execTime" class="exec-time">{{ execTime }}s</span>
+        </div>
+
+        <pre>{{ mainOutput }}</pre>
+
+        <div *ngIf="messages.length > 0" class="messages-wrap">
+          <div
+            *ngFor="let message of messages"
+            class="message-row"
+            [style.border-left]="'3px solid ' + getMessageColor(message.severity)"
+          >
+            <span class="message-meta">[{{ formatSeverity(message.severity) }}{{ formatPosition(message) }}]</span>
+            {{ message.message }}
+          </div>
+        </div>
+      </div>
+    </div>
+  

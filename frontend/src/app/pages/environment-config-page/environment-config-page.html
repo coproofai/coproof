@@ -1,0 +1,24 @@
+    <div class="wrap">
+      <div class="card">
+        <h3>Ajustes de Entorno y Servidor</h3>
+
+        <div class="section">
+          <h4>Modelos de Asistencia (AI)</h4>
+          <label><input type="checkbox" [(ngModel)]="aiModel1" name="ai1" /> Formalizer Pro (Lógica)</label>
+          <label><input type="checkbox" [(ngModel)]="aiModel2" name="ai2" /> Data-Viz Engine (Numérico)</label>
+          <label><input type="checkbox" [(ngModel)]="aiModel3" name="ai3" /> Project Planner (Estratégico)</label>
+        </div>
+
+        <div class="section">
+          <h4>Cluster de Cómputo</h4>
+          <label>URL del Endpoint</label>
+          <input [(ngModel)]="endpoint" name="endpoint" type="url" />
+          <button class="secondary" (click)="testConnection()">Probar Conexión</button>
+          <p *ngIf="connectionStatus" class="connection">{{ connectionStatus }}</p>
+        </div>
+
+        <button class="primary" (click)="save()">Guardar Configuración de Entorno</button>
+        <p *ngIf="statusMessage" class="status">{{ statusMessage }}</p>
+      </div>
+    </div>
+  

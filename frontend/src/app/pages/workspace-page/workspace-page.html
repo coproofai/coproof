@@ -1,0 +1,198 @@
+    <header class="top-header">
+      <div>
+        <h1>Proyecto: {{ projectName || 'Workspace' }}</h1>
+        <small>{{ sessionLabel }}</small>
+      </div>
+      <div class="header-actions">
+        <button (click)="reloadAll()">Recargar</button>
+      </div>
+    </header>
+
+    <p *ngIf="status" class="status">{{ status }}</p>
+
+    <div class="workspace-grid" *ngIf="projectId; else noProjectSelected">
+      <section class="panel graph-panel" [class.collapsed]="graphCollapsed">
+        <div class="panel-head">
+          <h2>Grafo de Dependencias</h2>
+          <div class="panel-actions">
+            <button *ngIf="!graphCollapsed" class="ghost" (click)="resetGraphTransform()">Reset View</button>
+            <button class="ghost" (click)="graphCollapsed = !graphCollapsed">
+              {{ graphCollapsed ? 'Expandir' : 'Colapsar' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-body" *ngIf="!graphCollapsed">
+          <div class="graph-canvas" *ngIf="viewNodes.length > 0; else emptyGraph">
+            <svg
+              [attr.viewBox]="graphViewBox"
+              preserveAspectRatio="xMidYMid meet"
+              (wheel)="onGraphWheel($event)"
+              (mousedown)="onGraphMouseDown($event)"
+              (mousemove)="onGraphMouseMove($event)"
+              (mouseleave)="stopGraphPan()"
+              [class.panning]="isGraphPanning"
+            >
+              <g [attr.transform]="graphTransform">
+                <line
+                  *ngFor="let edge of edges"
+                  class="graph-link"
+                  [attr.x1]="edge.x1"
+                  [attr.y1]="edge.y1"
+                  [attr.x2]="edge.x2"
+                  [attr.y2]="edge.y2"
+                ></line>
+
+                <g
+                  *ngFor="let node of viewNodes"
+                  class="graph-node"
+                  [class.selected]="selectedNode?.id === node.id"
+                  [ngClass]="node.state"
+                  (click)="selectNode(node)"
+                >
+                  <circle [attr.cx]="node.x" [attr.cy]="node.y" r="28"></circle>
+                  <text [attr.x]="node.x" [attr.y]="node.y + 44">{{ node.name }}</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+
+          <p class="graph-tip">Drag para mover, rueda para zoom.</p>
+        </div>
+
+        <ng-template #emptyGraph>
+          <p>No hay nodos en este proyecto.</p>
+        </ng-template>
+      </section>
+
+      <section class="panel editor-panel" [class.collapsed]="editorCollapsed">
+        <div class="panel-head">
+          <h2>Editor de Nodo</h2>
+          <div class="panel-actions">
+            <button class="ghost" (click)="editorCollapsed = !editorCollapsed">
+              {{ editorCollapsed ? 'Expandir' : 'Colapsar' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-body" *ngIf="!editorCollapsed">
+          <ng-container *ngIf="selectedNode; else selectNodeHint">
+            <p class="meta"><strong>Nodo:</strong> {{ selectedNode.name }}</p>
+            <p class="meta"><strong>Estado:</strong> {{ selectedNode.state }}</p>
+            <p class="meta"><strong>Archivo:</strong> {{ nodePath || '...' }}</p>
+
+            <p *ngIf="isNodeFileLoading" class="meta">Cargando archivo .lean...</p>
+
+            <textarea
+              *ngIf="!isNodeFileLoading"
+              [(ngModel)]="leanCode"
+              name="leanCode"
+              rows="12"
+              placeholder="Contenido .lean del nodo seleccionado"
+            ></textarea>
+
+            <div class="actions">
+              <button (click)="verifySelectedNode()">Verify</button>
+              <button (click)="submitSolve()">Submit Solve</button>
+              <button (click)="submitSplit()">Submit Split</button>
+            </div>
+
+            <div class="verify-box" *ngIf="verificationSummary || verificationErrors.length > 0 || sorryLocations.length > 0">
+              <p class="meta"><strong>Resultado de verificación:</strong> {{ verificationSummary || 'Sin resumen disponible.' }}</p>
+
+              <p class="meta issue-title" *ngIf="verificationErrors.length > 0">Errores de compilación:</p>
+              <ul class="issue-list" *ngIf="verificationErrors.length > 0">
+                <li *ngFor="let issue of verificationErrors">
+                  L{{ issue.line }}:C{{ issue.column }} - {{ issue.message }}
+                </li>
+              </ul>
+
+              <p class="meta issue-title" *ngIf="sorryLocations.length > 0">Sorries detectados:</p>
+              <ul class="issue-list" *ngIf="sorryLocations.length > 0">
+                <li *ngFor="let location of sorryLocations">
+                  {{ location.file }}:{{ location.line }} - {{ location.snippet }}
+                </li>
+              </ul>
+            </div>
+
+            <div *ngIf="lastResponse" class="response-wrap">
+              <p class="meta"><strong>Respuesta backend</strong></p>
+              <pre class="response">{{ lastResponse | json }}</pre>
+            </div>
+
+            <div class="preview-card" *ngIf="!isNodeFileLoading && leanCode">
+              <div class="preview-head">
+                <strong>Preview del Nodo</strong>
+                <span>{{ leanCodeLineCount }} líneas</span>
+              </div>
+              <div class="code-preview">
+                <div class="code-line" *ngFor="let line of leanCodeLines; let index = index">
+                  <span class="line-no">{{ index + 1 }}</span>
+                  <span class="line-code" [innerHTML]="formatLeanLine(line)"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="definitions-box">
+              <h3>Definiciones del Proyecto</h3>
+              <p class="meta"><strong>Archivo:</strong> {{ definitionsPath || 'Definitions.lean' }}</p>
+              <p class="meta" *ngIf="definitionsLoading">Cargando definiciones...</p>
+              <p class="meta" *ngIf="definitionsError">{{ definitionsError }}</p>
+              <div class="preview-card" *ngIf="!definitionsLoading && projectDefinitions">
+                <div class="preview-head">
+                  <strong>Preview Definitions</strong>
+                  <span>{{ definitionsLineCount }} líneas</span>
+                </div>
+                <div class="code-preview definitions-preview">
+                  <div class="code-line" *ngFor="let line of definitionsLines; let index = index">
+                    <span class="line-no">{{ index + 1 }}</span>
+                    <span class="line-code" [innerHTML]="formatLeanLine(line)"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+
+        <ng-template #selectNodeHint>
+          <p>Selecciona un nodo del grafo para cargar su archivo .lean.</p>
+        </ng-template>
+      </section>
+
+      <section class="panel pr-panel" [class.collapsed]="prsCollapsed">
+        <div class="panel-head">
+          <h2>Pull Requests Abiertos</h2>
+          <div class="panel-actions">
+            <button class="ghost" (click)="prsCollapsed = !prsCollapsed">
+              {{ prsCollapsed ? 'Expandir' : 'Colapsar' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-body" *ngIf="!prsCollapsed">
+          <div class="pr-list" *ngIf="openPulls.length > 0; else emptyPrs">
+            <div class="pr-item" *ngFor="let pr of openPulls">
+              <div>
+                <p class="pr-title">#{{ pr.number }} - {{ pr.title }}</p>
+                <p class="pr-meta">{{ pr.head }} → {{ pr.base }} · {{ pr.author }}</p>
+              </div>
+              <div class="pr-actions">
+                <a [href]="pr.url" target="_blank" rel="noopener">Abrir</a>
+                <button (click)="mergePullRequest(pr)">Merge</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <ng-template #emptyPrs>
+          <p>No hay PRs abiertos para este proyecto.</p>
+        </ng-template>
+      </section>
+    </div>
+
+    <ng-template #noProjectSelected>
+      <div class="panel">
+        <p>Falta projectId en la URL. Ve a "Open Workspace" y selecciona un proyecto.</p>
+      </div>
+    </ng-template>
+  

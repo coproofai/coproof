@@ -1,0 +1,25 @@
+    <h1>Validar Demostración</h1>
+    <div class="control-panel">
+      <button class="upload-button" (click)="simulateValidation()">Subir Archivo de Validación</button>
+      <div class="validation-result" [ngClass]="validated ? 'result-validated' : 'result-pending'">
+        Resultado: {{ validated ? 'Validación Exitosa' : 'Pendiente de Subida/Validación' }}
+      </div>
+    </div>
+
+    <div class="columns-container">
+      <div class="column">
+        <div class="column-header">1. Demostración Original (Usuario)</div>
+        <pre>{{ originalContent }}</pre>
+      </div>
+
+      <div class="column">
+        <div class="column-header">2. Versión en Lean (Generada)</div>
+        <pre>{{ leanContent }}</pre>
+      </div>
+
+      <div class="column">
+        <div class="column-header">3. Versión en Lenguaje Natural</div>
+        <pre>{{ naturalContent }}</pre>
+      </div>
+    </div>
+  

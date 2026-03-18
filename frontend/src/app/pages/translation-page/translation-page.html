@@ -1,0 +1,27 @@
+    <div class="max-wrap">
+      <h1>Traducción a Formalismo Lean</h1>
+
+      <div class="panel">
+        <h2>Editor de Traducción</h2>
+        <button class="btn-primary" (click)="simulateTranslation()" [disabled]="translating">
+          {{ translating ? 'Traduciendo...' : 'Traducir a Lean' }}
+        </button>
+      </div>
+
+      <div class="columns">
+        <div>
+          <h3>Lenguaje Natural (Entrada)</h3>
+          <textarea
+            [(ngModel)]="naturalText"
+            class="text-area"
+            placeholder="Escribe aquí el teorema o proposición que deseas formalizar en Lean."
+          ></textarea>
+        </div>
+
+        <div>
+          <h3>Formalismo Lean (Salida)</h3>
+          <pre class="text-area output">{{ leanOutput }}</pre>
+        </div>
+      </div>
+    </div>
+  

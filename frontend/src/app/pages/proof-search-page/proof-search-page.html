@@ -1,0 +1,40 @@
+    <div class="max-wrap">
+      <h1>Buscar Demostración en la Base de Conocimiento</h1>
+
+      <div class="search-panel">
+        <input type="text" [(ngModel)]="query" (input)="filterResults()" placeholder="Buscar por Teorema, Lema, o Resultado..." />
+      </div>
+
+      <div class="grid">
+        <section>
+          <h2>Resultados ({{ filtered.length }})</h2>
+          <div class="content-box results-box">
+            <div *ngFor="let demo of filtered" class="result-item" (click)="showDetail(demo)">
+              <h3>{{ demo.title }}</h3>
+              <p>{{ demo.preview }}</p>
+            </div>
+            <p *ngIf="filtered.length === 0" class="empty">No se encontraron resultados que coincidan.</p>
+          </div>
+        </section>
+
+        <section *ngIf="selected" class="detail">
+          <h2>Detalle de Demostración: {{ selected.title }}</h2>
+          <div class="toggles">
+            <label><input type="checkbox" [(ngModel)]="showNatural" /> Lenguaje Natural</label>
+            <label><input type="checkbox" [(ngModel)]="showLean" /> Formalismo Lean</label>
+          </div>
+
+          <div class="detail-columns" [class.single-column]="!(showNatural && showLean)">
+            <div *ngIf="showNatural">
+              <h3>Lenguaje Natural</h3>
+              <pre class="content-box detail-box">{{ selected.naturalFull }}</pre>
+            </div>
+            <div *ngIf="showLean">
+              <h3>Formalismo Lean</h3>
+              <pre class="content-box detail-box">{{ selected.leanFull }}</pre>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  

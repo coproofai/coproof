@@ -1,0 +1,60 @@
+    <div class="max-wrap">
+      <h1>Crear Nuevo Proyecto de Formalización</h1>
+
+      <form class="card" (submit)="$event.preventDefault()">
+        <div class="field">
+          <label>Nombre del Proyecto *</label>
+          <input [(ngModel)]="projectName" name="projectName" placeholder="Ej: Fundamentos de la Teoría de Conjuntos" />
+        </div>
+
+        <div class="field">
+          <label>Objetivo lógico (goal) *</label>
+          <textarea [(ngModel)]="goal" name="goal" rows="4" placeholder="Ej: ∀ a b : Nat, a + b = b + a"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Imports de Mathlib (opcional)</label>
+          <textarea
+            [(ngModel)]="goalImportsText"
+            name="goalImportsText"
+            rows="3"
+            placeholder="Una línea por módulo, ej:\nMathlib.Data.Real.Basic\nMathlib.Algebra.Group.Defs"
+          ></textarea>
+        </div>
+
+        <div class="field">
+          <label>Definiciones Lean para el Goal (opcional)</label>
+          <textarea
+            [(ngModel)]="goalDefinitions"
+            name="goalDefinitions"
+            rows="5"
+            placeholder="Ej:\nabbrev Monotona (f : Nat → Nat) : Prop :=\n  ∀ (a b : Nat), a ≤ b → f a ≤ f b"
+          ></textarea>
+        </div>
+
+        <div class="field">
+          <label>Descripción</label>
+          <textarea [(ngModel)]="description" name="description" rows="3" placeholder="Descripción opcional"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Grado de Visibilidad</label>
+          <div class="row">
+            <label><input type="radio" name="visibility" value="public" [(ngModel)]="visibility" /> Público</label>
+            <label><input type="radio" name="visibility" value="private" [(ngModel)]="visibility" /> Privado</label>
+          </div>
+        </div>
+
+        <button class="btn-primary" type="button" [disabled]="loading" (click)="createProject()">
+          {{ loading ? 'Creando...' : 'Crear Proyecto' }}
+        </button>
+        <p
+          *ngIf="statusMessage"
+          class="status"
+          [class.success]="statusKind === 'success'"
+          [class.error]="statusKind === 'error'"
+          [class.info]="statusKind === 'info'"
+        >{{ statusMessage }}</p>
+      </form>
+    </div>
+  

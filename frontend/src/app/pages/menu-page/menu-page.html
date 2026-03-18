@@ -1,0 +1,8 @@
+    <h1 class="title">Menú Principal</h1>
+
+    <div class="menu-grid">
+      <a *ngFor="let item of menuItems" [routerLink]="item.route" class="menu-item">
+        <p class="menu-item-title">{{ item.title }}</p>
+      </a>
+    </div>
+  

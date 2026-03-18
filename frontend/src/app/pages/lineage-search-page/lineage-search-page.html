@@ -1,0 +1,73 @@
+    <div class="max-wrap">
+      <h1>Búsqueda de Linaje y Dependencias de Teoremas</h1>
+
+      <div class="controls">
+        <input [(ngModel)]="searchInput" placeholder="Buscar Teorema, Lema o Resultado inicial..." />
+        <label>Ancestros <input type="number" [(ngModel)]="depthUp" min="0" max="5" /></label>
+        <label>Descendencia <input type="number" [(ngModel)]="depthDown" min="0" max="5" /></label>
+        <button (click)="search()">Actualizar</button>
+      </div>
+
+      <div class="layout">
+        <section>
+          <h2>Grafo de Linaje de Dependencias</h2>
+          <div class="graph-placeholder">
+            <svg
+              #graphSvg
+              class="graph-svg"
+              viewBox="0 0 980 500"
+              preserveAspectRatio="xMidYMid meet"
+              (wheel)="onWheel($event)"
+              (pointerdown)="onBackgroundPointerDown($event)"
+            >
+              <g [attr.transform]="transform">
+                <line
+                  *ngFor="let link of renderedLinks"
+                  class="graph-link"
+                  [attr.x1]="link.x1"
+                  [attr.y1]="link.y1"
+                  [attr.x2]="link.x2"
+                  [attr.y2]="link.y2"
+                ></line>
+
+                <g
+                  *ngFor="let node of visibleNodes"
+                  class="graph-node"
+                  [class.selected]="selected?.id === node.id"
+                  (pointerdown)="onNodePointerDown($event, node.id)"
+                  (click)="select(node)"
+                >
+                  <circle [attr.cx]="node.x" [attr.cy]="node.y" r="27"></circle>
+                  <text [attr.x]="node.x" [attr.y]="node.y + 50">{{ node.name }}</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </section>
+
+        <section class="detail-box">
+          <h2>Detalle del Nodo Seleccionado</h2>
+          <p *ngIf="!selected" class="empty">Selecciona un nodo para ver su descripción.</p>
+
+          <div *ngIf="selected">
+            <h3>{{ selected.name }}</h3>
+            <p class="type">{{ selected.type }}</p>
+            <div class="toggles">
+              <label><input type="checkbox" [(ngModel)]="showNatural" /> Lenguaje Natural</label>
+              <label><input type="checkbox" [(ngModel)]="showLean" /> Formalismo Lean</label>
+            </div>
+
+            <div *ngIf="showNatural" class="content-block">
+              <h4>Definición (Natural)</h4>
+              <p>{{ selected.desc }}</p>
+            </div>
+
+            <div *ngIf="showLean" class="content-block">
+              <h4>Código Lean</h4>
+              <pre>{{ selected.lean }}</pre>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  

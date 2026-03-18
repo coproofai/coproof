@@ -1,0 +1,39 @@
+    <div class="card-wrap">
+      <div class="card">
+        <h1>Abrir Workspace</h1>
+
+        <div class="field">
+          <label>Seleccionar Proyecto</label>
+          <select [(ngModel)]="selectedProjectId" name="projectId">
+            <option value="">Selecciona un proyecto...</option>
+            <optgroup label="Mis proyectos" *ngIf="ownedProjects.length > 0">
+              <option *ngFor="let project of ownedProjects" [value]="project.id">
+                {{ project.name }} ({{ project.visibility === 'public' ? 'Público' : 'Privado' }})
+              </option>
+            </optgroup>
+            <optgroup label="Proyectos donde colaboro" *ngIf="collaboratorProjects.length > 0">
+              <option *ngFor="let project of collaboratorProjects" [value]="project.id">
+                {{ project.name }} (Colaborador)
+              </option>
+            </optgroup>
+            <optgroup label="Proyectos públicos" *ngIf="publicProjects.length > 0">
+              <option *ngFor="let project of publicProjects" [value]="project.id">
+                {{ project.name }} (Público)
+              </option>
+            </optgroup>
+          </select>
+          <small *ngIf="loading">Cargando proyectos...</small>
+        </div>
+
+        <div class="field">
+          <label>Tipo de Sesión</label>
+          <label class="option"><input type="radio" name="sessionType" value="individual" [(ngModel)]="sessionType" /> Individual</label>
+          <label class="option"><input type="radio" name="sessionType" value="collaborative" [(ngModel)]="sessionType" /> Nueva Sesión Colaborativa</label>
+        </div>
+
+        <button (click)="openWorkspace()">Abrir Workspace</button>
+
+        <p *ngIf="message" class="message">{{ message }}</p>
+      </div>
+    </div>
+  

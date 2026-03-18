@@ -1,0 +1,38 @@
+    <div class="wrap">
+      <div class="card">
+        <h3>Ajustes de Cuenta</h3>
+
+        <div class="field">
+          <label>Nombre de Usuario</label>
+          <input [(ngModel)]="username" name="username" />
+        </div>
+
+        <div class="field">
+          <label>Contraseña (Cambiar)</label>
+          <input type="password" [(ngModel)]="password" name="password" placeholder="Dejar vacío para no cambiar" />
+        </div>
+
+        <div class="field">
+          <label>Idioma de la Interfaz</label>
+          <select [(ngModel)]="language" name="language">
+            <option value="es">Español</option>
+            <option value="en">Inglés</option>
+            <option value="pt">Portugués</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Tema</label>
+          <select [(ngModel)]="theme" name="theme">
+            <option value="light">Claro</option>
+            <option value="dark">Oscuro</option>
+            <option value="system">Sistema</option>
+          </select>
+        </div>
+
+        <button (click)="save()">Guardar Cambios</button>
+
+        <p *ngIf="message" class="message" [class.error]="error">{{ message }}</p>
+      </div>
+    </div>
+  

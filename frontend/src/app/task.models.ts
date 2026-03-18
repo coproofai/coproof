@@ -1,0 +1,156 @@
+export interface TaskResult {
+  status: string;
+  result: WorkerResult | null;
+}
+
+export interface WorkerMessage {
+  line?: number;
+  column?: number;
+  severity?: string;
+  message: string;
+}
+
+export interface WorkerResult {
+  status?: string;
+  result?: string;
+  output?: string;
+  messages?: WorkerMessage[];
+  time?: number;
+  execution_time?: number;
+  success?: boolean;
+}
+
+export interface UserSummaryDto {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
+export interface ProjectDto {
+  id: string;
+  name: string;
+  description?: string;
+  goal: string;
+  goal_imports?: string[];
+  goal_definitions?: string;
+  visibility: 'public' | 'private';
+  url: string;
+  remote_repo_url: string;
+  default_branch: string;
+  tags: string[];
+  author_id: string;
+  contributor_ids?: string[];
+  author?: UserSummaryDto;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface NodeDto {
+  id: string;
+  name: string;
+  url: string;
+  project_id: string;
+  parent_node_id: string | null;
+  state: 'validated' | 'sorry';
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export type NewProjectDto = ProjectDto;
+export type NewNodeDto = NodeDto;
+
+export interface SimpleGraphResponse {
+  project_id: string;
+  project_name: string;
+  count: number;
+  nodes: NodeDto[];
+}
+
+export interface AccessibleProjectsResponse {
+  projects: ProjectDto[];
+  total: number;
+}
+
+export interface NodeFileResponse {
+  project_id: string;
+  node_id: string;
+  path: string;
+  content: string;
+}
+
+export interface DefinitionsFileResponse {
+  project_id: string;
+  path: string;
+  content: string;
+}
+
+export interface VerificationErrorItem {
+  line: number;
+  column: number;
+  message: string;
+}
+
+export interface VerifyCompilerResult {
+  valid: boolean;
+  errors: VerificationErrorItem[];
+  processing_time_seconds?: number;
+  return_code?: number;
+  message_count?: number;
+  theorem_count?: number;
+}
+
+export interface SorryLocationItem {
+  file: string;
+  line: number;
+  snippet: string;
+}
+
+export interface SorryTraceItem {
+  file: string;
+  line: number;
+  snippet: string;
+  import_trace: string[];
+  depth: number;
+  starts_at_entry: boolean;
+}
+
+export interface VerifyNodeResponse {
+  status: string;
+  project_id: string;
+  node_id: string;
+  entry_file: string;
+  reachable_file_count: number;
+  reachable_files: string[];
+  verification: VerifyCompilerResult;
+  has_sorry: boolean;
+  sorry_locations: SorryLocationItem[];
+  sorry_traces: SorryTraceItem[];
+}
+
+export interface PullRequestItem {
+  number: number;
+  title: string;
+  url: string;
+  head: string;
+  base: string;
+  author: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OpenPullsResponse {
+  project_id: string;
+  count: number;
+  pulls: PullRequestItem[];
+}
+
+export interface CreateProjectPayload {
+  name: string;
+  goal: string;
+  goal_imports?: string[];
+  goal_definitions?: string;
+  description?: string;
+  visibility?: 'public' | 'private';
+  tags?: string[];
+  contributor_ids?: string[];
+}

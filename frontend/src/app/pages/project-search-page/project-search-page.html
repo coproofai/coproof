@@ -1,0 +1,43 @@
+    <div class="max-wrap">
+      <h1>Buscar Proyectos de Formalización</h1>
+
+      <div class="layout">
+        <section class="left">
+          <input class="search" [(ngModel)]="query" (input)="filterProjects()" placeholder="Buscar por nombre del proyecto..." />
+          <h2>Resultados</h2>
+          <div *ngFor="let project of filtered" class="project-item" [class.selected]="project.id === selected?.id" (click)="select(project)">
+            <span>{{ project.name }}</span>
+            <small>{{ project.visibility }}</small>
+          </div>
+          <p *ngIf="filtered.length === 0" class="empty">No se encontraron proyectos.</p>
+        </section>
+
+        <section class="right">
+          <ng-container *ngIf="selected; else welcome">
+            <h2>{{ selected.name }}</h2>
+            <p class="visibility" [class.public]="selected.visibility === 'Público'" [class.private]="selected.visibility === 'Privado'">
+              {{ selected.visibility }}
+            </p>
+
+            <h3>Colaboradores</h3>
+            <div class="collaborators">
+              <span *ngFor="let user of selected.collaborators">{{ user }}</span>
+            </div>
+
+            <h3>Progreso General de Metas</h3>
+            <div class="progress-row">
+              <span>Demostrado: {{ selected.demonstrated }}</span>
+              <span>Por demostrar: {{ selected.total - selected.demonstrated }}</span>
+            </div>
+            <div class="bar"><div class="fill" [style.width.%]="progress(selected)"></div></div>
+            <p class="progress-label">{{ progress(selected) }}% del total de nodos completado.</p>
+          </ng-container>
+
+          <ng-template #welcome>
+            <h2>Detalle del Proyecto</h2>
+            <p>Selecciona un proyecto para ver su información y progreso.</p>
+          </ng-template>
+        </section>
+      </div>
+    </div>
+  

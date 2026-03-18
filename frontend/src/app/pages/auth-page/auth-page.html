@@ -1,0 +1,12 @@
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <h2>Configurar Access Token</h2>
+        <form (submit)="$event.preventDefault()">
+          <textarea [(ngModel)]="accessToken" name="accessToken" rows="6" placeholder="Pega aquí el JWT access_token"></textarea>
+          <button class="primary-btn" type="button" (click)="saveToken()">Guardar Token</button>
+          <a class="secondary-btn" routerLink="/menu">Continuar al menú</a>
+        </form>
+        <p *ngIf="message" class="message">{{ message }}</p>
+      </div>
+    </div>
+  
