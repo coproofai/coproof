@@ -1,0 +1,292 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{tabularx}
+\usepackage{amssymb}
+\usepackage[table]{xcolor}
+\usepackage{geometry}
+\usepackage{float}
+\geometry{a4paper, margin=1in}
+
+\setlength{\parindent}{0pt}
+\setlength{\tabcolsep}{10pt}
+\renewcommand{\arraystretch}{1.7}
+
+\definecolor{leftheaderbg}{HTML}{EAF4FF}
+\definecolor{contentbg}{HTML}{FFFDF7}
+\definecolor{tableline}{HTML}{B8C6D9}
+\arrayrulecolor{tableline}
+
+\newcommand{\story}[3]{
+\begin{table}[H]
+    \centering
+    \begin{tabularx}{\textwidth}{| >{\raggedright\arraybackslash\bfseries\columncolor{leftheaderbg}}p{2.5cm} | >{\raggedright\arraybackslash\columncolor{contentbg}}X |}
+        \hline
+        Título & #1 \\
+        \hline
+        Historia de usuario & #2 \\
+        \hline
+        Criterios de aceptación & #3 \\
+        \hline
+    \end{tabularx}
+\end{table}
+}
+
+\begin{document}
+
+\section*{Historias de Usuario del Sistema CoProof}
+
+\story
+{Registro de cuenta}
+{\textbf{Como} persona nueva en la plataforma, \textbf{quiero} crear una cuenta con correo verificable, \textbf{para} acceder al sistema con identidad propia.}
+{$\square$ El usuario completa formulario con teclado físico, teclado en pantalla o comando de voz asistido, y confirma con clic, toque o tecla Enter. \newline
+$\square$ Si falta un campo obligatorio, la interfaz muestra error en línea bajo el campo y un banner superior con resumen de errores. \newline
+$\square$ Si el correo ya existe, el sistema abre un diálogo modal con la opción de ir a iniciar sesión. \newline
+$\square$ La verificación se confirma por correo electrónico y se refleja en un panel de estado integrado en la vista de registro. \newline
+$\square$ Al finalizar, aparece un toast de éxito y el sistema redirige a la pantalla de inicio de sesión.}
+
+\story
+{Recuperación de acceso de cuenta}
+{\textbf{Como} usuario registrado, \textbf{quiero} recuperar acceso cuando no recuerdo la contraseña, \textbf{para} volver a entrar sin crear otra cuenta.}
+{$\square$ Desde la pantalla de acceso, el usuario activa ``Recuperar contraseña'' con clic, toque o atajo de teclado. \newline
+$\square$ El sistema solicita correo en un diálogo modal y valida formato antes de enviar. \newline
+$\square$ El sistema envía enlace temporal por correo y muestra confirmación en un panel lateral de notificaciones. \newline
+$\square$ Si el correo no está registrado, el sistema muestra mensaje neutro en el mismo modal sin exponer datos de cuentas. \newline
+$\square$ Al completar el cambio, el sistema muestra toast de éxito y redirige al formulario de inicio de sesión.}
+
+\story
+{Inicio de sesión}
+{\textbf{Como} usuario registrado, \textbf{quiero} iniciar sesión con correo y contraseña, \textbf{para} usar funciones que requieren autenticación.}
+{$\square$ El usuario ingresa credenciales con teclado físico, teclado en pantalla o comando de voz y envía con botón, Enter o comando ``iniciar''. \newline
+$\square$ Si las credenciales son correctas, el sistema abre el panel principal y muestra un toast de bienvenida con el rol activo. \newline
+$\square$ Si las credenciales son incorrectas, aparece un mensaje en línea bajo contraseña y un contador de intentos en un panel informativo. \newline
+$\square$ Tras 3 intentos fallidos, el sistema muestra diálogo de bloqueo temporal y acceso directo a recuperación de cuenta. \newline
+$\square$ Si hay error de conexión, el sistema muestra un banner persistente con opción ``Reintentar''.}
+
+\story
+{Configuración de cuenta}
+{\textbf{Como} usuario autenticado, \textbf{quiero} modificar perfil y seguridad, \textbf{para} mantener mis datos actualizados.}
+{$\square$ El usuario entra al módulo de cuenta desde menú superior con ratón, pantalla táctil o atajo de teclado. \newline
+$\square$ La pantalla separa ``Perfil'' y ``Seguridad'' en pestañas, y cada cambio se confirma con botón ``Guardar cambios''. \newline
+$\square$ Para cambios sensibles, el sistema abre diálogo modal de confirmación con segundo factor por correo o token. \newline
+$\square$ Si hay datos inválidos, el sistema marca cada campo con texto de error y no guarda hasta corregir. \newline
+$\square$ Al guardar, el sistema muestra estado por sección en una barra integrada: pendiente, guardado o error.}
+
+\story
+{Configuración del entorno de trabajo}
+{\textbf{Como} usuario con permisos de configuración, \textbf{quiero} ajustar tema, idioma y parámetros de procesamiento, \textbf{para} controlar la interacción y ejecución de solicitudes.}
+{$\square$ El usuario abre ``Configuración de entorno'' desde menú lateral y modifica opciones con selector, campo numérico o interruptor. \newline
+$\square$ El sistema aplica vista previa inmediata de tema e idioma en la misma pantalla sin salir del módulo. \newline
+$\square$ Si un modelo no está disponible, el sistema muestra diálogo con alternativas compatibles y requisitos mínimos. \newline
+$\square$ Si un valor está fuera de rango, la interfaz muestra error en línea y bloquea guardado hasta corregir. \newline
+$\square$ Al confirmar, el sistema guarda en base de datos, muestra toast de éxito y registra el cambio en el panel de actividad.}
+
+\story
+{Consulta de proyectos públicos}
+{\textbf{Como} usuario autenticado, \textbf{quiero} consultar proyectos públicos activos, \textbf{para} ubicar proyectos que puedo revisar o abrir.}
+{$\square$ El usuario abre el listado público con clic, toque o comando de voz ``mostrar proyectos públicos''. \newline
+$\square$ La vista muestra tarjetas con nombre, descripción, líder y fecha de actualización, con scroll y búsqueda por teclado. \newline
+$\square$ Los filtros se aplican desde una barra superior integrada y actualizan resultados en la misma vista. \newline
+$\square$ Si no hay resultados, la interfaz muestra estado vacío con instrucciones para ajustar filtros. \newline
+$\square$ Si falla la consulta, aparece banner persistente con botón ``Reintentar'' y registro del error en consola integrada de eventos.}
+
+\story
+{Creación de proyecto privado}
+{\textbf{Como} usuario autenticado, \textbf{quiero} crear un proyecto privado, \textbf{para} trabajar con acceso restringido a colaboradores seleccionados.}
+{$\square$ El usuario abre ``Nuevo proyecto'', selecciona ``Privado'' y completa campos con teclado, ratón o pantalla táctil. \newline
+$\square$ El sistema valida campos requeridos y muestra errores en línea antes de permitir confirmar. \newline
+$\square$ Al crear, el sistema asigna al creador como líder y muestra diálogo de confirmación con identificador del proyecto. \newline
+$\square$ La invitación de colaboradores se realiza desde un panel lateral con búsqueda por correo o nombre. \newline
+$\square$ Si un colaborador no existe, el sistema lo marca en la lista y mantiene el resto de invitaciones válidas.}
+
+\story
+{Creación de proyecto público}
+{\textbf{Como} usuario autenticado, \textbf{quiero} crear un proyecto público, \textbf{para} hacerlo visible en el catálogo general.}
+{$\square$ El usuario selecciona ``Público'' en el formulario de creación y confirma con botón o tecla Enter. \newline
+$\square$ El sistema valida metadatos y muestra errores en línea en caso de campos incompletos. \newline
+$\square$ Al confirmar, el sistema muestra un diálogo con el resumen del proyecto y su visibilidad pública. \newline
+$\square$ El proyecto aparece en la lista pública y en la lista personal del líder en la misma sesión. \newline
+$\square$ Si falla la persistencia, el sistema reintenta hasta 3 veces y reporta el estado en panel de actividad.}
+
+\story
+{Apertura de proyecto en sesión individual}
+{\textbf{Como} usuario con acceso autorizado, \textbf{quiero} abrir un proyecto en sesión individual, \textbf{para} trabajar en modo personal sobre el grafo.}
+{$\square$ El usuario selecciona un proyecto con doble clic, toque o comando ``abrir en sesión individual''. \newline
+$\square$ El sistema valida permisos y carga la vista del proyecto con indicador de modo en la barra superior. \newline
+$\square$ Si el acceso es denegado, se muestra diálogo modal con motivo y opción para solicitar acceso. \newline
+$\square$ Si ocurre un error de carga, el sistema muestra banner de reintento y mantiene la vista anterior activa. \newline
+$\square$ Al abrir, la interfaz presenta panel de nodos, panel de detalles y consola integrada de validación.}
+
+\story
+{Apertura de proyecto en sesión colaborativa}
+{\textbf{Como} usuario con acceso autorizado, \textbf{quiero} abrir o unirme a una sesión colaborativa, \textbf{para} editar con otros usuarios en tiempo real.}
+{$\square$ El usuario activa ``Unirse a sesión colaborativa'' desde el selector de modo con clic, toque o voz. \newline
+$\square$ La plataforma muestra en un panel lateral quién está conectado, rol y estado de edición por nodo. \newline
+$\square$ Los cambios remotos se reflejan en tiempo real y quedan registrados en la línea de tiempo integrada. \newline
+$\square$ Si la sesión no está disponible, se informa con diálogo modal y opción de reintento. \newline
+$\square$ Si hay pérdida de sincronización, el sistema muestra banner de reconexión y bloquea edición hasta restablecer coherencia.}
+
+\story
+{Visualización del grafo de proyecto}
+{\textbf{Como} usuario dentro de un proyecto, \textbf{quiero} visualizar el grafo completo, \textbf{para} entender meta global y dependencias entre nodos.}
+{$\square$ El usuario navega el grafo con ratón (arrastrar, zoom), pantalla táctil (pinza) o teclado (flechas y atajos). \newline
+$\square$ Al seleccionar un nodo, la información se muestra en un panel de detalles integrado a la derecha. \newline
+$\square$ El sistema ofrece conmutador entre vista grafo y vista lista cuando el usuario lo solicita. \newline
+$\square$ Si el proyecto no tiene nodos, aparece estado vacío con guía de siguiente acción. \newline
+$\square$ Los estados de nodo se comunican con etiquetas textuales visibles y no dependen solo del color.}
+
+\story
+{Consulta de demostraciones internas}
+{\textbf{Como} usuario dentro del proyecto, \textbf{quiero} consultar demostraciones internas en NL o Lean, \textbf{para} revisar material existente antes de proponer cambios.}
+{$\square$ El usuario busca por nombre, área o aplicación desde barra de búsqueda con teclado o voz. \newline
+$\square$ Los resultados aparecen en una tabla con columnas de tipo, formato y fecha de actualización. \newline
+$\square$ Al abrir un resultado, la demostración se muestra en un visor central con pestañas ``NL'' y ``Lean''. \newline
+$\square$ Si no hay coincidencias, la vista presenta un mensaje integrado y sugerencias para refinar criterios. \newline
+$\square$ El usuario puede copiar o descargar desde botones visibles en la cabecera del visor.}
+
+\story
+{Consulta de linaje de resultado}
+{\textbf{Como} usuario dentro del proyecto, \textbf{quiero} consultar el linaje de un teorema, corolario o lema, \textbf{para} conocer qué resultados dependen de él.}
+{$\square$ El usuario activa ``Ver linaje'' desde menú contextual del nodo con clic derecho, toque prolongado o comando de voz. \newline
+$\square$ El sistema muestra un grafo de dependencias en un modal expandible o en un panel dedicado. \newline
+$\square$ Cada nodo del linaje incluye enlace para abrir su demostración en el visor del proyecto. \newline
+$\square$ Si no hay dependencias, aparece mensaje integrado ``Sin resultados dependientes'' y se mantiene la navegación. \newline
+$\square$ Si faltan datos en algún nodo, el sistema marca ese nodo con etiqueta textual ``Información incompleta''.}
+
+\story
+{Traducción de demostración externa a Lean}
+{\textbf{Como} usuario, \textbf{quiero} traducir una demostración externa a Lean, \textbf{para} incorporarla en un flujo formal de trabajo.}
+{$\square$ El usuario carga archivo por arrastrar y soltar, selector de archivos o comando de voz con ruta confirmada. \newline
+$\square$ El sistema valida formato (PDF, imagen, LaTeX) y comunica el estado en un panel de proceso paso a paso. \newline
+$\square$ El código Lean resultante se muestra en un editor integrado con botones ``Copiar'' y ``Descargar''. \newline
+$\square$ Si hay secciones ambiguas, el sistema resalta líneas en el editor y lista observaciones en consola integrada. \newline
+$\square$ Si ocurre un error interno, se abre diálogo con detalle técnico mínimo y opción de reintento.}
+
+\story
+{Validación de demostración externa}
+{\textbf{Como} usuario, \textbf{quiero} validar una demostración externa, \textbf{para} confirmar si es válida antes de agregarla a un nodo.}
+{$\square$ El usuario selecciona ``Validar demostración'' y carga archivo por arrastre, selector o entrada por voz asistida. \newline
+$\square$ El sistema muestra progreso en una consola integrada con etapas: carga, traducción, verificación y resultado. \newline
+$\square$ El resultado final se comunica en un diálogo modal con estado: válida, inválida o indeterminada. \newline
+$\square$ Si es válida, el sistema habilita formulario para elegir proyecto activo y nodo destino. \newline
+$\square$ Si falla la base de datos, el sistema conserva resultado en caché local y muestra estado de sincronización pendiente.}
+
+\story
+{Edición de premisas globales}
+{\textbf{Como} usuario con permisos de edición, \textbf{quiero} modificar premisas globales del proyecto, \textbf{para} ajustar la base axiomática usada por los nodos.}
+{$\square$ El usuario abre el módulo ``Premisas globales'' desde la barra lateral y edita texto con teclado o dictado por voz. \newline
+$\square$ El sistema valida sintaxis en tiempo real y muestra errores en una consola integrada por línea. \newline
+$\square$ Antes de enviar cambios, se abre diálogo de confirmación con resumen de altas, bajas y modificaciones. \newline
+$\square$ Si la validación falla, el sistema deshabilita ``Enviar solicitud'' y señala la premisa con problema. \newline
+$\square$ Al enviar cambios válidos, el sistema crea solicitud de autorización y muestra identificador en un toast.}
+
+\story
+{Modificación general de nodo}
+{\textbf{Como} usuario con permisos sobre un nodo, \textbf{quiero} ejecutar acciones sobre ese nodo, \textbf{para} avanzar su estado de resolución dentro del proyecto.}
+{$\square$ El usuario selecciona nodo y acción desde menú contextual: cargar prueba, pedir agente, planificar o explorar casos. \newline
+$\square$ La interfaz solicita confirmación cuando la acción puede cambiar estado y muestra impacto esperado en un diálogo. \newline
+$\square$ El sistema registra cada acción en una bitácora integrada visible para auditoría del proyecto. \newline
+$\square$ Si la acción falla, el sistema muestra causa en consola de validación y no cambia el estado del nodo. \newline
+$\square$ Si la acción produce cambio de estado, el sistema genera solicitud de autorización al líder.}
+
+\story
+{Solicitud de demostración de nodo a un agente}
+{\textbf{Como} usuario, \textbf{quiero} solicitar a un agente una demostración completa de un nodo, \textbf{para} evaluar una solución automática.}
+{$\square$ El usuario inicia la solicitud desde botón ``Pedir demostración'' en el panel del nodo. \newline
+$\square$ El sistema muestra cola y progreso en la consola integrada con estados: en cola, ejecutando, validando, finalizada. \newline
+$\square$ Si el agente entrega una propuesta, el sistema la presenta en el visor y muestra resultado de validación formal. \newline
+$\square$ Si la propuesta no es válida, el sistema conserva el nodo sin cambios y ofrece botón ``Solicitar nueva propuesta''. \newline
+$\square$ Si la propuesta cambia estado del nodo, se genera solicitud de autorización y se notifica por panel de actividad.}
+
+\story
+{Propuesta manual de plan de demostración}
+{\textbf{Como} usuario, \textbf{quiero} proponer un plan de demostración en lenguaje natural, \textbf{para} dividir la prueba en pasos y casos.}
+{$\square$ El usuario redacta el plan en editor estructurado con numeración automática de pasos. \newline
+$\square$ El sistema valida estructura y semántica básica y reporta observaciones en una consola lateral. \newline
+$\square$ El usuario revisa un resumen previo en diálogo modal antes de confirmar envío. \newline
+$\square$ Si hay ambigüedad, el sistema marca el paso afectado y solicita corrección específica. \newline
+$\square$ Al enviar plan válido, se crea solicitud de autorización para el líder del proyecto.}
+
+\story
+{Solicitud de plan de demostración a un agente}
+{\textbf{Como} usuario, \textbf{quiero} solicitar a un agente un plan de demostración, \textbf{para} obtener una propuesta inicial de pasos verificables.}
+{$\square$ El usuario activa ``Generar plan con agente'' desde el panel del nodo con clic, toque o comando de voz. \newline
+$\square$ El sistema permite cancelar la solicitud mientras esté en estado en cola o ejecutando. \newline
+$\square$ El plan generado se valida y se muestra con etiqueta explícita: válido o no válido. \newline
+$\square$ Si no es válido, el sistema ofrece opciones ``Regenerar'' y ``Editar manualmente''. \newline
+$\square$ Si es válido y el usuario lo acepta, se crea solicitud de autorización al líder.}
+
+\story
+{Carga de demostración numérica por usuario}
+{\textbf{Como} usuario en un nodo numérico, \textbf{quiero} cargar resultados experimentales, \textbf{para} evaluar si el nodo puede considerarse demostrado.}
+{$\square$ El sistema habilita esta función solo cuando el nodo está tipado como evaluación numérica. \newline
+$\square$ El usuario ingresa datos por formulario, carga de archivo CSV o pegado desde portapapeles. \newline
+$\square$ El sistema valida formato, unidades y campos obligatorios, y reporta errores en tabla de validación integrada. \newline
+$\square$ El análisis de suficiencia se comunica en panel de resultados con dictamen claro y trazas resumidas. \newline
+$\square$ Si el dictamen es suficiente, el sistema crea solicitud de autorización al líder.}
+
+\story
+{Solicitud de demostración numérica al clúster}
+{\textbf{Como} usuario en un nodo numérico, \textbf{quiero} solicitar al sistema un experimento numérico, \textbf{para} obtener evidencia calculada automáticamente.}
+{$\square$ El usuario define parámetros en formulario y confirma ejecución con botón ``Ejecutar experimento''. \newline
+$\square$ El sistema muestra recursos requeridos y tiempo estimado en un diálogo antes de iniciar. \newline
+$\square$ El progreso se informa en una consola integrada con porcentaje y etapa actual. \newline
+$\square$ Si faltan recursos del clúster, el sistema ofrece reintento o ajuste de parámetros desde el mismo panel. \newline
+$\square$ Si los resultados son suficientes, el sistema crea solicitud de autorización para el líder.}
+
+\story
+{Exploración lógica de casos pequeños}
+{\textbf{Como} usuario, \textbf{quiero} solicitar exploración lógica de casos pequeños, \textbf{para} comprender comportamiento del nodo en escenarios simples.}
+{$\square$ El usuario define alcance de casos en un formulario y envía la solicitud con clic o tecla Enter. \newline
+$\square$ El sistema muestra ejemplos generados en un panel de resultados con filtros por caso y por premisa. \newline
+$\square$ Si el nodo es inválido o no tiene datos mínimos, el sistema cancela y explica la causa en un banner integrado. \newline
+$\square$ Si falla el procesamiento, la plataforma reintenta hasta 3 veces y registra cada intento en consola. \newline
+$\square$ Las salidas usan etiquetas consistentes para comparar casos sin ambigüedad.}
+
+\story
+{Exploración numérica orientada por objetivos}
+{\textbf{Como} usuario, \textbf{quiero} solicitar exploración numérica orientada, \textbf{para} analizar resultados con valores de entrada y objetivo definidos.}
+{$\square$ El usuario establece objetivo, rango y resolución desde panel de parámetros y confirma ejecución. \newline
+$\square$ El sistema valida rangos y tipos de dato antes de enviar al clúster. \newline
+$\square$ Los resultados se muestran en gráficos y tabla con selector de vista en la misma pantalla. \newline
+$\square$ Si la consistencia es insuficiente, el sistema señala qué parámetro ajustar en un diálogo de recomendaciones. \newline
+$\square$ Las gráficas incluyen leyenda, ejes con unidades y exportación en PNG y CSV.}
+
+\story
+{Guardado de cambios en sesión individual}
+{\textbf{Como} usuario en sesión individual, \textbf{quiero} guardar cambios del proyecto, \textbf{para} crear una solicitud de autorización para el líder.}
+{$\square$ El usuario activa ``Guardar cambios'' con clic, toque, `Ctrl+S` o comando de voz habilitado. \newline
+$\square$ El sistema compila un resumen de cambios y lo muestra en un diálogo de confirmación antes del envío. \newline
+$\square$ Al confirmar, el sistema registra la solicitud y muestra identificador en un toast y en panel de actividad. \newline
+$\square$ Si ocurre error de persistencia, la plataforma reintenta hasta 3 veces y mantiene un borrador local. \newline
+$\square$ El estado de la solicitud aparece en la línea de tiempo del proyecto como ``Pendiente de autorización''.}
+
+\story
+{Guardado de cambios en sesión colaborativa}
+{\textbf{Como} usuario en sesión colaborativa, \textbf{quiero} guardar cambios conjuntos, \textbf{para} enviar una única solicitud de autorización con resumen consolidado.}
+{$\square$ Cualquier colaborador con permiso puede iniciar guardado desde barra superior de la sesión. \newline
+$\square$ El sistema construye un resumen por autor y por nodo, visible en un diálogo de revisión. \newline
+$\square$ Tras confirmación, se crea una solicitud única y se notifica a todos los participantes en panel lateral. \newline
+$\square$ Si hay conflicto de sincronización, el sistema bloquea guardado y solicita resolver conflictos primero. \newline
+$\square$ La solicitud queda visible con estado pendiente en el historial del proyecto.}
+
+\story
+{Autorización de cambios por líder}
+{\textbf{Como} líder de proyecto, \textbf{quiero} aprobar o rechazar solicitudes de cambio, \textbf{para} controlar qué modificaciones pasan al estado oficial del proyecto.}
+{$\square$ El líder abre el módulo ``Solicitudes'' y visualiza una lista con autor, nodo, resumen y fecha. \newline
+$\square$ Al abrir una solicitud, el sistema muestra comparación lado a lado entre estado actual y cambio propuesto. \newline
+$\square$ El líder decide ``Aprobar'' o ``Rechazar'' desde un diálogo de confirmación con comentario opcional. \newline
+$\square$ Si se aprueba, el sistema aplica cambios y registra evento en bitácora; si se rechaza, conserva estado actual. \newline
+$\square$ El sistema notifica al contribuyente por panel de actividad y correo con la decisión tomada.}
+
+\story
+{Cierre de sesión}
+{\textbf{Como} usuario autenticado, \textbf{quiero} cerrar sesión de forma explícita, \textbf{para} finalizar el acceso a funciones protegidas.}
+{$\square$ El usuario activa ``Cerrar sesión'' desde menú de perfil con ratón, pantalla táctil o comando de voz. \newline
+$\square$ El sistema solicita confirmación en un diálogo modal antes de invalidar la sesión. \newline
+$\square$ Al confirmar, la plataforma redirige a la pantalla de acceso y elimina acceso a vistas protegidas. \newline
+$\square$ Si hay error de red al registrar salida, el sistema reintenta hasta 3 veces y mantiene sesión local cerrada. \newline
+$\square$ La interfaz muestra un mensaje integrado de sesión finalizada y botón para iniciar sesión de nuevo.}
+
+\end{document}
