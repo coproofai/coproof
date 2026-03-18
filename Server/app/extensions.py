@@ -3,7 +3,7 @@ from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_socketio import SocketIO
 from flask_marshmallow import Marshmallow
-from flask_caching import Cache  # <-- IMPORT
+from flask_caching import Cache
 from celery import Celery
 
 # Database ORM

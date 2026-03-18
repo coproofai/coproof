@@ -1,49 +1,56 @@
-# app/models/project.py
-
 import uuid
-from sqlalchemy.dialects.postgresql import UUID, ENUM
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.sql import func
 from app.extensions import db
 
-visibility_enum = ENUM(
-    'public', 'private', 
-    name='project_visibility_enum', 
-    metadata=db.metadata
+
+project_visibility_enum = db.Enum(
+    'public',
+    'private',
+    name='new_project_visibility_enum',
+    metadata=db.metadata,
 )
 
-# Association Table
-collaborators = db.Table('collaborators',
-    db.Column('project_id', UUID(as_uuid=True), db.ForeignKey('projects.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('user_id', UUID(as_uuid=True), db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('joined_at', db.DateTime(timezone=True), server_default=func.now())
-)
 
 class Project(db.Model):
-    __tablename__ = 'projects'
+    __tablename__ = 'new_projects'
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.Text, nullable=False)
-    description = db.Column(db.Text)
-    visibility = db.Column(visibility_enum, default='private', nullable=False)
-    
-    leader_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
-    
-    remote_repo_url = db.Column(db.Text)
-    default_branch = db.Column(db.Text, default='main', nullable=False)
-    
-    # GitHub App Integration
-    github_installation_id = db.Column(db.Text, nullable=True)
-    
-    # NEW: Project-Level Commit Hash (The Snapshot)
-    # Tracks the state of 'main' when the GraphNodes were last indexed.
-    main_commit_sha = db.Column(db.String(40), nullable=True)
-    
+    description = db.Column(db.Text, nullable=True)
+    goal = db.Column(db.Text, nullable=False)
+    goal_imports = db.Column(MutableList.as_mutable(ARRAY(db.Text)), nullable=False, default=list)
+    goal_definitions = db.Column(db.Text, nullable=True)
+    visibility = db.Column(project_visibility_enum, nullable=False, default='private')
+
+    url = db.Column(db.Text, nullable=False)
+    remote_repo_url = db.Column(db.Text, nullable=False)
+    default_branch = db.Column(db.Text, nullable=False, default='main')
+    tags = db.Column(MutableList.as_mutable(ARRAY(db.Text)), nullable=False, default=list)
+
+    author_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey('users.id', ondelete='RESTRICT'),
+        nullable=False,
+        index=True,
+    )
+    contributor_ids = db.Column(
+        MutableList.as_mutable(ARRAY(UUID(as_uuid=True))),
+        nullable=False,
+        default=list,
+    )
+
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    leader = db.relationship('User', backref=db.backref('projects_led', lazy=True))
-    members = db.relationship('User', secondary=collaborators, lazy='subquery',
-        backref=db.backref('projects_collaborated', lazy=True))
+    author = db.relationship('User', backref=db.backref('projects_authored', lazy=True))
+    nodes = db.relationship(
+        'Node',
+        back_populates='project',
+        lazy='dynamic',
+        cascade='all, delete-orphan',
+    )
 
     def __repr__(self):
-        return f"<Project {self.name}>"
+        return f"<Project {self.id}>"

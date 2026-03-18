@@ -11,7 +11,6 @@ node_type_enum = ENUM(
     metadata=db.metadata
 )
 
-# Edge Table (Kept for DAG traversal efficiency)
 dependencies = db.Table('dependencies',
     db.Column('source_id', UUID(as_uuid=True), db.ForeignKey('graph_index.id', ondelete='CASCADE'), primary_key=True),
     db.Column('target_id', UUID(as_uuid=True), db.ForeignKey('graph_index.id', ondelete='CASCADE'), primary_key=True)
@@ -30,34 +29,23 @@ class GraphNode(db.Model):
     )
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = db.Column(UUID(as_uuid=True), db.ForeignKey('projects.id', ondelete='CASCADE'), nullable=False)
+    project_id = db.Column(UUID(as_uuid=True), db.ForeignKey('new_projects.id', ondelete='CASCADE'), nullable=False)
     
     # Metadata
     title = db.Column(db.Text, nullable=False)
     node_type = db.Column(node_type_enum, nullable=False)
     
-    # NEW: Immutable Statement Identifier (From File Header)
     statement_id = db.Column(UUID(as_uuid=True), nullable=False, index=True)
     
-    # NEW: Logic Topology (From File Header)
-    # The raw UUID from the file header
-    parent_statement_id = db.Column(UUID(as_uuid=True), nullable=True)
-    
-    # NEW: Relational Link (Optimized)
-    # FK to the actual DB row of the parent (resolved by Indexer)
+    parent_statement_id = db.Column(UUID(as_uuid=True), nullable=True)    
+
     parent_id = db.Column(UUID(as_uuid=True), db.ForeignKey('graph_index.id'), nullable=True)
     
-    # NEW: Proof Resolution
-    # If this node was 'unresolved' (sorry), which child node ID proves it?
     proven_by_statement_id = db.Column(UUID(as_uuid=True), nullable=True)
     is_resolved = db.Column(db.Boolean, default=False, nullable=False)
 
-    # NEW: Relative Paths (Strict structure: statements/<uuid>.lean)
     lean_relative_path = db.Column(db.Text, nullable=False)
     latex_relative_path = db.Column(db.Text, nullable=True)
-    
-    # Removed: commit_hash (Tracked at Project Level)
-    # Removed: status (Implicitly 'canonical')
     
     # RAG Sync status
     rag_synced_at = db.Column(db.DateTime(timezone=True))

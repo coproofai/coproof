@@ -24,3 +24,6 @@ refreshed.json
 respuesta.json
 .tmp.commands
 .tmp**
+
+.idea/
+.tmp/

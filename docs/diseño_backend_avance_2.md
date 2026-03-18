@@ -45,7 +45,7 @@ coproof_backend/
 │   ├── services/            # Capa de Lógica de Negocio
 │   └── tasks.py             # Definición de tareas asíncronas (Celery)
 ├── config.py                # Configuraciones separadas por entorno
-└── wsgi.py                  # Punto de entrada para servidor de producción
+└── run_prod.py              # Punto de entrada para servidor de producción
 ```
 
 ### 3.2. Patrones y Componentes Implementados

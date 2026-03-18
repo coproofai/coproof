@@ -4,7 +4,7 @@ from sqlalchemy.sql import func
 from app.extensions import db
 
 
-new_node_state_enum = ENUM(
+node_state_enum = ENUM(
     'validated',
     'sorry',
     name='new_node_state_enum',
@@ -12,7 +12,7 @@ new_node_state_enum = ENUM(
 )
 
 
-class NewNode(db.Model):
+class Node(db.Model):
     __tablename__ = 'new_nodes'
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -32,13 +32,13 @@ class NewNode(db.Model):
         index=True,
     )
 
-    state = db.Column(new_node_state_enum, nullable=False, default='sorry')
+    state = db.Column(node_state_enum, nullable=False, default='sorry')
 
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    project = db.relationship('NewProject', back_populates='nodes')
-    parent = db.relationship('NewNode', remote_side=[id], backref=db.backref('children', lazy='dynamic'))
+    project = db.relationship('Project', back_populates='nodes')
+    parent = db.relationship('Node', remote_side=[id], backref=db.backref('children', lazy='dynamic'))
 
     def __repr__(self):
-        return f"<NewNode {self.id} state={self.state}>"
+        return f"<Node {self.id} state={self.state}>"

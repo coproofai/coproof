@@ -4,10 +4,9 @@ import time
 import uuid
 import requests
 from sqlalchemy import or_
-from app.models.new_project import NewProject
-from app.models.new_node import NewNode
+from app.models.project import Project
+from app.models.node import Node
 from app.extensions import db
-from app.services.git_engine.repo_pool import RepoPool
 from app.services.integrations.compiler_client import CompilerClient
 from app.services.auth_service import AuthService
 from app.exceptions import CoProofError
@@ -96,8 +95,8 @@ class ProjectService:
             'Initialize root/main.tex', default_branch,
         )
 
-        # 4. Persist NewProject + root NewNode
-        new_project = NewProject(
+        # 4. Persist Project + root Node
+        project = Project(
             name=data['name'],
             description=data.get('description'),
             goal=goal,
@@ -111,33 +110,27 @@ class ProjectService:
             author_id=author_id,
             contributor_ids=contributor_ids,
         )
-        db.session.add(new_project)
+        db.session.add(project)
         db.session.flush()
 
         root_node_url = f"{html_url}/blob/{default_branch}/root/main.lean"
-        root_node = NewNode(
+        root_node = Node(
             name='root',
             url=root_node_url,
-            project_id=new_project.id,
+            project_id=project.id,
             parent_node_id=None,
             state='sorry',
         )
         db.session.add(root_node)
         db.session.commit()
 
-        # 5. Warm Git cache
-        try:
-            RepoPool.ensure_bare_repo(str(new_project.id), clone_url, auth_token=github_token)
-        except Exception as e:
-            print(f"Warning: Initial server clone failed: {e}")
-
-        return new_project
+        return project
 
 
     @staticmethod
     def get_public_projects(page=1, per_page=20):
-        pagination = NewProject.query.filter_by(visibility='public')\
-            .order_by(NewProject.created_at.desc())\
+        pagination = Project.query.filter_by(visibility='public')\
+            .order_by(Project.created_at.desc())\
             .paginate(page=page, per_page=per_page, error_out=False)
         return pagination
 
@@ -148,13 +141,13 @@ class ProjectService:
         except (ValueError, TypeError):
             raise CoProofError("Invalid user id in token.", code=400)
 
-        return NewProject.query.filter(
+        return Project.query.filter(
             or_(
-                NewProject.visibility == 'public',
-                NewProject.author_id == user_uuid,
-                NewProject.contributor_ids.contains([user_uuid]),
+                Project.visibility == 'public',
+                Project.author_id == user_uuid,
+                Project.contributor_ids.contains([user_uuid]),
             )
-        ).order_by(NewProject.created_at.desc()).all()
+        ).order_by(Project.created_at.desc()).all()
 
     @staticmethod
     def _build_repo_name(project_name):

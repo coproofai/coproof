@@ -24,7 +24,13 @@ export interface WorkerResult {
   success?: boolean;
 }
 
-export interface NewProjectDto {
+export interface UserSummaryDto {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
+export interface ProjectDto {
   id: string;
   name: string;
   description?: string;
@@ -38,26 +44,34 @@ export interface NewProjectDto {
   tags: string[];
   author_id: string;
   contributor_ids?: string[];
+  author?: UserSummaryDto;
+  created_at?: string;
+  updated_at?: string;
 }
 
-export interface NewNodeDto {
+export interface NodeDto {
   id: string;
   name: string;
   url: string;
   project_id: string;
   parent_node_id: string | null;
   state: 'validated' | 'sorry';
+  created_at?: string | null;
+  updated_at?: string | null;
 }
+
+export type NewProjectDto = ProjectDto;
+export type NewNodeDto = NodeDto;
 
 export interface SimpleGraphResponse {
   project_id: string;
   project_name: string;
   count: number;
-  nodes: NewNodeDto[];
+  nodes: NodeDto[];
 }
 
 export interface AccessibleProjectsResponse {
-  projects: NewProjectDto[];
+  projects: ProjectDto[];
   total: number;
 }
 
@@ -95,6 +109,15 @@ export interface SorryLocationItem {
   snippet: string;
 }
 
+export interface SorryTraceItem {
+  file: string;
+  line: number;
+  snippet: string;
+  import_trace: string[];
+  depth: number;
+  starts_at_entry: boolean;
+}
+
 export interface VerifyNodeResponse {
   status: string;
   project_id: string;
@@ -105,6 +128,7 @@ export interface VerifyNodeResponse {
   verification: VerifyCompilerResult;
   has_sorry: boolean;
   sorry_locations: SorryLocationItem[];
+  sorry_traces: SorryTraceItem[];
 }
 
 export interface PullRequestItem {
@@ -132,6 +156,7 @@ export interface CreateProjectPayload {
   description?: string;
   visibility?: 'public' | 'private';
   tags?: string[];
+  contributor_ids?: string[];
 }
 
 @Injectable({
@@ -227,8 +252,8 @@ export class TaskService {
     });
   }
 
-  createProject(payload: CreateProjectPayload): Observable<NewProjectDto> {
-    return this.http.post<NewProjectDto>(`${this.apiBaseUrl}/projects`, payload, {
+  createProject(payload: CreateProjectPayload): Observable<ProjectDto> {
+    return this.http.post<ProjectDto>(`${this.apiBaseUrl}/projects`, payload, {
       headers: this.authHeaders()
     });
   }
@@ -246,7 +271,7 @@ export class TaskService {
   }
 
   getNodeLeanFile(projectId: string, nodeId: string): Observable<NodeFileResponse> {
-    return this.http.get<NodeFileResponse>(`${this.apiBaseUrl}/projects/${projectId}/nodes/${nodeId}/file`, {
+    return this.http.get<NodeFileResponse>(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/file-content`, {
       headers: this.authHeaders()
     });
   }
@@ -258,13 +283,13 @@ export class TaskService {
   }
 
   verifyNode(projectId: string, nodeId: string): Observable<VerifyNodeResponse> {
-    return this.http.post<VerifyNodeResponse>(`${this.apiBaseUrl}/projects/${projectId}/nodes/${nodeId}/verify`, {}, {
+    return this.http.post<VerifyNodeResponse>(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/verify-import-tree`, {}, {
       headers: this.authHeaders()
     });
   }
 
   solveNode(projectId: string, nodeId: string, leanCode: string): Observable<unknown> {
-    return this.http.post(`${this.apiBaseUrl}/projects/${projectId}/nodes/${nodeId}/solve`, {
+    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/solve`, {
       lean_code: leanCode
     }, {
       headers: this.authHeaders()
@@ -272,7 +297,7 @@ export class TaskService {
   }
 
   splitNode(projectId: string, nodeId: string, leanCode: string): Observable<unknown> {
-    return this.http.post(`${this.apiBaseUrl}/projects/${projectId}/nodes/${nodeId}/split`, {
+    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/split`, {
       lean_code: leanCode
     }, {
       headers: this.authHeaders()

@@ -1,49 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
 from app.services.auth_service import AuthService
-from app.schemas import UserSchema
-from app.exceptions import CoProofError
 
-# Create Blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/v1/auth')
-
-# @auth_bp.route('/register', methods=['POST'])
-# def register():
-#     data = request.get_json() or {}
-    
-#     # Service call
-#     user = AuthService.register_user(data)
-    
-#     # Serialization
-#     user_schema = UserSchema()
-#     return jsonify({
-#         "message": "User registered successfully",
-#         "user": user_schema.dump(user)
-#     }), 201
-
-# @auth_bp.route('/login', methods=['POST'])
-# def login():
-#     data = request.get_json() or {}
-#     email = data.get('email')
-#     password = data.get('password')
-    
-#     # Service call
-#     result = AuthService.login_user(email, password)
-    
-#     # Result contains access_token and user object
-#     user_schema = UserSchema()
-#     return jsonify({
-#         "access_token": result['access_token'],
-#         "user": user_schema.dump(result['user'])
-#     }), 200
-
-
-# @auth_bp.route('/me', methods=['GET'])
-# def get_me():
-#     # TODO: Implement protected route logic with @jwt_required()
-#     # For Phase 5 initial setup, we focus on public auth endpoints
-#     return jsonify({"message": "Profile endpoint placeholder"}), 501
-
 
 @auth_bp.route('/github/url', methods=['GET'])
 def get_github_url():
@@ -80,7 +39,7 @@ def github_callback():
 
 
 @auth_bp.route('/refresh', methods=['POST'])
-@jwt_required(refresh=True) # Requires the "refresh_token" in Authorization header
+@jwt_required(refresh=True)
 def refresh():
     """
     Swaps a valid Refresh Token for a new Access Token.

@@ -3,12 +3,13 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    command: python run.py
+    command: python run_dev.py
     volumes:
       - ./server:/usr/src/app
     ports:
       - "5001:5000"
     environment:
+      - APP_CONFIG=development
       - FLASK_ENV=development
       - DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
       - REDIS_URL=redis://redis:6379/0
@@ -32,6 +33,7 @@ services:
     volumes:
       - ./server:/usr/src/app
     environment:
+      - APP_CONFIG=development
       - DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
       - REDIS_URL=redis://redis:6379/0
       - CELERY_LEAN_QUEUE=lean_queue

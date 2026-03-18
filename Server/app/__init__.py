@@ -2,19 +2,19 @@ import os
 from kombu import Exchange, Queue
 from flask import Flask, jsonify
 from flask_cors import CORS
-from app.extensions import db, migrate, jwt, ma, socketio, celery, cache # <-- ADD cache
+from app.extensions import db, migrate, jwt, ma, socketio, celery, cache
 from app.exceptions import CoProofError
-from config import DevelopmentConfig, TestingConfig
+from config import get_config_class
 
 
-def create_app(config_class=DevelopmentConfig):
-    """
-    Application Factory Pattern.
-    """
+def create_app(config_class=None):
+    """Create and configure the Flask application instance."""
     from dotenv import load_dotenv
+
     load_dotenv()
+    selected_config = config_class or get_config_class(default='development')
     app = Flask(__name__)
-    app.config.from_object(config_class)
+    app.config.from_object(selected_config)
 
     CORS(
         app,
@@ -23,57 +23,47 @@ def create_app(config_class=DevelopmentConfig):
         allow_headers=["Content-Type", "Authorization"],
     )
 
-    # Initialize Extensions
-    
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     ma.init_app(app)
-    cache.init_app(app) 
+    cache.init_app(app)
     socketio.init_app(app, message_queue=app.config['REDIS_URL'])
-    
-    # Initialize Celery
-    git_queue = app.config['CELERY_GIT_ENGINE_QUEUE']
+
     lean_queue = app.config['CELERY_LEAN_QUEUE']
     app.config['CELERY_CONFIG'] = {
         'broker_url': app.config['CELERY_BROKER_URL'],
         'result_backend': app.config['CELERY_RESULT_BACKEND'],
-        'task_default_queue': git_queue,
+        'task_default_queue': lean_queue,
         'task_queues': (
-            Queue(git_queue, Exchange(git_queue, type='direct'), routing_key=git_queue),
             Queue(lean_queue, Exchange(lean_queue, type='direct'), routing_key=lean_queue),
-        ),
-        'task_routes': {
-            'app.tasks.*': {'queue': git_queue},
-        },
+        )
     }
     celery.conf.update(app.config['CELERY_CONFIG'])
 
     register_error_handlers(app)
 
-    @app.route('/health')
-    def health_check():
-        return jsonify({"status": "healthy", "env": os.getenv('FLASK_ENV', 'unkown')}), 200
+    # @app.route('/health')
+    # def health_check():
+    #     return jsonify({"status": "healthy", "env": os.getenv('FLASK_ENV', 'unknown')}), 200
 
-    #TODO: Check all blueprints are registered here
     from app.api.auth import auth_bp
     from app.api.projects import projects_bp
     from app.api.nodes import nodes_bp
-    from app.api.agent_interaction import agent_bp 
-    from app.api.webhooks import webhooks_bp       
-    
+    from app.api.agents import agent_bp
+    from app.api.webhooks import webhooks_bp
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(projects_bp)
     app.register_blueprint(nodes_bp)
-    app.register_blueprint(agent_bp)    
-    app.register_blueprint(webhooks_bp) 
-
-
+    app.register_blueprint(agent_bp)
+    app.register_blueprint(webhooks_bp)
 
     return app
 
+
 def register_error_handlers(app):
-    # ... (Same as before)
+    """Register API-level exception handlers for common error responses."""
     @app.errorhandler(CoProofError)
     def handle_coproof_error(error):
         response = jsonify(error.to_dict())
