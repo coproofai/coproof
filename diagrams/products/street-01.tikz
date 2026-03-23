@@ -1,0 +1,90 @@
+\begin{tikzpicture}[
+    x=1cm,
+    y=1cm,
+    >=Stealth,
+    font=\scriptsize,
+    service/.style={draw, rounded corners=2pt, align=center, minimum width=2.6cm, minimum height=1.1cm, fill=blue!8},
+    external/.style={draw, rounded corners=2pt, align=center, minimum width=2.6cm, minimum height=1.1cm, fill=violet!10},
+    db/.style={cylinder, shape border rotate=90, draw, align=center, minimum width=1.0cm, minimum height=2.5cm, aspect=0.3, fill=orange!15},
+    flowbox/.style={draw, rounded corners=3pt, line width=0.5pt},
+    msg/.style={midway, above, align=center, fill=white, inner sep=1pt, font=\tiny}
+]
+
+% --- Carriles (lifelines) ---
+\node[service]  (frontend) at (0,0) {A - Frontend\\(SPA UI)\\TaskService / UI Gateways};
+\node[external] (github)   at (3.4,0) {B - GitHub\\Servicio externo\\Storage + GitEngine};
+\node[service]  (backend)  at (6.8,0) {C - Backend Gateway\\API Controllers\\Backend Service Core};
+\node[db]       (pg)       at (10.2,0) {D - PostgreSQL\\DB relacional};
+\node[db]       (redis)    at (13.6,0) {E - Redis\\Broker + Result Backend};
+\node[service]  (worker)   at (17.0,0) {F - Lean Celery Worker\\Microservicio\\de validación};
+
+\foreach \x in {0,3.4,6.8,10.2,13.6,17.0} {
+    \draw[gray!65, densely dashed] (\x,-0.85) -- (\x,-26.9);
+}
+
+% --- Bloques de flujo ---
+\draw[flowbox, blue!45]   (-1.8,-1.25) rectangle (18.8,-8.7);
+\node[anchor=west, font=\bfseries\scriptsize, blue!55!black] at (-1.6,-1.55) {Flujo 1: Autenticación y sincronización de perfil (Síncrono externo)};
+
+\draw[flowbox, teal!55!black] (-1.8,-9.2) rectangle (18.8,-14.9);
+\node[anchor=west, font=\bfseries\scriptsize, teal!55!black] at (-1.6,-9.5) {Flujo 2: Modificación del grafo matemático (Transaccional interno)};
+
+\draw[flowbox, red!55!black]  (-1.8,-15.4) rectangle (18.8,-26.6);
+\node[anchor=west, font=\bfseries\scriptsize, red!55!black] at (-1.6,-15.7) {Flujo 3: Verificación de pruebas (Asíncrono desacoplado)};
+
+% --- Flujo 1 ---
+\draw[->, thick] (frontend.south |- 0,-2.2) -- (backend.south |- 0,-2.2)
+    node[msg] {1.1 Login / validar token\\Vehículo: REST / HTTP JSON};
+
+\draw[->, thick] (backend.south |- 0,-3.5) -- (github.south |- 0,-3.5)
+    node[msg] {1.2 OAuth callback / perfil\\Vehículo: REST + OAuth};
+
+\draw[->, thick, dashed] (github.south |- 0,-4.8) -- (backend.south |- 0,-4.8)
+    node[msg] {1.3 Perfil + access tokens\\Vehículo: HTTP Response (JSON)};
+
+\draw[->, thick] (backend.south |- 0,-6.1) -- (pg.south |- 0,-6.1)
+    node[msg] {1.4 Upsert de usuario\\Vehículo: SQL ORM};
+
+\draw[->, thick, dashed] (backend.south |- 0,-7.4) -- (frontend.south |- 0,-7.4)
+    node[msg] {1.5 Sesión al cliente (JWT)\\Vehículo: HTTP Response + authHeaders};
+
+% --- Flujo 2 ---
+\draw[->, thick] (frontend.south |- 0,-10.2) -- (backend.south |- 0,-10.2)
+    node[msg] {2.1 Caso de uso directo (ej. nuevo lema)\\Vehículo: REST / HTTP JSON + JWT};
+
+\draw[->, thick] (backend.south |- 0,-11.5) -- (pg.south |- 0,-11.5)
+    node[msg] {2.2 Actualizar nodo y transiciones\\Vehículo: SQL ORM};
+
+\draw[<->, thick] (backend.south |- 0,-12.8) -- (github.south |- 0,-12.8)
+    node[msg] {2.3 Commit y persistencia en rama\\Vehículo: REST API de GitHub};
+
+\draw[->, thick, dashed] (backend.south |- 0,-14.1) -- (frontend.south |- 0,-14.1)
+    node[msg] {2.4 Confirmación de éxito\\Vehículo: HTTP 200 OK};
+
+% --- Flujo 3 ---
+\draw[->, thick] (frontend.south |- 0,-16.4) -- (backend.south |- 0,-16.4)
+    node[msg] {3.1 Solicitar verifyNode\\Vehículo: REST / HTTP JSON};
+
+\draw[->, thick] (backend.south |- 0,-17.7) -- (redis.south |- 0,-17.7)
+    node[msg] {3.2 Dispatch tasks.verify\_snippet / verify\_project\_files\\Vehículo: Protocolo Celery por lean\_queue};
+
+\draw[->, thick, dashed] (backend.south |- 0,-19.0) -- (frontend.south |- 0,-19.0)
+    node[msg] {3.3 Recepción inmediata + Job ID\\Vehículo: HTTP 202 Accepted};
+
+\draw[->, thick] (redis.south |- 0,-20.3) -- (worker.south |- 0,-20.3)
+    node[msg] {3.4 Consumo de tarea (routing)\\Vehículo: Suscripción asíncrona Celery Worker};
+
+\draw[->, thick] (worker.south |- 0,-21.6) -- ++(1.0,0) -- ++(0,-1.0) -- ++(-1.0,0)
+    node[pos=0.60, right, align=left, fill=white, inner sep=1pt, font=\tiny]
+    {3.5 verify\_lean\_proof + parse\_lean\_messages\\Vehículo: Invocación directa (SO + adaptadores locales)};
+
+\draw[->, thick] (worker.south |- 0,-23.1) -- (redis.south |- 0,-23.1)
+    node[msg] {3.6 Guardar resultado formateado\\Vehículo: Celery Result Backend (Redis)};
+
+\draw[->, thick] (backend.south |- 0,-24.4) -- (redis.south |- 0,-24.4)
+    node[msg] {3.7 Leer resultado final\\Vehículo: Consulta directa a Redis};
+
+\draw[->, thick, dotted] (backend.south |- 0,-25.7) -- (frontend.south |- 0,-25.7)
+    node[msg] {3.8 Notificar tarea completada\\Vehículo: SSE / WebSockets o Webhook JSON};
+
+\end{tikzpicture}

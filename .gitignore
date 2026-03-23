@@ -19,6 +19,7 @@ frontend/.env.*
 
 .example/
 .test/
+.vscode/
 
 refreshed.json
 respuesta.json
