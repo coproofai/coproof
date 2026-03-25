@@ -1,0 +1,74 @@
+Lean: 
+(n : Nat) (h_bound : n ≤ 2540160) :
+  IsFactorion n ↔ n = 1 ∨ n = 2 ∨ n = 145 ∨ n = 40585
+
+Target json:
+{
+  "known_factorions": [1, 2, 145, 40585],
+  "upper_bound": 2540160,
+  "claim": "These are exactly all factorions up to the proven bound"
+}
+
+Input:
+{
+  "bound": 2540160,
+  "expected_factorions": [1, 2, 145, 40585]
+}
+
+Entrypoint:
+run
+
+Timeout:
+900
+
+Python code:
+import math
+
+def sum_fact_digits(n: int) -> int:
+    if n == 0:
+        return math.factorial(0)
+    total = 0
+    while n > 0:
+        n, digit = divmod(n, 10)
+        total += math.factorial(digit)
+    return total
+
+def is_factorion(n: int) -> bool:
+    return sum_fact_digits(n) == n
+
+def run(input_data, target):
+    bound = int(input_data["bound"])
+    expected = list(input_data["expected_factorions"])
+
+    found = []
+    records = []
+
+    for n in range(1, bound + 1):
+        s = sum_fact_digits(n)
+        ok = (s == n)
+        if ok:
+            found.append(n)
+            records.append({
+                "n": n,
+                "sum_fact_digits": s,
+                "is_factorion": True
+            })
+
+    sufficient = found == expected
+
+    return {
+        "completed": True,
+        "sufficient": sufficient,
+        "summary": (
+            f"Exhaustive search up to {bound}. "
+            f"Found factorions: {found}. "
+            f"Expected: {expected}."
+        ),
+        "evidence": {
+            "bound": bound,
+            "found_factorions": found,
+            "expected_factorions": expected,
+            "matches_expected": sufficient
+        },
+        "records": records
+    }

@@ -79,7 +79,13 @@
           <ng-container *ngIf="selectedNode; else selectNodeHint">
             <p class="meta"><strong>Nodo:</strong> {{ selectedNode.name }}</p>
             <p class="meta"><strong>Estado:</strong> {{ selectedNode.state }}</p>
+            <p class="meta"><strong>Tipo:</strong> {{ selectedNode.node_kind || 'proof' }}</p>
             <p class="meta"><strong>Archivo:</strong> {{ nodePath || '...' }}</p>
+
+            <div class="create-computation-box">
+              <p class="meta"><strong>Crear hijo de computación</strong></p>
+              <button *ngIf="!isComputationNode" (click)="createComputationChildNode()">Crear Computation Node</button>
+            </div>
 
             <p *ngIf="isNodeFileLoading" class="meta">Cargando archivo .lean...</p>
 
@@ -91,10 +97,56 @@
               placeholder="Contenido .lean del nodo seleccionado"
             ></textarea>
 
-            <div class="actions">
+            <div class="actions" *ngIf="!isComputationNode">
               <button (click)="verifySelectedNode()">Verify</button>
               <button (click)="submitSolve()">Submit Solve</button>
               <button (click)="submitSplit()">Submit Split</button>
+            </div>
+
+            <div class="computation-box" *ngIf="isComputationNode">
+              <p class="meta"><strong>Payload Computation Node</strong></p>
+
+              <label class="meta">Entrypoint</label>
+              <input [(ngModel)]="computationEntrypoint" name="computationEntrypoint" type="text" placeholder="run" />
+
+              <label class="meta">Lean Statement (objetivo del nodo)</label>
+              <input [(ngModel)]="computationLeanStatement" name="computationLeanStatement" type="text" placeholder="GoalDef" />
+
+              <label class="meta">Target JSON</label>
+              <textarea
+                [(ngModel)]="computationTargetJson"
+                name="computationTargetJson"
+                rows="4"
+                placeholder="{ &quot;kind&quot;: &quot;range_check&quot; }"
+              ></textarea>
+
+              <label class="meta">Input Data JSON</label>
+              <textarea
+                [(ngModel)]="computationInputJson"
+                name="computationInputJson"
+                rows="4"
+                placeholder="{ &quot;samples&quot;: 1000 }"
+              ></textarea>
+
+              <label class="meta">Código Python</label>
+              <textarea
+                [(ngModel)]="computationCode"
+                name="computationCode"
+                rows="8"
+                placeholder="def run(input_data, target): ..."
+              ></textarea>
+
+              <div class="inline-fields">
+                <label class="meta timeout-label">Timeout (s)</label>
+                <input
+                  [(ngModel)]="computationTimeoutSeconds"
+                  name="computationTimeoutSeconds"
+                  type="number"
+                  min="1"
+                  max="900"
+                />
+                <button (click)="submitCompute()">Submit Compute</button>
+              </div>
             </div>
 
             <div class="verify-box" *ngIf="verificationSummary || verificationErrors.length > 0 || sorryLocations.length > 0">

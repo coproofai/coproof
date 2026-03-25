@@ -1,0 +1,15 @@
+Goal
+∀ n : Nat, IsFactorion n ↔ n = 1 ∨ n = 2 ∨ n = 145 ∨ n = 40585
+
+Imports
+Mathlib
+
+Definitions
+-- Calculates the sum of the factorials of the digits of a number in base 10
+def sumFactDigits (n : Nat) : Nat :=
+  ((Nat.digits 10 n).map Nat.factorial).sum
+
+-- A number is a Factorion if it is equal to the sum of its digits' factorials
+def IsFactorion (n : Nat) : Prop :=
+  sumFactDigits n = n
+

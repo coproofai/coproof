@@ -52,6 +52,9 @@ export interface NodeDto {
   project_id: string;
   parent_node_id: string | null;
   state: 'validated' | 'sorry';
+  node_kind?: 'proof' | 'computation';
+  computation_spec?: Record<string, unknown> | null;
+  last_computation_result?: Record<string, unknown> | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -153,4 +156,22 @@ export interface CreateProjectPayload {
   visibility?: 'public' | 'private';
   tags?: string[];
   contributor_ids?: string[];
+}
+
+export interface CreateComputationChildPayload {
+  name?: string;
+  language?: string;
+  entrypoint?: string;
+  target?: Record<string, unknown>;
+  lean_statement?: string;
+}
+
+export interface ComputeNodePayload {
+  language: string;
+  code: string;
+  entrypoint?: string;
+  input_data?: unknown;
+  target: Record<string, unknown>;
+  lean_statement: string;
+  timeout_seconds?: number;
 }

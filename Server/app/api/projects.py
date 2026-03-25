@@ -12,6 +12,24 @@ from app.models.node import Node
 from app.extensions import cache, db
 from app.exceptions import CoProofError
 
+
+def _compact_last_computation_result(payload):
+    if not isinstance(payload, dict):
+        return payload
+
+    compact = {
+        "completed": payload.get("completed"),
+        "sufficient": payload.get("sufficient"),
+        "summary": payload.get("summary"),
+        "error": payload.get("error"),
+        "processing_time_seconds": payload.get("processing_time_seconds"),
+        "roundtrip_time_seconds": payload.get("roundtrip_time_seconds"),
+        "timing_source": payload.get("timing_source"),
+        "records_count": payload.get("records_count"),
+        "evidence_preview": payload.get("evidence_preview"),
+    }
+    return compact
+
 projects_bp = Blueprint('projects', __name__, url_prefix='/api/v1/projects')
 
 # In use
@@ -84,6 +102,9 @@ def get_project_graph_simple(project_id):
             "project_id": str(node.project_id),
             "parent_node_id": str(node.parent_node_id) if node.parent_node_id else None,
             "state": node.state,
+            "node_kind": node.node_kind,
+            "computation_spec": node.computation_spec,
+            "last_computation_result": _compact_last_computation_result(node.last_computation_result),
             "created_at": node.created_at.isoformat() if node.created_at else None,
             "updated_at": node.updated_at.isoformat() if node.updated_at else None,
         }
@@ -199,7 +220,7 @@ def _apply_post_merge_db_updates(project, metadata):
         "created_nodes": [],
     }
 
-    if action == 'solve_node':
+    if action in ('solve_node', 'compute_node'):
         target_id = metadata.get("affected_node_id")
         if target_id:
             target = Node.query.filter_by(id=target_id, project_id=project.id).first()
@@ -245,6 +266,7 @@ def _apply_post_merge_db_updates(project, metadata):
                 project_id=project.id,
                 parent_node_id=base_node.id,
                 state='sorry',
+                node_kind='proof',
             )
             db.session.add(child_node)
             db.session.flush()
@@ -252,7 +274,67 @@ def _apply_post_merge_db_updates(project, metadata):
                 "id": str(child_node.id),
                 "name": child_node.name,
                 "state": child_node.state,
+                "node_kind": child_node.node_kind,
                 "url": child_node.url,
             })
+
+    if action == 'create_computation_node':
+        base_node_id = metadata.get("base_node_id")
+        base_node = None
+        if base_node_id:
+            base_node = Node.query.filter_by(id=base_node_id, project_id=project.id).first()
+            if base_node:
+                base_node.state = 'sorry'
+                LeanService.append_updated_node(updates, base_node)
+                LeanService.propagate_parent_states(base_node.parent, updates, Node)
+
+        affected_nodes = metadata.get("affected_nodes") or []
+        if not base_node or not affected_nodes:
+            return updates
+
+        child_names = [name for name in affected_nodes if name.lower() != base_node.name.lower()]
+        if not child_names:
+            return updates
+
+        child_name = child_names[0]
+        existing = Node.query.filter_by(
+            project_id=project.id,
+            parent_node_id=base_node.id,
+            name=child_name,
+        ).first()
+        if existing:
+            existing.state = 'sorry'
+            existing.node_kind = 'computation'
+            LeanService.append_updated_node(updates, existing)
+            return updates
+
+        child_folder = metadata.get("child_folder")
+        if not child_folder:
+            used_folder_names = set()
+            siblings = Node.query.filter_by(project_id=project.id, parent_node_id=base_node.id).all()
+            for sibling in siblings:
+                sibling_path = GitHubService.extract_repo_path_from_node_url(sibling.url) or ''
+                if '/' in sibling_path:
+                    used_folder_names.add(sibling_path.rsplit('/', 2)[-2])
+            child_folder = LeanService.to_unique_node_folder_segment(child_name, used_folder_names)
+
+        node_url = f"{project.url}/blob/{project.default_branch}/{child_folder}/main.lean"
+        child_node = Node(
+            name=child_name,
+            url=node_url,
+            project_id=project.id,
+            parent_node_id=base_node.id,
+            state='sorry',
+            node_kind='computation',
+        )
+        db.session.add(child_node)
+        db.session.flush()
+        updates["created_nodes"].append({
+            "id": str(child_node.id),
+            "name": child_node.name,
+            "state": child_node.state,
+            "node_kind": child_node.node_kind,
+            "url": child_node.url,
+        })
 
     return updates

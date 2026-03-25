@@ -129,20 +129,13 @@ export class CreateProjectPageComponent {
   }
 
   private isAuthError(error: any, backendMessage: string): boolean {
-    if (error?.status === 401) {
-      return true;
-    }
-
-    if (error?.status !== 422) {
-      return false;
-    }
-
-    const msg = (backendMessage || '').toLowerCase();
-    return msg.includes('signature verification failed')
-      || msg.includes('token has expired')
-      || msg.includes('not enough segments')
-      || msg.includes('missing authorization header')
-      || msg.includes('invalid header');
+    return this.taskService.shouldClearAccessTokenOnError({
+      ...error,
+      error: {
+        ...(error?.error || {}),
+        message: backendMessage || error?.error?.message,
+      }
+    });
   }
 
   private parseGoalImports(rawImports: string): string[] | undefined {

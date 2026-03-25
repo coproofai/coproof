@@ -31,6 +31,7 @@ FLASK_ENV=development
 DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
 REDIS_URL=redis://redis:6379/0
 CELERY_LEAN_QUEUE=lean_queue
+CELERY_COMPUTATION_QUEUE=computation_queue
 CELERY_GIT_ENGINE_QUEUE=git_engine_queue
 GITHUB_CLIENT_ID=<your-client-id>
 GITHUB_CLIENT_SECRET=<your-client-secret>
@@ -54,8 +55,9 @@ docker-compose up -d --build
 * `db` → PostgreSQL
 * `redis` → Redis broker
 * `lean-worker` → Lean verification Celery worker (`lean_queue`)
+* `computation-worker` → Generic computation Celery worker (`computation_queue`)
 
-The backend talks to Lean through Redis/Celery (`REDIS_URL`) by dispatching tasks to `lean_queue`.
+The backend talks to Lean and computation workers through Redis/Celery (`REDIS_URL`) by dispatching tasks to `lean_queue` and `computation_queue`.
 
 ---
 
@@ -168,6 +170,52 @@ irm -Method POST -Uri "http://localhost:5001/api/v1/projects/PROJECT_ID/nodes" `
 * **Access / Refresh Tokens**: Always refresh access token if expired.
 * **Branches**: Consider using per-user branch locks for collaborative `.latex` editing.
 * **Feature workflow**: Each developer works in their own branch. Project owner merges `.latex` branches into main.
+
+## Computation node contract
+
+Computation nodes are backed by a Lean file in the project tree, but their truth value is produced by the computation worker.
+
+`POST /api/v1/nodes/<project_id>/<node_id>/compute`
+
+Expected JSON payload:
+
+```json
+{
+  "language": "python",
+  "code": "def run(input_data, target):\n    return {\"evidence\": {...}, \"sufficient\": True}\n",
+  "entrypoint": "run",
+  "input_data": {},
+  "target": {"kind": "range_check", "description": "..."},
+  "lean_statement": "GoalDef"
+}
+```
+
+The worker currently supports Python entrypoints with the signature `run(input_data, target)`. The return value must be either:
+
+```python
+{"evidence": <json-serializable>, "sufficient": <bool>}
+```
+
+or a two-item tuple/list `(evidence, sufficient)`.
+
+On a sufficient result, the backend writes artifacts in the node folder and opens a PR:
+
+* `main.lean` → Lean-consumable theorem wrapper for the computation result
+* `computation.py` → computation program submitted by the client
+* `evidence.json` → summary evidence, hashes and artifact pointers
+* `evidence_full.json.gz.b64` → full computation payload compressed with gzip and encoded in base64
+* `evidence_records.csv.gz.b64` → full per-record dataset in CSV format, compressed with gzip and encoded in base64 (if `records` are provided)
+
+To inspect compressed artifacts locally:
+
+```python
+import base64, gzip, pathlib
+
+text = pathlib.Path("evidence_full.json.gz.b64").read_text(encoding="utf-8").strip()
+raw = base64.b64decode(text)
+decoded = gzip.decompress(raw).decode("utf-8")
+print(decoded[:1000])
+```
 
 ---
 

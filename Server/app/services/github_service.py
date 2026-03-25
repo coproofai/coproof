@@ -348,6 +348,7 @@ class GitHubService:
             "base_node_id": None,
             "affected_nodes": [],
             "affected_node_id": None,
+            "child_folder": None,
         }
 
         action_match = re.search(r"(?im)^Action:\s*(.+)$", body)
@@ -367,6 +368,10 @@ class GitHubService:
         affected_node_id_match = re.search(r"(?im)^Affected node ID:\s*([0-9a-fA-F\-]{36})$", body)
         if affected_node_id_match:
             metadata["affected_node_id"] = affected_node_id_match.group(1).strip()
+
+        child_folder_match = re.search(r"(?im)^Child folder:\s*([^\n\r]+)$", body)
+        if child_folder_match:
+            metadata["child_folder"] = child_folder_match.group(1).strip()
 
         return metadata
 

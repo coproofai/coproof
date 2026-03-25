@@ -14,6 +14,7 @@ services:
       - DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
       - REDIS_URL=redis://redis:6379/0
       - CELERY_LEAN_QUEUE=lean_queue
+      - CELERY_COMPUTATION_QUEUE=computation_queue
       - CELERY_GIT_ENGINE_QUEUE=git_engine_queue
       - JWT_SECRET_KEY=dev_jwt_secret_key_do_not_use_in_prod
       - SECRET_KEY=dev_secret_key_do_not_use_in_prod
@@ -23,6 +24,8 @@ services:
       redis:
         condition: service_started
       lean-worker:
+        condition: service_started
+      computation-worker:
         condition: service_started
 
   celery_worker:
@@ -37,6 +40,7 @@ services:
       - DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
       - REDIS_URL=redis://redis:6379/0
       - CELERY_LEAN_QUEUE=lean_queue
+      - CELERY_COMPUTATION_QUEUE=computation_queue
       - CELERY_GIT_ENGINE_QUEUE=git_engine_queue
       - REPO_STORAGE_PATH=/tmp/coproof-storage
     depends_on:
@@ -46,6 +50,8 @@ services:
         condition: service_started
       lean-worker:
         condition: service_started
+      computation-worker:
+        condition: service_started
 
   lean-worker:
     build:
@@ -53,6 +59,18 @@ services:
       dockerfile: Dockerfile
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_LEAN_QUEUE=lean_queue
+    depends_on:
+      redis:
+        condition: service_started
+
+  computation-worker:
+    build:
+      context: ./computation
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_COMPUTATION_QUEUE=computation_queue
     depends_on:
       redis:
         condition: service_started

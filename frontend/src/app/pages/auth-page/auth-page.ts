@@ -24,6 +24,13 @@ export class AuthPageComponent {
       this.message = 'Debes ingresar un access token.';
       return;
     }
+
+    const tokenType = this.taskService.getTokenType(this.accessToken.trim());
+    if (tokenType === 'refresh') {
+      this.message = 'Pegaste un refresh token. Debes pegar el access_token.';
+      return;
+    }
+
     this.taskService.setAccessToken(this.accessToken);
     this.message = 'Token guardado correctamente.';
   }

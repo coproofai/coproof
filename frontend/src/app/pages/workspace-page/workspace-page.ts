@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
 import { JsonPipe, NgClass, NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -30,7 +30,7 @@ interface ViewEdge {
   templateUrl: './workspace-page.html',
   styleUrl: './workspace-page.css'
 })
-export class WorkspacePageComponent implements OnInit {
+export class WorkspacePageComponent implements OnInit, OnDestroy {
   projectId = '';
   projectName = '';
   sessionLabel = 'Sesión Individual';
@@ -52,6 +52,12 @@ export class WorkspacePageComponent implements OnInit {
   definitionsLoading = false;
   definitionsError = '';
   openPulls: PullRequestItem[] = [];
+  computationCode = 'def run(input_data, target):\n    return {"evidence": {"input": input_data, "target": target}, "sufficient": True, "summary": "Demo computation succeeded"}\n';
+  computationTargetJson = '{\n  "kind": "range_check",\n  "description": "f(x) in [0, 2] for x in [0,1]"\n}';
+  computationInputJson = '{\n  "samples": 1000\n}';
+  computationLeanStatement = 'GoalDef';
+  computationEntrypoint = 'run';
+  computationTimeoutSeconds = 120;
 
   graphCollapsed = false;
   editorCollapsed = false;
@@ -63,6 +69,7 @@ export class WorkspacePageComponent implements OnInit {
   isGraphPanning = false;
   private graphPanStartX = 0;
   private graphPanStartY = 0;
+  private autoRefreshHandle: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly route: ActivatedRoute,
@@ -76,7 +83,12 @@ export class WorkspacePageComponent implements OnInit {
       const sessionType = params.get('sessionType');
       this.sessionLabel = sessionType === 'collaborative' ? 'Sesión Colaborativa' : 'Sesión Individual';
       this.reloadAll();
+      this.startAutoRefresh();
     });
+  }
+
+  ngOnDestroy(): void {
+    this.stopAutoRefresh();
   }
 
   get edges(): ViewEdge[] {
@@ -116,6 +128,10 @@ export class WorkspacePageComponent implements OnInit {
 
   get definitionsLineCount(): number {
     return this.definitionsLines.length;
+  }
+
+  get isComputationNode(): boolean {
+    return this.selectedNode?.node_kind === 'computation';
   }
 
   @HostListener('window:mouseup')
@@ -226,12 +242,12 @@ export class WorkspacePageComponent implements OnInit {
     }
 
     this.status = 'Cargando grafo y PRs...';
-    this.loadGraph();
+    this.loadGraph(true);
     this.loadOpenPulls();
     this.loadProjectDefinitions();
   }
 
-  private loadGraph() {
+  private loadGraph(reloadSelectedFile = true) {
     this.taskService.getSimpleGraph(this.projectId).subscribe({
       next: (response) => {
         this.projectName = response.project_name || this.projectName;
@@ -244,7 +260,7 @@ export class WorkspacePageComponent implements OnInit {
         if (this.selectedNode) {
           const stillExists = this.nodes.find((node) => node.id === this.selectedNode?.id);
           this.selectedNode = stillExists || null;
-          refreshSelectedNodeFile = !!stillExists;
+          refreshSelectedNodeFile = !!stillExists && reloadSelectedFile;
         }
 
         if (!this.selectedNode && this.nodes.length > 0) {
@@ -355,7 +371,7 @@ export class WorkspacePageComponent implements OnInit {
   }
 
   submitSolve() {
-    if (!this.selectedNode || !this.leanCode.trim()) {
+    if (!this.selectedNode || this.isComputationNode || !this.leanCode.trim()) {
       return;
     }
     this.status = 'Enviando solve...';
@@ -385,7 +401,7 @@ export class WorkspacePageComponent implements OnInit {
   }
 
   submitSplit() {
-    if (!this.selectedNode || !this.leanCode.trim()) {
+    if (!this.selectedNode || this.isComputationNode || !this.leanCode.trim()) {
       return;
     }
     this.status = 'Enviando split...';
@@ -406,6 +422,81 @@ export class WorkspacePageComponent implements OnInit {
     });
   }
 
+  createComputationChildNode() {
+    if (!this.selectedNode || this.isComputationNode) {
+      return;
+    }
+
+    this.status = 'Creando nodo de computacion...';
+    this.taskService.createComputationChildNode(this.projectId, this.selectedNode.id, {}).subscribe({
+      next: (response) => {
+        this.lastResponse = response;
+        this.status = 'Solicitud de creación enviada. Se creó un PR para el nuevo nodo de computación.';
+        this.loadGraph(false);
+        this.loadOpenPulls();
+      },
+      error: (error) => {
+        if (this.handleAuthError(error)) {
+          this.lastResponse = error?.error || error;
+          return;
+        }
+        this.lastResponse = error?.error || error;
+        this.status = this.getBackendErrorMessage(error) || 'No se pudo crear el nodo de computacion.';
+      }
+    });
+  }
+
+  submitCompute() {
+    if (!this.selectedNode || !this.isComputationNode || !this.computationCode.trim() || !this.computationLeanStatement.trim()) {
+      return;
+    }
+
+    const parsedTarget = this.safeParseJson(this.computationTargetJson);
+    if (!parsedTarget || typeof parsedTarget !== 'object' || Array.isArray(parsedTarget)) {
+      this.status = 'El campo target debe ser un JSON objeto valido.';
+      return;
+    }
+
+    const parsedInput = this.safeParseJson(this.computationInputJson);
+
+    this.status = 'Enviando computacion...';
+    this.taskService.computeNode(this.projectId, this.selectedNode.id, {
+      language: 'python',
+      code: this.computationCode,
+      entrypoint: this.computationEntrypoint.trim() || 'run',
+      input_data: parsedInput,
+      target: parsedTarget as Record<string, unknown>,
+      lean_statement: this.computationLeanStatement.trim(),
+      timeout_seconds: this.computationTimeoutSeconds,
+    }).subscribe({
+      next: (response) => {
+        this.lastResponse = this.compactUiResponse(response);
+        const backendStatus = (response as { status?: string } | null)?.status;
+        if (backendStatus === 'insufficient_evidence') {
+          this.status = 'Computacion ejecutada, pero la evidencia fue insuficiente.';
+          this.loadGraph(false);
+          return;
+        }
+        if (backendStatus === 'already_computed') {
+          this.status = 'Computacion validada. No hubo cambios en repo; estado guardado en DB.';
+          this.loadGraph(false);
+          this.loadOpenPulls();
+          return;
+        }
+        this.status = 'Computacion enviada. Se creo un PR.';
+        this.loadOpenPulls();
+      },
+      error: (error) => {
+        if (this.handleAuthError(error)) {
+          this.lastResponse = this.compactUiResponse(error?.error || error);
+          return;
+        }
+        this.lastResponse = this.compactUiResponse(error?.error || error);
+        this.status = this.getBackendErrorMessage(error) || 'Computacion con error.';
+      }
+    });
+  }
+
   mergePullRequest(pr: PullRequestItem) {
     this.status = `Mergeando PR #${pr.number}...`;
     this.taskService.mergePullRequest(this.projectId, pr.number).subscribe({
@@ -413,7 +504,7 @@ export class WorkspacePageComponent implements OnInit {
         this.lastResponse = response;
         this.status = `PR #${pr.number} mergeado.`;
         this.loadOpenPulls();
-        this.loadGraph();
+        this.loadGraph(false);
       },
       error: (error) => {
         if (this.handleAuthError(error)) {
@@ -541,13 +632,71 @@ export class WorkspacePageComponent implements OnInit {
     return error?.error?.message || error?.error?.error || error?.error?.msg || '';
   }
 
+  private safeParseJson(value: string): unknown {
+    if (!value.trim()) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+
+  private compactUiResponse(payload: unknown): unknown {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return payload;
+    }
+
+    const obj = payload as Record<string, unknown>;
+    const result: Record<string, unknown> = { ...obj };
+
+    const computation = obj['computation'];
+    if (computation && typeof computation === 'object' && !Array.isArray(computation)) {
+      const c = computation as Record<string, unknown>;
+      result['computation'] = {
+        completed: c['completed'],
+        sufficient: c['sufficient'],
+        summary: c['summary'],
+        error: c['error'],
+        processing_time_seconds: c['processing_time_seconds'],
+        roundtrip_time_seconds: c['roundtrip_time_seconds'],
+        timing_source: c['timing_source'],
+        records_count: c['records_count'],
+        evidence_preview: c['evidence_preview'],
+      };
+    }
+
+    return result;
+  }
+
   private handleAuthError(error: any): boolean {
-    const message = this.getBackendErrorMessage(error);
-    if (message === 'Signature verification failed' || error?.status === 401 || error?.status === 422) {
+    if (this.taskService.shouldClearAccessTokenOnError(error)) {
       this.taskService.clearAccessToken();
       this.status = 'Tu sesion expiro o es invalida. Vuelve a Auth para pegar un access token nuevo.';
       return true;
     }
     return false;
+  }
+
+  private startAutoRefresh() {
+    this.stopAutoRefresh();
+    this.autoRefreshHandle = setInterval(() => {
+      if (!this.projectId || !this.taskService.getAccessToken()) {
+        return;
+      }
+
+      this.loadOpenPulls();
+      this.loadGraph(false);
+    }, 3500);
+  }
+
+  private stopAutoRefresh() {
+    if (this.autoRefreshHandle) {
+      clearInterval(this.autoRefreshHandle);
+      this.autoRefreshHandle = null;
+    }
   }
 }

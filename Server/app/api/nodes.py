@@ -4,7 +4,9 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 import re
 import uuid
 from app.models.user import User
+from app.services.computation_service import ComputationService
 from app.services.auth_service import AuthService
+from app.services.integrations.computation_client import ComputationClient
 from app.services.integrations.compiler_client import CompilerClient
 from app.services.github_service import GitHubService
 from app.services.lean_service import LeanService
@@ -101,6 +103,7 @@ def solve_node(project_id, node_id):
     user = User.query.get_or_404(user_id)
     project = Project.query.get_or_404(project_id)
     node = Node.query.filter_by(id=node_id, project_id=project.id).first_or_404()
+    ComputationService.ensure_proof_node(node)
 
     github_token = AuthService.refresh_github_token_if_needed(user)
     if not github_token:
@@ -212,6 +215,333 @@ def solve_node(project_id, node_id):
     }), 201
 
 
+@nodes_bp.route('/<uuid:project_id>/<uuid:node_id>/children/computation', methods=['POST'])
+@jwt_required()
+def create_computation_child_node(project_id, node_id):
+    """Create a computation child node through a feature-branch PR, mirroring split/solve workflow."""
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+
+    user = User.query.get_or_404(user_id)
+    project = Project.query.get_or_404(project_id)
+    parent_node = Node.query.filter_by(id=node_id, project_id=project.id).first_or_404()
+    ComputationService.ensure_proof_node(parent_node)
+    child_name = ComputationService.build_computation_child_name(parent_node.name)
+
+    github_token = AuthService.refresh_github_token_if_needed(user)
+    if not github_token:
+        raise CoProofError("You must link your GitHub account.", code=400)
+
+    existing = Node.query.filter_by(
+        project_id=project.id,
+        parent_node_id=parent_node.id,
+        node_kind='computation',
+    ).first()
+    if existing:
+        return jsonify({
+            "error": "The selected parent already has a computation child.",
+            "node_id": str(existing.id),
+        }), 409
+
+    parent_main_path = GitHubService.extract_repo_path_from_node_url(parent_node.url)
+    if not parent_main_path or not parent_main_path.endswith('.lean'):
+        raise CoProofError("Parent node URL does not map to a valid .lean file path.", code=400)
+
+    used_folder_names = set()
+    siblings = Node.query.filter_by(project_id=project.id, parent_node_id=parent_node.id).all()
+    for sibling in siblings:
+        sibling_path = GitHubService.extract_repo_path_from_node_url(sibling.url) or ''
+        if '/' in sibling_path:
+            used_folder_names.add(sibling_path.rsplit('/', 2)[-2])
+
+    folder_segment = LeanService.to_unique_node_folder_segment(child_name, used_folder_names)
+
+    file_map = GitHubService.get_repository_files_map(
+        remote_repo_url=project.remote_repo_url,
+        token=github_token,
+        branch=project.default_branch,
+        extensions=('.lean',),
+    )
+    file_map = LeanService.normalize_file_map_for_def_module(file_map)
+
+    if parent_main_path not in file_map:
+        raise CoProofError(f"Parent Lean file not found in repo: {parent_main_path}", code=404)
+
+    # Extract parent theorem signature from the parent's main.lean
+    parent_main_content = file_map[parent_main_path]
+    parent_signature_data = ComputationService.extract_theorem_signature_from_lean(
+        parent_main_content, 
+        parent_node.name
+    )
+    if not parent_signature_data:
+        raise CoProofError(
+            f"Could not extract theorem signature for '{parent_node.name}' from parent node. "
+            "Parent must have a theorem/lemma with matching name followed by its type.",
+            code=400
+        )
+
+    child_files = ComputationService.build_computation_child_artifacts(
+        child_name=child_name,
+        folder_segment=folder_segment,
+        parent_theorem_signature=parent_signature_data['signature'],
+    )
+
+    parent_main_with_injection = ComputationService.inject_child_import_and_usage(
+        parent_main_content,
+        child_files['child_main_path'],
+        child_files['theorem_name'],
+        parent_signature_data['explicit_binder_names'],
+    )
+
+    # Verify the combined parent (with injection) + child axiom compile together
+    verification_file_map = dict(file_map)
+    verification_file_map[parent_main_path] = parent_main_with_injection
+    verification_file_map[child_files['child_main_path']] = child_files['child_main_content']
+
+    reachable_files, parent_map = LeanService.resolve_import_tree(parent_main_path, verification_file_map)
+    reachable_map = {path: verification_file_map[path] for path in reachable_files if path in verification_file_map}
+    verification_payload = LeanService.build_verify_payload_from_reachable_map(
+        reachable_map=reachable_map,
+        entry_file=parent_main_path,
+        parent_map=parent_map,
+        project_goal=project.goal,
+    )
+    verification = CompilerClient.verify_snippet(verification_payload)
+    if not verification.get('valid'):
+        return jsonify({
+            "status": "compile_error",
+            "action": "create_computation_node",
+            "project_id": str(project.id),
+            "parent_node_id": str(parent_node.id),
+            "errors": verification.get('errors', []),
+            "verification": verification,
+        }), 400
+
+    files_to_commit = {
+        parent_main_path: parent_main_with_injection,
+        child_files['child_main_path']: child_files['child_main_content'],
+        child_files['child_tex_path']: child_files['child_tex_content'],
+        child_files['child_program_path']: child_files['child_program_template'],
+    }
+    for definitions_path in LeanService.definition_file_paths(file_map):
+        files_to_commit[definitions_path] = file_map[definitions_path]
+
+    branch_name = f"create-compute-node-{str(parent_node.id)[:8]}-{uuid.uuid4().hex[:6]}"
+    GitHubService.create_branch(
+        remote_repo_url=project.remote_repo_url,
+        token=github_token,
+        new_branch=branch_name,
+        from_branch=project.default_branch,
+    )
+    GitHubService.commit_files(
+        remote_repo_url=project.remote_repo_url,
+        token=github_token,
+        branch=branch_name,
+        files=files_to_commit,
+        commit_message=f"Create computation node {child_name} under {parent_node.name} ({str(parent_node.id)[:8]}) via CoProof",
+    )
+
+    affected_nodes_text = f"{parent_node.name}, {child_name}"
+    pr_title = f"Create computation node {child_name} under {parent_node.name}"
+    pr_body = (
+        f"Action: create_computation_node\n"
+        f"Project ID: {project.id}\n"
+        f"Affected nodes: {affected_nodes_text}\n"
+        f"Base node ID: {parent_node.id}\n"
+        f"Child folder: {folder_segment}\n"
+    )
+    pr_data = GitHubService.open_pull_request(
+        remote_repo_url=project.remote_repo_url,
+        token=github_token,
+        title=pr_title,
+        body=pr_body,
+        head_branch=branch_name,
+        base_branch=project.default_branch,
+    )
+
+    return jsonify({
+        "status": "ok",
+        "action": "create_computation_node",
+        "project_id": str(project.id),
+        "parent_node_id": str(parent_node.id),
+        "created_node": {
+            "name": child_name,
+            "node_kind": "computation",
+            "folder": folder_segment,
+            "url": f"{project.url}/blob/{project.default_branch}/{child_files['child_main_path']}",
+            "parent_node_id": str(parent_node.id),
+        },
+        "branch": branch_name,
+        "pull_request": {
+            "number": pr_data.get('number'),
+            "title": pr_data.get('title'),
+            "url": pr_data.get('html_url'),
+        },
+    }), 201
+
+
+@nodes_bp.route('/<uuid:project_id>/<uuid:node_id>/compute', methods=['POST'])
+@jwt_required()
+def compute_node(project_id, node_id):
+    """Execute a computation node, persist evidence, and open a PR with Lean-consumable artifacts."""
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+
+    user = User.query.get_or_404(user_id)
+    project = Project.query.get_or_404(project_id)
+    node = Node.query.filter_by(id=node_id, project_id=project.id).first_or_404()
+    ComputationService.ensure_computation_node(node)
+
+    github_token = AuthService.refresh_github_token_if_needed(user)
+    if not github_token:
+        raise CoProofError("You must link your GitHub account.", code=400)
+
+    node_main_path = GitHubService.extract_repo_path_from_node_url(node.url)
+    if not node_main_path or not node_main_path.endswith('.lean'):
+        raise CoProofError("Node URL does not map to a valid .lean file path.", code=400)
+
+    request_data = ComputationService.normalize_execution_request(data)
+    computation_result = ComputationClient.run_computation(request_data)
+    computation_summary = ComputationService.summarize_computation_result(computation_result)
+    node.computation_spec = ComputationService.build_persisted_spec(request_data)
+    node.last_computation_result = computation_summary
+
+    if not computation_result.get('completed'):
+        db.session.commit()
+        return jsonify({
+            "status": "execution_error",
+            "action": "compute_node",
+            "project_id": str(project.id),
+            "node_id": str(node.id),
+            "computation": computation_summary,
+        }), 400
+
+    if not computation_result.get('sufficient'):
+        db.session.commit()
+        return jsonify({
+            "status": "insufficient_evidence",
+            "action": "compute_node",
+            "project_id": str(project.id),
+            "node_id": str(node.id),
+            "computation": computation_summary,
+        }), 200
+
+    artifact_bundle = ComputationService.build_artifact_bundle(
+        node_main_path=node_main_path,
+        node_name=node.name,
+        request_data=request_data,
+        computation_result=computation_result,
+    )
+
+    lean_file_map = GitHubService.get_repository_files_map(
+        remote_repo_url=project.remote_repo_url,
+        token=github_token,
+        branch=project.default_branch,
+        extensions=('.lean',),
+    )
+    lean_file_map = LeanService.normalize_file_map_for_def_module(lean_file_map)
+    lean_file_map[node_main_path] = artifact_bundle[node_main_path]
+
+    reachable_files, parent_map = LeanService.resolve_import_tree(node_main_path, lean_file_map)
+    reachable_map = {path: lean_file_map[path] for path in reachable_files if path in lean_file_map}
+    verification_payload = LeanService.build_verify_payload_from_reachable_map(
+        reachable_map=reachable_map,
+        entry_file=node_main_path,
+        parent_map=parent_map,
+        project_goal=project.goal,
+    )
+    lean_verification = CompilerClient.verify_snippet(verification_payload)
+
+    if not lean_verification.get('valid'):
+        db.session.commit()
+        return jsonify({
+            "status": "lean_wrapper_error",
+            "action": "compute_node",
+            "project_id": str(project.id),
+            "node_id": str(node.id),
+            "computation": computation_summary,
+            "lean_wrapper_verification": lean_verification,
+        }), 400
+
+    repository_files = GitHubService.get_repository_files_map(
+        remote_repo_url=project.remote_repo_url,
+        token=github_token,
+        branch=project.default_branch,
+        extensions=('.lean', '.py', '.json', '.tex'),
+    )
+    has_changes = any(repository_files.get(path) != content for path, content in artifact_bundle.items())
+
+    if not has_changes:
+        updates = {
+            "action": "compute_node",
+            "updated_nodes": [],
+            "created_nodes": [],
+        }
+        node.state = 'validated'
+        LeanService.append_updated_node(updates, node)
+        LeanService.propagate_parent_states(node.parent, updates, Node)
+        db.session.commit()
+
+        return jsonify({
+            "status": "already_computed",
+            "action": "compute_node",
+            "project_id": str(project.id),
+            "node_id": str(node.id),
+            "message": "No repository changes detected; node state was saved directly in DB.",
+            "computation": computation_summary,
+            "lean_wrapper_verification": lean_verification,
+            "db_updates": updates,
+        }), 200
+
+    branch_name = f"compute-node-{str(node.id)[:8]}-{uuid.uuid4().hex[:6]}"
+    GitHubService.create_branch(
+        remote_repo_url=project.remote_repo_url,
+        token=github_token,
+        new_branch=branch_name,
+        from_branch=project.default_branch,
+    )
+    GitHubService.commit_files(
+        remote_repo_url=project.remote_repo_url,
+        token=github_token,
+        branch=branch_name,
+        files=artifact_bundle,
+        commit_message=f"Compute node {node.name} ({str(node.id)[:8]}) via CoProof",
+    )
+
+    pr_title = f"Compute node {node.name} ({str(node.id)[:8]})"
+    pr_body = (
+        f"Action: compute_node\n"
+        f"Project ID: {project.id}\n"
+        f"Affected node ID: {node.id}\n"
+        f"Affected node name: {node.name}\n"
+    )
+
+    pr_data = GitHubService.open_pull_request(
+        remote_repo_url=project.remote_repo_url,
+        token=github_token,
+        title=pr_title,
+        body=pr_body,
+        head_branch=branch_name,
+        base_branch=project.default_branch,
+    )
+    db.session.commit()
+
+    return jsonify({
+        "status": "ok",
+        "action": "compute_node",
+        "project_id": str(project.id),
+        "node_id": str(node.id),
+        "branch": branch_name,
+        "computation": computation_summary,
+        "lean_wrapper_verification": lean_verification,
+        "pull_request": {
+            "number": pr_data.get('number'),
+            "title": pr_data.get('title'),
+            "url": pr_data.get('html_url'),
+        },
+    }), 201
+
+
 @nodes_bp.route('/<uuid:project_id>/<uuid:node_id>/split', methods=['POST'])
 @jwt_required()
 def split_node(project_id, node_id):
@@ -230,6 +560,7 @@ def split_node(project_id, node_id):
     user = User.query.get_or_404(user_id)
     project = Project.query.get_or_404(project_id)
     node = Node.query.filter_by(id=node_id, project_id=project.id).first_or_404()
+    ComputationService.ensure_proof_node(node)
 
     github_token = AuthService.refresh_github_token_if_needed(user)
     if not github_token:

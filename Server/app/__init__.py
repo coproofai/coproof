@@ -31,12 +31,16 @@ def create_app(config_class=None):
     socketio.init_app(app, message_queue=app.config['REDIS_URL'])
 
     lean_queue = app.config['CELERY_LEAN_QUEUE']
+    computation_queue = app.config['CELERY_COMPUTATION_QUEUE']
+    git_engine_queue = app.config['CELERY_GIT_ENGINE_QUEUE']
     app.config['CELERY_CONFIG'] = {
         'broker_url': app.config['CELERY_BROKER_URL'],
         'result_backend': app.config['CELERY_RESULT_BACKEND'],
         'task_default_queue': lean_queue,
         'task_queues': (
             Queue(lean_queue, Exchange(lean_queue, type='direct'), routing_key=lean_queue),
+            Queue(computation_queue, Exchange(computation_queue, type='direct'), routing_key=computation_queue),
+            Queue(git_engine_queue, Exchange(git_engine_queue, type='direct'), routing_key=git_engine_queue),
         )
     }
     celery.conf.update(app.config['CELERY_CONFIG'])

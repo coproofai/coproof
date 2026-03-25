@@ -92,8 +92,7 @@ export class OpenWorkspacePageComponent {
   }
 
   private handleAuthError(error: any): boolean {
-    const message = this.getBackendErrorMessage(error);
-    if (message === 'Signature verification failed' || error?.status === 401 || error?.status === 422) {
+    if (this.taskService.shouldClearAccessTokenOnError(error)) {
       this.taskService.clearAccessToken();
       this.message = 'Tu sesion expiro o es invalida. Vuelve a Auth para pegar un access token nuevo.';
       return true;

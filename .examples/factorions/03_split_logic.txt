@@ -1,0 +1,39 @@
+import Definitions
+
+theorem sum_fact_digits_bound (n : Nat) :
+    sumFactDigits n ≤ (Nat.digits 10 n).length * 362880 := by
+  -- The sum of the factorials is bounded by (number of digits * 9!)
+  sorry
+
+
+theorem n_gt_sum_bound (n : Nat) (h : n > 2540160) :
+    n > (Nat.digits 10 n).length * 362880 := by
+  -- For any number larger than 2,540,160, the number itself is strictly 
+  -- greater than the maximum possible sum of its digits' factorials.
+  sorry
+
+
+theorem factorion_upper_bound (n : Nat) (h_fact : IsFactorion n) : 
+    n ≤ 2540160 := by
+  -- 1. Assume the opposite (Proof by Contradiction)
+  by_contra h_not_le
+  
+  -- Use omega to quickly convert the negation into a strict inequality
+  have h_gt : n > 2540160 := by omega
+
+  -- 2. Apply Sub-Lemma 2 to show n outgrows the theoretical maximum sum
+  have h_n_too_big : n > (Nat.digits 10 n).length * 362880 :=
+    n_gt_sum_bound n h_gt
+
+  -- 3. Apply Sub-Lemma 1 to establish the theoretical maximum sum
+  have h_sum_bound : sumFactDigits n ≤ (Nat.digits 10 n).length * 362880 :=
+    sum_fact_digits_bound n
+
+  -- 4. Unfold the factorion definition so Lean sees that n = sumFactDigits n
+  unfold IsFactorion at h_fact
+
+  -- 5. Let Lean's automation close the proof!
+  -- 'omega' looks at our context: 
+  -- n = sumFactDigits n, n > max_limit, and sumFactDigits n <= max_limit.
+  -- It instantly recognizes the mathematical impossibility and closes the goal.
+  omega

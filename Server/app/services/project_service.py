@@ -120,6 +120,7 @@ class ProjectService:
             project_id=project.id,
             parent_node_id=None,
             state='sorry',
+            node_kind='proof',
         )
         db.session.add(root_node)
         db.session.commit()

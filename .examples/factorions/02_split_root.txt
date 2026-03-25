@@ -1,0 +1,30 @@
+import Definitions
+
+theorem factorion_upper_bound (n : Nat) (h : IsFactorion n) : 
+    n ≤ 2540160 := by
+  -- Proves analytically that any factorion cannot exceed 2,540,160.
+  sorry
+
+theorem factorion_bounded_exhaustion (n : Nat) (h_bound : n ≤ 2540160) : 
+    IsFactorion n ↔ n = 1 ∨ n = 2 ∨ n = 145 ∨ n = 40585 := by
+  sorry
+
+theorem root : ∀ n : Nat, IsFactorion n ↔ n = 1 ∨ n = 2 ∨ n = 145 ∨ n = 40585 := by
+  intro n
+  apply Iff.intro
+  
+  -- Forward Direction (→): If n is a factorion, it must be one of the four
+  · intro h_fact
+    -- 1. Prove it is within bounds using our logical lemma
+    have h_bound : n ≤ 2540160 := factorion_upper_bound n h_fact
+    -- 2. Use the forward direction (.mp) of our computational lemma
+    exact (factorion_bounded_exhaustion n h_bound).mp h_fact
+    
+  -- Backward Direction (←): If n is one of the four, it is a factorion
+  · intro h_four
+    -- 1. Prove that the four specific numbers are within our bounded range.
+    -- The 'omega' tactic easily checks that {1, 2, 145, 40585} <= 2540160.
+    have h_bound : n ≤ 2540160 := by omega
+    
+    -- 2. Use the backward direction (.mpr) of our computational lemma
+    exact (factorion_bounded_exhaustion n h_bound).mpr h_four

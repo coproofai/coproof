@@ -3,6 +3,8 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
   AccessibleProjectsResponse,
+  ComputeNodePayload,
+  CreateComputationChildPayload,
   CreateProjectPayload,
   DefinitionsFileResponse,
   NodeFileResponse,
@@ -24,15 +26,107 @@ export class TaskService {
   constructor(private http: HttpClient, private zone: NgZone) {}
 
   setAccessToken(token: string) {
-    localStorage.setItem(this.accessTokenKey, token.trim());
+    const normalizedToken = this.normalizeAccessToken(token);
+    localStorage.setItem(this.accessTokenKey, normalizedToken);
   }
 
   getAccessToken(): string {
     return localStorage.getItem(this.accessTokenKey) || '';
   }
 
+  getTokenType(token?: string): 'access' | 'refresh' | null {
+    const raw = (token ?? this.getAccessToken() ?? '').trim();
+    if (!raw) {
+      return null;
+    }
+
+    const parts = raw.split('.');
+    if (parts.length < 2) {
+      return null;
+    }
+
+    try {
+      const payloadJson = this.decodeBase64Url(parts[1]);
+      const payload = JSON.parse(payloadJson);
+      const type = payload?.type;
+      if (type === 'access' || type === 'refresh') {
+        return type;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   clearAccessToken() {
     localStorage.removeItem(this.accessTokenKey);
+  }
+
+  shouldClearAccessTokenOnError(error: any): boolean {
+    const status = error?.status;
+    const msg = this.extractBackendErrorMessage(error).toLowerCase();
+
+    if (!msg) {
+      return false;
+    }
+
+    const jwtHints = [
+      'signature verification failed',
+      'token has expired',
+      'not enough segments',
+      'missing authorization header',
+      'invalid header',
+      'invalid token',
+      'bad authorization header',
+      'subject must be a string',
+      'only non-refresh tokens are allowed',
+      'token is invalid',
+      'token has been revoked',
+      'jwt',
+    ];
+
+    const hasJwtHint = jwtHints.some((hint) => msg.includes(hint));
+    if (!hasJwtHint) {
+      return false;
+    }
+
+    return status === 401;
+  }
+
+  private extractBackendErrorMessage(error: any): string {
+    const payload = error?.error;
+
+    if (typeof payload === 'string') {
+      return payload;
+    }
+
+    return payload?.message || payload?.error || payload?.msg || '';
+  }
+
+  private normalizeAccessToken(rawToken: string): string {
+    const trimmed = (rawToken || '').trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    if (/^bearer\s+/i.test(trimmed)) {
+      return trimmed.replace(/^bearer\s+/i, '').trim();
+    }
+
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        const candidate = typeof parsed?.access_token === 'string' ? parsed.access_token.trim() : '';
+        if (candidate) {
+          return /^bearer\s+/i.test(candidate)
+            ? candidate.replace(/^bearer\s+/i, '').trim()
+            : candidate;
+        }
+      } catch {
+      }
+    }
+
+    return trimmed;
   }
 
   getCurrentUserIdFromToken(): string | null {
@@ -154,6 +248,18 @@ export class TaskService {
     return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/split`, {
       lean_code: leanCode
     }, {
+      headers: this.authHeaders()
+    });
+  }
+
+  createComputationChildNode(projectId: string, nodeId: string, payload: CreateComputationChildPayload): Observable<unknown> {
+    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/children/computation`, payload, {
+      headers: this.authHeaders()
+    });
+  }
+
+  computeNode(projectId: string, nodeId: string, payload: ComputeNodePayload): Observable<unknown> {
+    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/compute`, payload, {
       headers: this.authHeaders()
     });
   }

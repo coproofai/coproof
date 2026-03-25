@@ -1,0 +1,49 @@
+import Definitions
+
+theorem sum_fact_digits_bound (n : Nat) :
+    sumFactDigits n ≤ (Nat.digits 10 n).length * 362880 := by
+  -- Expand our custom definition so Lean sees the list map and sum
+  unfold sumFactDigits
+  
+  -- STEP 1: Create a generalized rule for ANY list of digits bounded by 10
+  have h_list_bound : ∀ (L : List Nat), (∀ d ∈ L, d < 10) → 
+      (L.map Nat.factorial).sum ≤ L.length * 362880 := by
+    intro L
+    -- We prove this by structural induction on the list
+    induction L with
+    | nil => 
+      -- Base case: Empty list. Sum is 0, length is 0. 0 <= 0.
+      intro _
+      simp
+    | cons d t ih =>
+      -- Inductive step: The list has a head 'd' and a tail 't'
+      intro h_all
+      
+      -- Simplify the list operations into basic arithmetic
+      simp only [List.map_cons, List.sum_cons, List.length_cons, add_mul, one_mul]
+      
+      -- Extract the conditions for the head (d) and the tail (t)
+      have hd_lt : d < 10 := h_all d (List.Mem.head t)
+      have ht_all : ∀ x ∈ t, x < 10 := fun x hx => h_all x (List.Mem.tail d hx)
+      
+      -- Evaluate the maximum factorial for the single digit 'd'
+      -- 'interval_cases' splits 'd < 10' into d=0, d=1... d=9 and checks them all!
+      have h_d_fact : d.factorial ≤ 362880 := by
+        interval_cases d <;> decide
+        
+      -- Apply our inductive hypothesis to the tail
+      have h_t_sum : (t.map Nat.factorial).sum ≤ t.length * 362880 := ih ht_all
+      
+      -- Let 'omega' handle the final arithmetic combination:
+      -- If d! <= 362880 and sum(t) <= length(t) * 362880, then their sums add up.
+      omega
+
+  -- STEP 2: Apply our generalized list rule to our specific base-10 list
+  apply h_list_bound
+  
+  -- STEP 3: Prove that every digit produced by base-10 extraction is actually < 10
+  intro d hd
+  -- Mathlib 4 requires us to show the base is strictly greater than 1
+  have h_base : 1 < 10 := by decide
+  -- Apply the newly named Lean 4 theorem
+  exact Nat.digits_lt_base h_base hd
