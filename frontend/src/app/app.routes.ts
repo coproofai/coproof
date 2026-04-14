@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { AuthPageComponent } from './pages/auth-page/auth-page';
 import { ShellComponent } from './shell.component';
+import { authGuard } from './auth.guard';
 import { MenuPageComponent } from './pages/menu-page/menu-page';
 import { ValidationPageComponent } from './pages/validation-page/validation-page';
 import { TranslationPageComponent } from './pages/translation-page/translation-page';
@@ -19,6 +20,7 @@ export const routes: Routes = [
 	{
 		path: '',
 		component: ShellComponent,
+		canActivate: [authGuard],
 		children: [
 			{ path: 'menu', component: MenuPageComponent },
 			{ path: 'validation', component: ValidationPageComponent },

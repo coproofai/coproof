@@ -8,6 +8,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'postgresql://coproof:coproofpass@db:5432/coproof_db')
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'jwt_secret_change_me')
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
     CACHE_TYPE = "RedisCache"
     CACHE_REDIS_URL = REDIS_URL

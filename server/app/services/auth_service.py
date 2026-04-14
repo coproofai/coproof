@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+import secrets
 import time
 from urllib.parse import urlencode
 import jwt
@@ -133,7 +134,7 @@ class AuthService:
         params = {
             "client_id": os.environ.get('GITHUB_CLIENT_ID'),
             "scope": os.environ.get('GITHUB_OAUTH_SCOPES', "repo,read:user,user:email"),
-            "state": "random_string_to_prevent_csrf" # In prod, generate random string
+            "state": secrets.token_urlsafe(16)
         }
 
         redirect_uri = os.environ.get('GITHUB_REDIRECT_URI')

@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { NgFor } from '@angular/common';
+import { NgFor, NgIf, AsyncPipe } from '@angular/common';
+import { AuthService, AuthUser } from './auth.service';
 
 interface NavItem {
   label: string;
@@ -10,15 +11,19 @@ interface NavItem {
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, NgFor],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, NgFor, NgIf, AsyncPipe],
   template: `
     <div class="app-shell">
       <header class="shell-header">
         <div class="shell-header-main">
           <div class="shell-title">CoProof</div>
-          <button class="menu-toggle" (click)="menuOpen = !menuOpen">
-            {{ menuOpen ? 'Hide Menu' : 'Show Menu' }}
-          </button>
+          <div class="shell-header-right">
+            <span *ngIf="user" class="user-label">{{ user.full_name }}</span>
+            <button class="logout-btn" (click)="logout()">Salir</button>
+            <button class="menu-toggle" (click)="menuOpen = !menuOpen">
+              {{ menuOpen ? 'Hide Menu' : 'Show Menu' }}
+            </button>
+          </div>
         </div>
 
         <nav class="shell-nav" [class.hidden]="!menuOpen">
@@ -57,6 +62,28 @@ interface NavItem {
       justify-content: space-between;
       align-items: center;
     }
+    .shell-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .user-label {
+      font-size: 0.82rem;
+      color: #6b7280;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .logout-btn {
+      border: 1px solid #d1d5db;
+      background: #fff;
+      color: #dc2626;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .logout-btn:hover { background: #fef2f2; }
     .shell-title { font-size: 1.15rem; font-weight: 700; white-space: nowrap; }
     .menu-toggle {
       border: 1px solid #d1d5db;
@@ -93,6 +120,15 @@ interface NavItem {
 })
 export class ShellComponent {
   menuOpen = false;
+  user: AuthUser | null;
+
+  constructor(private readonly auth: AuthService) {
+    this.user = this.auth.getUser();
+  }
+
+  logout(): void {
+    this.auth.logout();
+  }
 
   navItems: NavItem[] = [
     { label: 'Main Menu', route: '/menu' },

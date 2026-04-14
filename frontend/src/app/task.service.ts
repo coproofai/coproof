@@ -60,6 +60,8 @@ export class TaskService {
 
   clearAccessToken() {
     localStorage.removeItem(this.accessTokenKey);
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('auth_user');
   }
 
   shouldClearAccessTokenOnError(error: any): boolean {
