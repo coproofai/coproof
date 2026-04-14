@@ -46,7 +46,7 @@ jobs:
         run: npm ci
 
       - name: Run unit tests
-        run: npm test -- --run
+        run: npx vitest run
 
       - name: Production build check
         run: npm run build -- --configuration=production

@@ -1,4 +1,5 @@
 import pytest
+from config import get_config_class
 from app import create_app
 from app.extensions import db as _db
 
@@ -11,7 +12,7 @@ def app():
     The db service is started automatically by docker compose as a
     dependency of the web service.
     """
-    application = create_app("testing")
+    application = create_app(get_config_class("testing"))
     with application.app_context():
         _db.create_all()
         yield application
