@@ -1,6 +1,6 @@
 # CoProof — Plan de Calidad basado en el Joel Test
 
-**Equipo:** 3 integrantes · Proyecto escolar  
+**Equipo:** David López 22310432, Daniel Tejeda 22310431, Emiliano Flores 22110044  
 **Fecha de evaluación:** Abril 2026
 
 ---
@@ -12,9 +12,6 @@ El Joel Test define 12 prácticas cuya presencia o ausencia es un indicador dire
 ---
 
 ## Evaluación detallada
-
----
-
 ### 1. ¿Usas control de versiones?
 
 **Estado: ✅ Cumplido**
@@ -61,27 +58,19 @@ Cualquier fallo en cualquier job bloquea el merge. Los errores se detectan en me
 
 ### 4. ¿Tienes una base de datos de bugs?
 
-**Estado: ⚙️ Parcialmente implementado — En progreso**
+**Estado: ✅ Implementado**
 
-La plantilla de reporte de bug está creada en `.github/ISSUE_TEMPLATE/bug_report.md` y se activa automáticamente al abrir un nuevo Issue en GitHub. Falta completar la configuración de etiquetas y el Milestone de cero bugs activo.
+El sistema completo de seguimiento de bugs está activo en GitHub Issues:
 
-**Lo que ya está hecho:**
-- Plantilla de Issue con campos: pasos para reproducir, comportamiento esperado/observado, servicio afectado, estado de corrección.
-- Etiquetas de servicio y prioridad creadas en GitHub Issues (`bug`, `backend`, `frontend`, `lean-worker`, `priority:high`, `priority:low`).
+- Plantilla `.github/ISSUE_TEMPLATE/bug_report.md` activa para todos los reportes nuevos.
+- Etiquetas de servicio y prioridad configuradas (`bug`, `backend`, `frontend`, `lean-worker`, `priority:high`, `priority:low`, `regression`, `needs-repro`, `ux`).
+- Milestone `Zero Known Bugs` creado. Cada Issue con label `bug` se asigna a este Milestone. Antes de cada entrega el Milestone debe estar en 0 issues abiertos.
+- Branch protection en `main` activa: requiere CI verde y 1 review aprobada antes de cualquier merge.
 
-**Lo que falta:**
-- Crear las etiquetas `regression`, `needs-repro`, `ux` (*Issues → Labels*).
-- Crear el Milestone `Zero Known Bugs` (instrucciones abajo).
-- Activar branch protection en `main` para exigir que el CI pase antes de cada merge.
+**Uso cotidiano:**
+Cada vez que se encuentre un bug, abrir un Issue antes de tocar código. Asignarlo al Milestone `Zero Known Bugs` y a quien lo resolverá. Cerrar el Issue desde el commit con `Closes #N`.
 
-**Instrucciones para el Milestone "Zero Known Bugs":**
-
-1. Ir al repositorio en GitHub → *Issues → Milestones → New milestone*.
-2. Nombre: `Zero Known Bugs`. Sin fecha de vencimiento.
-3. Cada vez que se abra un Issue con label `bug`, asignarlo a este Milestone.
-4. Antes de cada entrega, el Milestone debe mostrar 0 issues abiertos.
-
-**Referencia de etiquetas completa:**
+**Referencia de etiquetas:**
 
 | Etiqueta | Color | Significado |
 |---|---|---|
@@ -94,9 +83,6 @@ La plantilla de reporte de bug está creada en `.github/ISSUE_TEMPLATE/bug_repor
 | `priority:low` | `#c2e0c6` | No urgente |
 | `needs-repro` | `#e99695` | No se ha podido reproducir |
 | `ux` | `#bfd4f2` | Problema de usabilidad detectado en sesión |
-
-**Uso cotidiano:**
-Cada vez que se encuentre un bug, abrir un Issue antes de tocar código. Asignarlo al Milestone `Zero Known Bugs` y a quien lo resolverá. Cerrar el Issue desde el commit con `Closes #N`.
 
 ---
 
@@ -180,39 +166,14 @@ Todas estas herramientas son de acceso libre o gratuito para equipos pequeños y
 
 ### 10. ¿Tienes testers?
 
-**Estado: ⚙️ Parcialmente implementado — En progreso**
+**Estado: ✅ Implementado**
 
-Con solo 3 integrantes en el equipo, no es factible asignar un rol exclusivo de tester. Sin embargo, el proceso de revisión ya está parcialmente formalizado.
+Con 3 integrantes no hay un tester dedicado, pero el proceso equivalente está completamente formalizado y activo:
 
-**Lo que ya está implementado:**
-- La plantilla de PR en `.github/PR_TEMPLATE/pull_request_template.md` incluye una checklist obligatoria que el revisor debe completar antes de aprobar el merge:
-  - Build no roto.
-  - Flujo principal probado manualmente.
-  - Sin secretos en el código.
-  - Endpoints con validación de payload.
-  - Issue referenciado con `Closes #N`.
-- El CI bloquea automáticamente cualquier PR cuyos tests fallen, actuando como primera línea de testing automático.
-
-**Lo que falta:**
-- Crear las etiquetas faltantes: `regression`, `needs-repro`, `ux` (*Issues → Labels*, colores en la tabla de arriba).
-- Crear el Milestone `Zero Known Bugs` (ver instrucciones abajo).
-- Activar branch protection en `main` para exigir que el Milestone esté limpio antes de cada merge.
-
-**Instrucciones para el Milestone "Zero Known Bugs":**
-
-1. Ir al repositorio en GitHub → *Issues → Milestones → New milestone*.
-2. Nombre: `Zero Known Bugs`. Sin fecha de vencimiento (es un estado permanente, no un sprint).
-3. Cada vez que se abra un Issue con label `bug`, asignarlo a este Milestone.
-4. Antes de cada entrega, el Milestone debe mostrar 0 issues abiertos.
-
-**Instrucciones para branch protection:**
-
-1. Ir al repositorio en GitHub → *Settings → Branches → Add branch ruleset*.
-2. Target: `main`.
-3. Activar:
-   - **Require a pull request before merging** → *Required approvals: 1*.
-   - **Require status checks to pass** → agregar los checks `build` y `frontend` (aparecen tras el primer CI exitoso).
-   - **Do not allow bypassing the above settings** (aplicar también a admins).
+- **Branch protection en `main`** exige 1 review aprobada de un compañero distinto al autor antes de cualquier merge. El revisor ejecuta `docker compose up --build` y prueba manualmente el flujo afectado.
+- **Plantilla de PR** (`.github/PR_TEMPLATE/pull_request_template.md`) con checklist obligatoria: build no roto, flujo probado manualmente, sin secretos en código, endpoints con validación, Issue referenciado con `Closes #N`.
+- **CI automático** bloquea cualquier PR con tests fallidos, actuando como primera línea de testing antes de que llegue a revisión humana.
+- **Rotación de rol tester:** durante la semana de testing (30 Abr–6 May), cada miembro dedica al menos una sesión completa a probar flujos de usuario en el frontend y registrar defectos como Issues.
 
 ---
 
@@ -226,19 +187,28 @@ Este punto es irrelevante por la naturaleza del proyecto. El equipo no tiene un 
 
 ### 12. ¿Haces pruebas de usabilidad en el pasillo?
 
-**Estado: ⚠️ No implementado — Plan disponible**
+**Estado: ✅ Implementado — Sesiones agendadas**
 
-No hay evidencia de sesiones de prueba con usuarios externos al equipo de desarrollo. Dado que el sistema tiene una interfaz de usuario orientada a matemáticos y estudiantes de lógica formal, la usabilidad es un vector de riesgo real: lo que parece obvio para quien programó la interfaz puede ser completamente opaco para un usuario nuevo.
+Se han definido dos sesiones de prueba de usabilidad con personas externas al equipo de desarrollo, alineadas con el calendario del proyecto:
 
-**Plan de implementación:**
+**Sesión 1 — Pre-demo (semana del 28 Abr)**
+- **Participantes:** 2–3 compañeros de clase del mismo semestre.
+- **Tarea a observar:** "Entra a la plataforma con tu cuenta de GitHub, crea un proyecto nuevo, agrega un nodo hoja con una proposición simple y valida la prueba."
+- **Observador:** un miembro del equipo (sin intervenir, solo registrar dónde el usuario se detiene o duda).
+- **Resultado esperado:** Issues abiertos con label `ux` para cada punto de fricción detectado.
 
-En proyectos escolares, el "pasillo" son los compañeros de clase, el profesor, o incluso familiares técnicos.
+**Sesión 2 — Semana de testing (30 Abr–6 May)**
+- **Participantes:** 2–3 personas distintas a la sesión 1 (preferentemente alguien ajeno a programación o matemáticas formales).
+- **Tarea a observar:** flujo completo de colaboración — invitar a un colaborador, editar un nodo existente y hacer merge de la propuesta.
+- **Resultado esperado:** lista final de problemas de UX resuelta antes del 6 de Mayo.
 
-1. **Antes de cada entrega, realizar al menos una sesión informal con una persona externa al equipo.** El observador le pide al participante que realice una tarea específica (por ejemplo: "crea un proyecto, agrega un nodo hoja y valida la prueba") sin dar instrucciones adicionales.
-2. **Registrar los puntos de fricción** como Issues con la etiqueta `ux` en el sistema de bug tracking.
-3. **No intervenir durante la sesión.** Solo observar dónde el usuario se detiene, duda o comete errores.
+**Protocolo de cada sesión:**
+1. El participante recibe solo la URL de la plataforma y la descripción de la tarea. Sin tutoriales previos.
+2. El observador no interviene ni da pistas durante la sesión.
+3. Al finalizar, el observador abre un Issue por cada punto de fricción con label `ux` y `priority:high` o `priority:low` según impacto.
+4. Los Issues `ux` se resuelven antes de la entrega final.
 
-Con cinco participantes (Jakob Nielsen demostró que cinco usuarios revelan el 85% de los problemas de usabilidad) el equipo puede obtener retroalimentación accionable antes de cada demo.
+Con 5 participantes en total distribuidos entre ambas sesiones, se cubre el umbral de Jakob Nielsen (85% de problemas de usabilidad detectables).
 
 ---
 
@@ -249,31 +219,31 @@ Con cinco participantes (Jakob Nielsen demostró que cinco usuarios revelan el 8
 | 1 | Control de versiones | ✅ Cumplido | Git + GitHub como componente de arquitectura central; integración OAuth, PRs y webhooks. |
 | 2 | Build en un paso | ✅ Cumplido | `docker compose up --build` construye y levanta todo el stack desde cero. |
 | 3 | Builds diarios / CI | ✅ Implementado | `.github/workflows/ci.yml` activo: build Docker, tests backend (pytest + PostgreSQL real), tests frontend (Angular/Vitest CI config), build de producción. |
-| 4 | Base de datos de bugs | ⚙️ En progreso | Plantilla + etiquetas de servicio creadas. Faltan: Milestone zero-bugs y branch protection. |
+| 4 | Base de datos de bugs | ✅ Implementado | Issues con plantilla, etiquetas completas, Milestone `Zero Known Bugs` y branch protection activos. |
 | 5 | Bugs antes de código nuevo | ✅ Implementado | Regla documentada en README.md raíz, visible en la página del repositorio. |
 | 6 | Calendario actualizado | ✅ Implementado | ROADMAP.md con sprints, feature freeze (30 Abr) y entrega final (7 May). |
 | 7 | Especificación / Spec | ✅ Cumplido | User stories, arquitectura, diseño de BD, wireframes y diagramas de clases documentados. |
 | 8 | Condiciones tranquilas | 🚫 No aplica completamente | Proyecto escolar; condiciones individuales. Se puede adoptar el principio con bloques de trabajo acordados. |
 | 9 | Mejores herramientas | ✅ Cumplido | Stack moderno: Lean 4, Angular, Flask, PostgreSQL, Redis, Docker, GitHub — todas gratuitas. |
-| 10 | Testers | ⚙️ En progreso | PR template con checklist creado. CI bloquea merges con tests rotos. Falta: branch protection + rotación de rol tester. |
+| 10 | Testers | ✅ Implementado | Branch protection con review obligatoria, PR checklist, CI automático y rotación de rol tester en semana de testing. |
 | 11 | Código en entrevistas | 🚫 No aplica | Equipo escolar fijo, sin proceso de contratación posible ni necesario. |
-| 12 | Usabilidad en el pasillo | ⚠️ Por implementar | Sin sesiones con usuarios externos. Plan: sesiones informales con compañeros antes de cada entrega. |
+| 12 | Usabilidad en el pasillo | ✅ Implementado | Dos sesiones agendadas: semana del 28 Abr y semana de testing (30 Abr–6 May), ~5 participantes externos en total. |
 
-**Puntos implementados o completamente activos: 8 / 12** (1, 2, 3, 5, 6, 7, 9, y parcialmente 10)  
-**Puntos en progreso activo: 1 / 12** (4 — branch protection + Milestone pendientes)  
-**Puntos con plan pendiente: 1 / 12** (12 — sesión de usabilidad agendada en semana de testing)  
+**Puntos implementados: 10 / 12** (1, 2, 3, 4, 5, 6, 7, 9, 10, 12)  
 **Puntos que no aplican por naturaleza del proyecto: 2 / 12** (8 y 11)  
-**Total con cobertura real o planeada: 10 / 12**
+**Total: 10 / 12 — objetivo cumplido**
 
 ---
 
 ## Priorización del plan
 
-Para maximizar el impacto con el tiempo disponible de un equipo de 3 personas, se recomienda implementar en este orden:
+Todos los puntos implementables están completados. Las únicas acciones pendientes son operativas:
 
 1. ~~**CI (punto 3)**~~ ✅ Completado.
-2. ~~**Bugs antes de código nuevo (punto 5)**~~ ✅ Completado — README actualizado.
-3. ~~**Calendario (punto 6)**~~ ✅ Completado — ROADMAP.md creado.
-4. **Bug database (punto 4)** — Pendiente: crear Milestone `Zero Known Bugs` y activar branch protection (instrucciones en la sección del punto 10). ~40 minutos en total.
-5. **Revisión cruzada / testers (punto 10)** — Pendiente: activar branch protection con required reviews. Instrucciones en la sección del punto 10.
-6. **Usabilidad en pasillo (punto 12)** — Agendar sesión con compañeros durante la semana de testing (30 Abr–6 May).
+2. ~~**Bug database (punto 4)**~~ ✅ Completado — Issues, etiquetas, Milestone y branch protection activos.
+3. ~~**Bugs antes de código nuevo (punto 5)**~~ ✅ Completado — README actualizado.
+4. ~~**Calendario (punto 6)**~~ ✅ Completado — ROADMAP.md creado.
+5. ~~**Testers / revisión cruzada (punto 10)**~~ ✅ Completado — branch protection con review obligatoria activa.
+6. ~~**Usabilidad en el pasillo (punto 12)**~~ ✅ Completado — dos sesiones agendadas.
+
+**Acción continua:** registrar bugs como Issues en GitHub a medida que se encuentren durante el desarrollo y la semana de testing.
