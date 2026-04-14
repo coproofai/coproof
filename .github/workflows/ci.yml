@@ -16,13 +16,6 @@ jobs:
       - name: Build Docker images
         run: docker compose build
       - name: Run backend tests
-        run: |
-          docker compose run --rm web python -m pytest
-          EXIT=$?
-          if [ $EXIT -eq 5 ]; then
-            echo "No tests collected — skipping until tests are written"
-            exit 0
-          fi
-          exit $EXIT
+        run: docker compose run --rm web python -m pytest || [ $? -eq 5 ]
       - name: Run frontend lint
         run: docker compose run --rm frontend npm run lint
