@@ -52,7 +52,7 @@ El archivo `.github/workflows/ci.yml` está activo y se dispara en cada `push` a
 **Job `frontend` (Angular + Vitest):**
 1. `actions/setup-node@v4` con Node 22 y caché de `npm`.
 2. `npm ci` — instalación determinista de dependencias.
-3. `npm test -- --run` — ejecuta los tests unitarios con Vitest en modo single-run (sin watch).
+3. `npx ng test --configuration=ci` — ejecuta los tests unitarios con la configuración CI de Angular (Vitest, single-run, sin watch).
 4. `npm run build -- --configuration=production` — verifica que el bundle de producción compila sin errores TypeScript.
 
 Cualquier fallo en cualquier job bloquea el merge. Los errores se detectan en menos de 5 minutos desde el push.
@@ -67,22 +67,25 @@ La plantilla de reporte de bug está creada en `.github/ISSUE_TEMPLATE/bug_repor
 
 **Lo que ya está hecho:**
 - Plantilla de Issue con campos: pasos para reproducir, comportamiento esperado/observado, servicio afectado, estado de corrección.
+- Etiquetas de servicio y prioridad creadas en GitHub Issues (`bug`, `backend`, `frontend`, `lean-worker`, `priority:high`, `priority:low`).
 
 **Lo que falta:**
+- Crear las etiquetas `regression`, `needs-repro`, `ux` (*Issues → Labels*).
+- Crear el Milestone `Zero Known Bugs` (instrucciones abajo).
+- Activar branch protection en `main` para exigir que el CI pase antes de cada merge.
 
-**Plan de implementación con GitHub Issues:**
+**Instrucciones para el Milestone "Zero Known Bugs":**
 
-GitHub Issues es la herramienta más adecuada para este proyecto dado que el código ya vive en GitHub. Los pasos concretos son:
+1. Ir al repositorio en GitHub → *Issues → Milestones → New milestone*.
+2. Nombre: `Zero Known Bugs`. Sin fecha de vencimiento.
+3. Cada vez que se abra un Issue con label `bug`, asignarlo a este Milestone.
+4. Antes de cada entrega, el Milestone debe mostrar 0 issues abiertos.
 
-**Paso 1 — Habilitar Issues en el repositorio**
-En la configuración del repositorio en GitHub: *Settings → General → Features → Issues* (activar si no está activo).
-
-**Paso 2 — Crear un sistema de etiquetas**
-Ir a *Issues → Labels* y crear las siguientes etiquetas:
+**Referencia de etiquetas completa:**
 
 | Etiqueta | Color | Significado |
 |---|---|---|
-| `bug` | `#d73a4a` (rojo) | Error confirmado en el sistema |
+| `bug` | `#d73a4a` | Error confirmado en el sistema |
 | `regression` | `#e4e669` | Funcionalidad que antes funcionaba |
 | `lean-worker` | `#0075ca` | Bug en el servicio Lean |
 | `backend` | `#5319e7` | Bug en Flask/API |
@@ -90,77 +93,39 @@ Ir a *Issues → Labels* y crear las siguientes etiquetas:
 | `priority:high` | `#b60205` | Bloquea entrega o demo |
 | `priority:low` | `#c2e0c6` | No urgente |
 | `needs-repro` | `#e99695` | No se ha podido reproducir |
+| `ux` | `#bfd4f2` | Problema de usabilidad detectado en sesión |
 
-**Paso 3 — Plantilla de reporte de bug**
-Crear el archivo `.github/ISSUE_TEMPLATE/bug_report.md`:
-
-```markdown
----
-name: Bug report
-about: Reportar un error en CoProof
-labels: bug, needs-repro
----
-
-**Pasos para reproducir**
-1. ...
-2. ...
-
-**Comportamiento esperado**
-<!--Qué debería ocurrir-->
-
-**Comportamiento observado**
-<!--Qué ocurre en realidad-->
-
-**Entorno**
-- Servicio afectado: [ ] backend [ ] lean-worker [ ] frontend
-- Rama / commit: 
-- Docker compose version:
-
-**¿Está corregido?**
-- [ ] Sí — PR #
-- [ ] No
-```
-
-**Paso 4 — Uso cotidiano**
-Cada vez que se encuentre un bug (propio o de otro miembro), abrir un Issue antes de tocar código. Asignarlo a quien lo resolverá. Cuando se cierre el PR asociado, cerrar el Issue desde el mensaje del commit usando `Closes #N`.
-
-**Paso 5 — Milestone de "zero bugs known"**
-Crear un Milestone llamado `Zero Known Bugs` para agrupar todos los bugs abiertos. Antes de cada entrega, el milestone debe estar en 0 issues abiertos.
+**Uso cotidiano:**
+Cada vez que se encuentre un bug, abrir un Issue antes de tocar código. Asignarlo al Milestone `Zero Known Bugs` y a quien lo resolverá. Cerrar el Issue desde el commit con `Closes #N`.
 
 ---
 
 ### 5. ¿Corriges bugs antes de escribir código nuevo?
 
-**Estado: ⚠️ No formalizado — Plan disponible**
+**Estado: ✅ Implementado**
 
-No existe una política explícita en el repositorio. Sin embargo, la existencia de notas en `memory/repo/project_ii_notes.md` demuestra que el equipo ha identificado bugs recurrentes (por ejemplo, la condición de race condition en el merge de PRs o el manejo incorrecto de HTTP 422 en el frontend). Lo problemático es que no hay un proceso que garantice que un bug conocido se resuelva antes de avanzar.
-
-**Plan de implementación:**
-
-Adoptar la siguiente regla de equipo, documentada en el README del repositorio:
+La regla de prioridades está documentada en el `README.md` raíz del repositorio y es visible para todo el equipo en la página principal del repo en GitHub:
 
 > **Regla de prioridades:** Antes de iniciar cualquier historia de usuario nueva, el tablero de Issues no debe tener bugs etiquetados con `priority:high` en estado abierto. Si los hay, el miembro asignado los resuelve primero.
 
-Esta regla es suficiente para un equipo de 3 personas y no requiere herramientas adicionales más allá del sistema de Issues descrito en el punto 4.
+El sistema de Issues con etiquetas de prioridad (creado en el punto 4) es la herramienta que hace esta regla operativa.
 
 ---
 
 ### 6. ¿Tienes un calendario actualizado?
 
-**Estado: ⚠️ No implementado — Plan disponible**
+**Estado: ✅ Implementado**
 
-No hay ningún archivo de planificación, Gantt, ni hoja de ruta formal en el repositorio. En un proyecto escolar esto es especialmente crítico porque las entregas tienen fechas fijas que no se pueden negociar.
+El archivo `ROADMAP.md` en la raíz del repositorio define el calendario completo hasta la entrega final del 7 de mayo de 2026:
 
-**Plan de implementación:**
+- **Sprint 1** (14–20 Abr): vistas, acceso, perfil, visuals.
+- **Sprint 2** (21–27 Abr): lenguaje natural, traductor formal, LaTeX viewer.
+- **Sprint 3** (28–30 Abr): sugerencias IA, modo MPI/Slurm.
+- **Feature freeze**: 30 de Abril.
+- **Semana de testing**: 30 Abr — 6 May.
+- **Entrega final**: 7 de Mayo, tag `v1.0.0`.
 
-Usar **GitHub Milestones** como calendario ligero:
-
-1. Crear un Milestone por cada entrega del semestre (por ejemplo: *Avance 3*, *Demo Final*, *Entrega Final*) con su fecha límite real.
-2. Asignar cada Issue y PR al Milestone correspondiente.
-3. La barra de progreso del Milestone muestra automáticamente el porcentaje completado.
-4. Revisar el estado del Milestone activo en cada reunión de equipo (mínimo semanal).
-
-Complementariamente, mantener un archivo `ROADMAP.md` en la raíz con las features comprometidas por entrega. Este archivo se actualiza cuando el scope cambia, dejando evidencia del cambio.
+Cada sprint tiene un criterio de cierre medible: Milestone del sprint en 0 issues `priority:high` abiertos. El ROADMAP se actualiza al inicio de cada sprint si el scope cambia.
 
 ---
 
@@ -229,8 +194,25 @@ Con solo 3 integrantes en el equipo, no es factible asignar un rol exclusivo de 
 - El CI bloquea automáticamente cualquier PR cuyos tests fallen, actuando como primera línea de testing automático.
 
 **Lo que falta:**
-- Hacer cumplir en la configuración de GitHub que se requiera al menos una review aprobada antes de poder hacer merge (*Settings → Branches → Branch protection rules → Require a pull request before merging*).
-- Acordar y documentar la rotación del rol de "tester de entrega" en cada sprint.
+- Crear las etiquetas faltantes: `regression`, `needs-repro`, `ux` (*Issues → Labels*, colores en la tabla de arriba).
+- Crear el Milestone `Zero Known Bugs` (ver instrucciones abajo).
+- Activar branch protection en `main` para exigir que el Milestone esté limpio antes de cada merge.
+
+**Instrucciones para el Milestone "Zero Known Bugs":**
+
+1. Ir al repositorio en GitHub → *Issues → Milestones → New milestone*.
+2. Nombre: `Zero Known Bugs`. Sin fecha de vencimiento (es un estado permanente, no un sprint).
+3. Cada vez que se abra un Issue con label `bug`, asignarlo a este Milestone.
+4. Antes de cada entrega, el Milestone debe mostrar 0 issues abiertos.
+
+**Instrucciones para branch protection:**
+
+1. Ir al repositorio en GitHub → *Settings → Branches → Add branch ruleset*.
+2. Target: `main`.
+3. Activar:
+   - **Require a pull request before merging** → *Required approvals: 1*.
+   - **Require status checks to pass** → agregar los checks `build` y `frontend` (aparecen tras el primer CI exitoso).
+   - **Do not allow bypassing the above settings** (aplicar también a admins).
 
 ---
 
@@ -266,10 +248,10 @@ Con cinco participantes (Jakob Nielsen demostró que cinco usuarios revelan el 8
 |---|---|---|---|
 | 1 | Control de versiones | ✅ Cumplido | Git + GitHub como componente de arquitectura central; integración OAuth, PRs y webhooks. |
 | 2 | Build en un paso | ✅ Cumplido | `docker compose up --build` construye y levanta todo el stack desde cero. |
-| 3 | Builds diarios / CI | ✅ Implementado | `.github/workflows/ci.yml` activo: build Docker, tests backend (pytest + PostgreSQL real), tests frontend (Vitest), build de producción. |
-| 4 | Base de datos de bugs | ⚙️ En progreso | Plantilla de Issue creada. Faltan: etiquetas, Milestone zero-bugs y branch protection. |
-| 5 | Bugs antes de código nuevo | ⚠️ Por implementar | Sin política formal. Plan: regla de equipo documentada en README + uso del tablero de Issues. |
-| 6 | Calendario actualizado | ⚠️ Por implementar | Sin planificación formal. Plan: GitHub Milestones por entrega + archivo `ROADMAP.md`. |
+| 3 | Builds diarios / CI | ✅ Implementado | `.github/workflows/ci.yml` activo: build Docker, tests backend (pytest + PostgreSQL real), tests frontend (Angular/Vitest CI config), build de producción. |
+| 4 | Base de datos de bugs | ⚙️ En progreso | Plantilla + etiquetas de servicio creadas. Faltan: Milestone zero-bugs y branch protection. |
+| 5 | Bugs antes de código nuevo | ✅ Implementado | Regla documentada en README.md raíz, visible en la página del repositorio. |
+| 6 | Calendario actualizado | ✅ Implementado | ROADMAP.md con sprints, feature freeze (30 Abr) y entrega final (7 May). |
 | 7 | Especificación / Spec | ✅ Cumplido | User stories, arquitectura, diseño de BD, wireframes y diagramas de clases documentados. |
 | 8 | Condiciones tranquilas | 🚫 No aplica completamente | Proyecto escolar; condiciones individuales. Se puede adoptar el principio con bloques de trabajo acordados. |
 | 9 | Mejores herramientas | ✅ Cumplido | Stack moderno: Lean 4, Angular, Flask, PostgreSQL, Redis, Docker, GitHub — todas gratuitas. |
@@ -277,10 +259,10 @@ Con cinco participantes (Jakob Nielsen demostró que cinco usuarios revelan el 8
 | 11 | Código en entrevistas | 🚫 No aplica | Equipo escolar fijo, sin proceso de contratación posible ni necesario. |
 | 12 | Usabilidad en el pasillo | ⚠️ Por implementar | Sin sesiones con usuarios externos. Plan: sesiones informales con compañeros antes de cada entrega. |
 
-**Puntos implementados o completamente activos: 5 / 12** (1, 2, 3, 7, 9)  
-**Puntos en progreso activo: 3 / 12** (4, 5, 10)  
-**Puntos con plan pendiente: 2 / 12** (6, 12)  
-**Puntos que no aplican por naturaleza del proyecto: 2 / 12** (8, 11)  
+**Puntos implementados o completamente activos: 8 / 12** (1, 2, 3, 5, 6, 7, 9, y parcialmente 10)  
+**Puntos en progreso activo: 1 / 12** (4 — branch protection + Milestone pendientes)  
+**Puntos con plan pendiente: 1 / 12** (12 — sesión de usabilidad agendada en semana de testing)  
+**Puntos que no aplican por naturaleza del proyecto: 2 / 12** (8 y 11)  
 **Total con cobertura real o planeada: 10 / 12**
 
 ---
@@ -289,9 +271,9 @@ Con cinco participantes (Jakob Nielsen demostró que cinco usuarios revelan el 8
 
 Para maximizar el impacto con el tiempo disponible de un equipo de 3 personas, se recomienda implementar en este orden:
 
-1. ~~**CI (punto 3)**~~ ✅ Completado — Build, tests backend y frontend, build de producción activos en cada push.
-2. **Bug database (punto 4)** — Pendiente: crear etiquetas en GitHub Issues, activar branch protection en `main` y crear Milestone `Zero Known Bugs`. ~30 minutos.
-3. **Revisión cruzada de PRs (punto 10)** — Pendiente: habilitar branch protection (Settings → Branches → require 1 approved review). 10 minutos.
-4. **Regla de bugs primero (punto 5)** — Una línea en el README y visibilidad del tablero de Issues es suficiente.
-5. **Milestones de entrega (punto 6)** — 20 minutos en GitHub. Proporciona visibilidad inmediata del estado del sprint.
-6. **Usabilidad en pasillo (punto 12)** — Agendar una sesión de 30 minutos con compañeros la semana previa a cada demo.
+1. ~~**CI (punto 3)**~~ ✅ Completado.
+2. ~~**Bugs antes de código nuevo (punto 5)**~~ ✅ Completado — README actualizado.
+3. ~~**Calendario (punto 6)**~~ ✅ Completado — ROADMAP.md creado.
+4. **Bug database (punto 4)** — Pendiente: crear Milestone `Zero Known Bugs` y activar branch protection (instrucciones en la sección del punto 10). ~40 minutos en total.
+5. **Revisión cruzada / testers (punto 10)** — Pendiente: activar branch protection con required reviews. Instrucciones en la sección del punto 10.
+6. **Usabilidad en pasillo (punto 12)** — Agendar sesión con compañeros durante la semana de testing (30 Abr–6 May).
