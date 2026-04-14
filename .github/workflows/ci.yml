@@ -13,17 +13,40 @@ jobs:
         working-directory: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Build Docker images
         run: docker compose build
+
       - name: Run backend tests
-        run: docker compose run --rm web python -m pytest || [ $? -eq 5 ]
-      - name: Run frontend build check
-        uses: actions/setup-node@v4
+        run: >
+          docker compose run --rm
+          -e APP_CONFIG=testing
+          -e TEST_DATABASE_URL=postgresql://coproof:coproofpass@db:5432/coproof_db
+          web python -m pytest tests/ -v
+
+      - name: Tear down compose services
+        if: always()
+        run: docker compose down -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-        working-directory: frontend
-      - run: npm run build -- --configuration=production
-        working-directory: frontend
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test -- --run
+
+      - name: Production build check
+        run: npm run build -- --configuration=production

@@ -39,44 +39,36 @@ compila todas las imágenes, aplica migraciones y levanta el stack completo list
 
 ### 3. ¿Haces builds diarios?
 
-**Estado: ⚠️ No implementado — Plan disponible**
+**Estado: ✅ Implementado**
 
-Actualmente no existe ningún archivo en `.github/workflows/` ni equivalente. Si un miembro rompe una parte del sistema (por ejemplo, una regresión en el parser de errores de Lean), el equipo puede tardar en darse cuenta porque no hay ningún proceso automatizado que valide el estado del repositorio tras cada `push`.
+El archivo `.github/workflows/ci.yml` está activo y se dispara en cada `push` a `main` o `develop` y en cada Pull Request. El pipeline se divide en dos jobs paralelos:
 
-**Plan de implementación:**
+**Job `build` (backend):**
+1. `actions/checkout` — clona el repositorio.
+2. `docker compose build` — compila todas las imágenes del stack.
+3. `docker compose run --rm web python -m pytest tests/ -v` — ejecuta los tests de integración del API Flask contra una base de datos PostgreSQL real (levantada automáticamente como dependencia del servicio `web`).
+4. `docker compose down -v` — limpia los volúmenes después de los tests.
 
-Crear un workflow de GitHub Actions en `.github/workflows/ci.yml` que se dispare en cada `push` a `main` o `develop`:
+**Job `frontend` (Angular + Vitest):**
+1. `actions/setup-node@v4` con Node 22 y caché de `npm`.
+2. `npm ci` — instalación determinista de dependencias.
+3. `npm test -- --run` — ejecuta los tests unitarios con Vitest en modo single-run (sin watch).
+4. `npm run build -- --configuration=production` — verifica que el bundle de producción compila sin errores TypeScript.
 
-```yaml
-name: CI
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build Docker images
-        run: docker compose build
-      - name: Run backend tests
-        run: docker compose run --rm web python -m pytest
-      - name: Run frontend lint
-        run: docker compose run --rm frontend npm run lint
-```
-
-Para un equipo de 3 personas, esto garantiza que el `main` siempre compile y que los errores se detecten en minutos en lugar de días.
+Cualquier fallo en cualquier job bloquea el merge. Los errores se detectan en menos de 5 minutos desde el push.
 
 ---
 
 ### 4. ¿Tienes una base de datos de bugs?
 
-**Estado: ❌ No implementado — Requerido · Plan detallado**
+**Estado: ⚙️ Parcialmente implementado — En progreso**
 
-No existe ningún sistema formal de seguimiento de errores. Bugs conocidos se gestionan de forma verbal o en notas dispersas, lo cual es incompatible con un proceso de calidad mínimo.
+La plantilla de reporte de bug está creada en `.github/ISSUE_TEMPLATE/bug_report.md` y se activa automáticamente al abrir un nuevo Issue en GitHub. Falta completar la configuración de etiquetas y el Milestone de cero bugs activo.
+
+**Lo que ya está hecho:**
+- Plantilla de Issue con campos: pasos para reproducir, comportamiento esperado/observado, servicio afectado, estado de corrección.
+
+**Lo que falta:**
 
 **Plan de implementación con GitHub Issues:**
 
@@ -223,27 +215,22 @@ Todas estas herramientas son de acceso libre o gratuito para equipos pequeños y
 
 ### 10. ¿Tienes testers?
 
-**Estado: ⚠️ No hay testers dedicados — Plan disponible**
+**Estado: ⚙️ Parcialmente implementado — En progreso**
 
-Con solo 3 integrantes en el equipo, no es factible asignar un rol exclusivo de tester. Tampoco es realista contratar o incorporar a alguien externo en un contexto escolar.
+Con solo 3 integrantes en el equipo, no es factible asignar un rol exclusivo de tester. Sin embargo, el proceso de revisión ya está parcialmente formalizado.
 
-**Plan de implementación:**
+**Lo que ya está implementado:**
+- La plantilla de PR en `.github/PR_TEMPLATE/pull_request_template.md` incluye una checklist obligatoria que el revisor debe completar antes de aprobar el merge:
+  - Build no roto.
+  - Flujo principal probado manualmente.
+  - Sin secretos en el código.
+  - Endpoints con validación de payload.
+  - Issue referenciado con `Closes #N`.
+- El CI bloquea automáticamente cualquier PR cuyos tests fallen, actuando como primera línea de testing automático.
 
-Adoptar un esquema de **revisión cruzada obligatoria**:
-
-1. **Ningún PR se fusiona sin revisión de al menos un compañero distinto al autor.** El revisor no solo lee el código: ejecuta `docker compose up --build` y prueba manualmente el flujo afectado.
-2. **Lista de verificación de PR:** Crear `.github/pull_request_template.md` con una checklist mínima:
-
-```markdown
-## Checklist del revisor
-- [ ] El build no está roto (`docker compose up --build` exitoso)
-- [ ] El flujo principal del cambio funciona manualmente
-- [ ] No se introdujeron variables de entorno secretas en el código
-- [ ] Los endpoints nuevos tienen validación de payload
-- [ ] El Issue correspondiente está referenciado (`Closes #N`)
-```
-
-3. **Rotación de roles:** En cada sprint, uno de los miembros actúa como "tester de entrega": dedica la última sesión antes de la entrega exclusivamente a ejecutar los flujos de usuario completos desde el frontend, registrando cualquier defecto como Issue.
+**Lo que falta:**
+- Hacer cumplir en la configuración de GitHub que se requiera al menos una review aprobada antes de poder hacer merge (*Settings → Branches → Branch protection rules → Require a pull request before merging*).
+- Acordar y documentar la rotación del rol de "tester de entrega" en cada sprint.
 
 ---
 
@@ -279,19 +266,22 @@ Con cinco participantes (Jakob Nielsen demostró que cinco usuarios revelan el 8
 |---|---|---|---|
 | 1 | Control de versiones | ✅ Cumplido | Git + GitHub como componente de arquitectura central; integración OAuth, PRs y webhooks. |
 | 2 | Build en un paso | ✅ Cumplido | `docker compose up --build` construye y levanta todo el stack desde cero. |
-| 3 | Builds diarios / CI | ⚠️ Por implementar | No existe `.github/workflows/`. Plan: GitHub Actions con build + tests en cada push. |
-| 4 | Base de datos de bugs | ❌ Por implementar | No hay sistema de tracking. Plan: GitHub Issues con plantillas, etiquetas y Milestones. |
+| 3 | Builds diarios / CI | ✅ Implementado | `.github/workflows/ci.yml` activo: build Docker, tests backend (pytest + PostgreSQL real), tests frontend (Vitest), build de producción. |
+| 4 | Base de datos de bugs | ⚙️ En progreso | Plantilla de Issue creada. Faltan: etiquetas, Milestone zero-bugs y branch protection. |
 | 5 | Bugs antes de código nuevo | ⚠️ Por implementar | Sin política formal. Plan: regla de equipo documentada en README + uso del tablero de Issues. |
 | 6 | Calendario actualizado | ⚠️ Por implementar | Sin planificación formal. Plan: GitHub Milestones por entrega + archivo `ROADMAP.md`. |
 | 7 | Especificación / Spec | ✅ Cumplido | User stories, arquitectura, diseño de BD, wireframes y diagramas de clases documentados. |
 | 8 | Condiciones tranquilas | 🚫 No aplica completamente | Proyecto escolar; condiciones individuales. Se puede adoptar el principio con bloques de trabajo acordados. |
 | 9 | Mejores herramientas | ✅ Cumplido | Stack moderno: Lean 4, Angular, Flask, PostgreSQL, Redis, Docker, GitHub — todas gratuitas. |
-| 10 | Testers | ⚠️ Por implementar | Equipo de 3, sin dedicated testers. Plan: revisión cruzada obligatoria + rotación de rol tester en cada entrega. |
+| 10 | Testers | ⚙️ En progreso | PR template con checklist creado. CI bloquea merges con tests rotos. Falta: branch protection + rotación de rol tester. |
 | 11 | Código en entrevistas | 🚫 No aplica | Equipo escolar fijo, sin proceso de contratación posible ni necesario. |
 | 12 | Usabilidad en el pasillo | ⚠️ Por implementar | Sin sesiones con usuarios externos. Plan: sesiones informales con compañeros antes de cada entrega. |
 
-**Puntos implementados o con plan activo: 10 / 12**  
-**Puntos que no aplican por naturaleza del proyecto: 2 / 12** (puntos 8 y 11)
+**Puntos implementados o completamente activos: 5 / 12** (1, 2, 3, 7, 9)  
+**Puntos en progreso activo: 3 / 12** (4, 5, 10)  
+**Puntos con plan pendiente: 2 / 12** (6, 12)  
+**Puntos que no aplican por naturaleza del proyecto: 2 / 12** (8, 11)  
+**Total con cobertura real o planeada: 10 / 12**
 
 ---
 
@@ -299,9 +289,9 @@ Con cinco participantes (Jakob Nielsen demostró que cinco usuarios revelan el 8
 
 Para maximizar el impacto con el tiempo disponible de un equipo de 3 personas, se recomienda implementar en este orden:
 
-1. **Bug database (punto 4)** — Acción inmediata. Requiere 30 minutos de configuración en GitHub Issues. Prioridad máxima por requerimiento explícito del proyecto.
-2. **CI básico (punto 3)** — Una tarde de trabajo. Previene regresiones silenciosas en los módulos más críticos (lean-worker, API de merge).
-3. **Revisión cruzada de PRs (punto 10)** — Cambio de proceso, sin costo técnico. Solo requiere acuerdo del equipo y agregar el template de PR al repositorio.
+1. ~~**CI (punto 3)**~~ ✅ Completado — Build, tests backend y frontend, build de producción activos en cada push.
+2. **Bug database (punto 4)** — Pendiente: crear etiquetas en GitHub Issues, activar branch protection en `main` y crear Milestone `Zero Known Bugs`. ~30 minutos.
+3. **Revisión cruzada de PRs (punto 10)** — Pendiente: habilitar branch protection (Settings → Branches → require 1 approved review). 10 minutos.
 4. **Regla de bugs primero (punto 5)** — Una línea en el README y visibilidad del tablero de Issues es suficiente.
 5. **Milestones de entrega (punto 6)** — 20 minutos en GitHub. Proporciona visibilidad inmediata del estado del sprint.
 6. **Usabilidad en pasillo (punto 12)** — Agendar una sesión de 30 minutos con compañeros la semana previa a cada demo.
