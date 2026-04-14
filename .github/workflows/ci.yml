@@ -1,0 +1,18 @@
+name: CI
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker images
+        run: docker compose build
+      - name: Run backend tests
+        run: docker compose run --rm web python -m pytest
+      - name: Run frontend lint
+        run: docker compose run --rm frontend npm run lint

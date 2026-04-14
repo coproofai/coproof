@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>manuscript-draft.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+html, body {
+	background-color: #1e1e1e;
+	color: #d4d4d4;
+}
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+	color: #4fc3f7;
+}
+
+a:hover {
+	text-decoration: underline;
+	color: #81d4fa;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid #444;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+	border-bottom-color: #444;
+	color: #e8e8e8;
+}
+
+h2, h3 {
+	color: #cccccc;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid #555;
+	color: #c8c8c8;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid #3a3a3a;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+	border-left-color: #007acc;
+	background: rgba(0, 122, 204, 0.08);
+	color: #b0b0b0;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #252526;
+	border: 1px solid #3a3a3a;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+	color: #d4d4d4;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(0, 122, 204, 0.08);
+	border-color: rgba(0, 122, 204, 0.6);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #ce9178;
+	background-color: #2d2d2d;
+	padding: 1px 4px;
+	border-radius: 3px;
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      themeVariables: {
+        background: '#1e1e1e',
+        primaryColor: '#2d4a6e',
+        primaryTextColor: '#d4d4d4',
+        primaryBorderColor: '#4a7ab5',
+        lineColor: '#6a9fd8',
+        secondaryColor: '#3a3a5c',
+        tertiaryColor: '#2a2a2a',
+        clusterBkg: '#252533',
+        clusterBorder: '#555577',
+        titleColor: '#d4d4d4',
+        edgeLabelBackground: '#2a2a3a',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+      }
+    });
+  </script>
+<h1 id="materials-and-methods--coproof-draft">Materials and Methods — CoProof (Draft)</h1>
+<h2 id="materials">Materials</h2>
+<p>CoProof was developed and deployed across two hardware tiers. The development host was an x86-64 workstation running Windows 11; the computation cluster comprised four Raspberry Pi 4 Model B units (ARM Cortex-A72, 64-bit) connected over a private LAN (192.168.1.0/24), provisioned with Rocky Linux 10 (aarch64) and managed through OpenHPC, SLURM as the workload scheduler, and OpenMPI for distributed execution. All platform services were containerized with Docker and orchestrated via Docker Compose. The persistence layer used PostgreSQL 15 (Alpine) as the relational store and Redis 7 (Alpine) as both the message broker and distributed cache. The backend API was implemented in Python 3.11 (Debian Bookworm slim container) with Flask 3.1.3, SQLAlchemy 2.0.47, and Flask-Migrate 4.1.0 (Alembic) for schema management; psycopg2-binary 2.9.11 served as the PostgreSQL adapter. Authentication relied on JWT tokens issued through Flask-JWT-Extended 4.7.1, with GitHub OAuth 2.0 (scopes: <code>repo</code>, <code>read:user</code>, <code>user:email</code>) as the identity provider. Asynchronous task execution was handled by Celery 5.6.2 backed by Redis 7.2.1, with three isolated queues: <code>lean_queue</code>, <code>git_engine_queue</code>, and <code>computation_queue</code>. Real-time push notifications were delivered via Flask-SocketIO 5.6.1. Git operations—repository cloning, atomic worktree transactions, and pull request management—were issued programmatically using GitPython 3.1.46 against the GitHub REST API v3; theorem dependency graphs were represented in-memory with NetworkX 3.6.1. Production serving used gunicorn 25.1.0 with gevent 25.9.1 workers. Request/response serialization was handled by marshmallow 4.2.2. The frontend was built with Angular 21.2.0 and TypeScript 5.9.2, bundled via <code>@angular/cli</code> 21.2.0, using RxJS 7.8.0 for reactive HTTP communication; Nginx served the compiled static assets inside the frontend container.</p>
+<p>The formal verification service ran in an isolated Ubuntu 22.04 container. Lean 4 was installed and version-managed through elan; the Lean toolchain version was pinned to the one declared in Mathlib4 at commit <code>29dcec074de168ac2bf835a77ef68bbe069194c5</code>, which was compiled in full via <code>lake exe cache get &amp;&amp; lake build</code>. The compiled <code>LEAN_PATH</code> exposed seven Mathlib4 sub-packages: <code>Qq</code>, <code>aesop</code>, <code>Cli</code>, <code>importGraph</code>, <code>LeanSearchClient</code>, <code>batteries</code>, and <code>proofwidgets</code>. The service accepted proof snippets over a Celery task interface (<code>lean_queue</code>) and invoked the Lean 4 executable on temporary files, parsing compiler output to extract theorem names, line positions, error messages, and return codes. Verification correctness was evaluated on a 100-theorem benchmark derived from LeanDojo, sourcing raw <code>.lean</code> files from the public Mathlib4 GitHub repository at their respective commits. Benchmark analysis used matplotlib and numpy. The test suite across all Python services used pytest 9.0.2, pytest-flask 1.3.0, and pytest-mock; code quality was enforced with black and flake8.</p>
+<hr>
+<h2 id="system-overview">System Overview</h2>
+<pre><code class="language-mermaid"><div class="mermaid">graph TB
+    subgraph HW["Hardware"]
+        DEV["x86-64 Workstation · Windows 11\n(development host)"]
+        subgraph CLUSTER["HPC Cluster — 4× Raspberry Pi 4 Model B · ARM Cortex-A72"]
+            direction LR
+            SMS["SMS head node\nRocky Linux 10 · OpenHPC"]
+            SMS --> N1["node1"] & N2["node2"] & N3["node3"]
+        end
+        CLUSTER -.->|"SLURM · OpenMPI · NFS"| CLUSTER
+    end
+
+    subgraph COMPOSE["Docker Compose (dev/prod)"]
+        direction TB
+
+        subgraph INFRA["Infrastructure"]
+            PG[("PostgreSQL 15-alpine\nrelational store")]
+            RD[("Redis 7-alpine\nbroker · cache · locks")]
+        end
+
+        subgraph SVC["Application Services"]
+            FE["Frontend\nAngular 21.2.0 · TypeScript 5.9.2\nRxJS 7.8.0 · Nginx"]
+            WEB["Backend API · Python 3.11\nFlask 3.1.3 · SQLAlchemy 2.0.47\nFlask-JWT-Extended 4.7.1\nFlask-SocketIO 5.6.1\nGitPython 3.1.46 · NetworkX 3.6.1\ngunicorn 25.1.0 + gevent 25.9.1"]
+            GW["celery_worker\ngit_engine_queue\nPython 3.11"]
+        end
+
+        subgraph WORKERS["Specialised Workers"]
+            LW["lean-worker · Ubuntu 22.04\nLean 4 (elan) · lake\nMathlib4 @ 29dcec0\nlean_queue"]
+            CW["computation-worker · Python 3.11\nCelery 5.6.2\ncomputation_queue"]
+        end
+    end
+
+    subgraph EXT["External Services"]
+        GH["GitHub\nOAuth 2.0 · REST API v3"]
+        LD["LeanDojo\n100-theorem benchmark"]
+    end
+
+    DEV -->|"build & deploy"| COMPOSE
+    FE -->|"HTTP + WebSocket"| WEB
+    WEB <-->|"ORM"| PG
+    WEB <-->|"tasks / cache"| RD
+    GW <-->|"tasks"| RD
+    LW <-->|"lean_queue"| RD
+    CW <-->|"computation_queue"| RD
+    WEB -->|"OAuth + REST"| GH
+    LW -.->|"theorem source fetch"| LD
+</div></code></pre>
+
+</body>
+</html>
