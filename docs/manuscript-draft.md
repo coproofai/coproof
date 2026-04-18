@@ -8,6 +8,147 @@ The formal verification service ran in an isolated Ubuntu 22.04 container. Lean 
 
 ---
 
+## Methods
+
+### Development Methodology
+
+CoProof was developed by a three-person team using a hybrid methodology: a phase-gated discipline for the backend followed by Scrum-style sprints for frontend integration. The process began with a full specification layer — user stories with testable acceptance criteria, HTML wireframes for every principal view, and architecture documents with UML class diagrams per service — before any implementation began. The backend was then built across six sequential phases, each with an explicit exit condition: infrastructure and application factory, database schema and ORM models, stateless Git engine with distributed locking, domain service layer, RESTful API, and asynchronous task workers. Only once all six phases were stable did the team switch to three one-week sprints covering frontend views, the natural-language-to-Lean translation flow, and AI-assisted suggestions, followed by a hard feature freeze and a dedicated testing week.
+
+Quality was maintained continuously through three mechanisms applied across all stages. A GitHub Actions CI pipeline executed the full Docker build, the pytest integration suite, and the Angular Vitest unit suite on every pull request, blocking any merge on failure. A zero-defects rule — adapted from Spolsky's formulation — required all high-priority bugs to be closed before new feature work began, enforced at each sprint kickoff. Every change additionally required peer code review against a mandatory checklist. Two structured usability sessions with external participants were conducted during the final testing week, with each friction point logged as a GitHub Issue and resolved before delivery.
+
+### Development Process Overview
+
+```mermaid
+flowchart TD
+    subgraph SPEC["Stage 1 — Specification"]
+        US["User stories\n+ acceptance criteria"]
+        WF["Wireframes\n(HTML prototypes)"]
+        AD["Architecture docs\n+ UML class diagrams"]
+        US --> WF --> AD
+    end
+
+    subgraph PHASES["Stage 2 — Phase-gated Backend"]
+        P1["Phase 1\nInfrastructure\nApp factory · Docker · Config"]
+        P2["Phase 2\nData layer\nPostgreSQL · SQLAlchemy · Alembic"]
+        P3["Phase 3\nGit engine\nRepoPool · Redlock · Worktrees"]
+        P4["Phase 4\nDomain services\nProjectService · CompilerClient"]
+        P5["Phase 5\nAPI layer\nREST blueprints · JWT · Cache"]
+        P6["Phase 6\nAsync workers\nCelery queues · SocketIO · Webhooks"]
+        P1 --> P2 --> P3 --> P4 --> P5 --> P6
+    end
+
+    subgraph SPRINTS["Stage 3 — Scrum Sprints"]
+        S1["Sprint 1 · 1 week\nViews · Auth flow · Profile"]
+        S2["Sprint 2 · 1 week\nNL→Lean translation · LaTeX viewer"]
+        S3["Sprint 3 · 3 days\nAI suggestions · MPI/Slurm mode"]
+        FF["Feature freeze"]
+        S1 --> S2 --> S3 --> FF
+    end
+
+    subgraph QA["Continuous Quality"]
+        direction LR
+        CI["CI pipeline\nDocker build · pytest · Vitest"]
+        ZD["Zero-defects rule\nhigh-priority bugs block new work"]
+        CR["Code review\nPR checklist + peer approval"]
+        UT["Usability sessions\n2× external participants"]
+    end
+
+    TW["Testing week\n7 days · all priority:high closed"]
+    DEL["Delivery — v1.0.0"]
+
+    SPEC --> PHASES
+    PHASES --> SPRINTS
+    FF --> TW --> DEL
+
+    CI -.->|"gates every merge"| PHASES
+    CI -.->|"gates every merge"| SPRINTS
+    ZD -.->|"sprint kickoff check"| SPRINTS
+    CR -.->|"required per PR"| PHASES
+    CR -.->|"required per PR"| SPRINTS
+    UT -.->|"ux issues → fixes"| TW
+```
+
+---
+
+### Execution Methodology
+
+At runtime, CoProof organises every user action around a proof graph: a directed acyclic graph (DAG) where each node maps one-to-one to a `.lean` file in a GitHub repository. A project begins when an authenticated user submits a goal statement; the backend pre-compiles that goal through the Lean verification service before creating the GitHub repository, then pushes three seed files — `Definitions.lean`, `root/main.lean`, and `root/main.tex` — and records a root node in `sorry` state in PostgreSQL. From that point, the user decomposes the proof by submitting node splits: Lean snippets that replace a `sorry` with a structured proof referencing new child lemmas. Each split is verified synchronously by the Lean worker before reaching GitHub; only a passing compilation triggers the creation of a feature branch and a pull request. Merging the PR fires a push webhook that reindexes the repository and creates the corresponding child nodes in the database, each inheriting `sorry` state. Leaf nodes are closed by submitting a complete proof via the solve endpoint, which follows the same verify-branch-PR cycle; validated states then propagate upward through the graph until the root is fully proven.
+
+For sub-goals that require empirical or numerical evidence rather than a symbolic proof, the platform supports computation nodes. A computation node is created as a child of a proof node: the backend extracts the parent theorem's Lean signature, generates a child `.lean` stub using a typed axiom as placeholder, injects the axiom's import into the parent, verifies the combined files with Lean, and opens a PR with the new artifacts. The user then submits Python source code through the compute endpoint; the computation worker executes it in a sandboxed subprocess and returns a structured result with an evidence value and a `sufficient` boolean. If evidence is sufficient, the backend replaces the axiom with a concrete Lean definition embedding the evidence, re-verifies through the Lean worker, and opens a final PR. All write operations — splits, solves, and computations — are protected by Redis-based distributed locks that prevent concurrent modifications to the same repository.
+
+### Proof Execution Flow
+
+```mermaid
+flowchart TD
+    AUTH["GitHub OAuth 2.0\nJWT issued"]
+
+    subgraph PROJ["Project Creation"]
+        PC1["Submit goal + imports + definitions"]
+        PC2["Pre-compile goal via Lean worker"]
+        PC3["Create GitHub repository\npush Definitions.lean · root/main.lean · root/main.tex"]
+        PC4[("Root node → sorry\nPostgreSQL + GitHub")]
+        PC1 --> PC2 -->|"valid"| PC3 --> PC4
+        PC2 -->|"compile error"| FAIL1["❌ Rejected — fix goal"]
+    end
+
+    subgraph SPLIT["Node Split"]
+        SP1["Submit Lean snippet\n(sorry → structured proof + child lemmas)"]
+        SP2["Fetch all .lean from GitHub\nbuild import tree in memory"]
+        SP3["Dispatch to lean_queue\nLean worker verifies"]
+        SP4["Create feature branch\ncommit parent + child files\nopen PR"]
+        SP5["Merge PR"]
+        SP6["Push webhook → git_engine_queue\nreindex → child nodes created in DB\nstate: sorry"]
+        SP1 --> SP2 --> SP3 -->|"valid"| SP4 --> SP5 --> SP6
+        SP3 -->|"compile error"| FAIL2["❌ Errors returned to client"]
+    end
+
+    subgraph SOLVE["Node Solve"]
+        SO1["Submit complete Lean proof"]
+        SO2["Fetch file map + resolve import tree"]
+        SO3["Dispatch to lean_queue\nLean worker verifies"]
+        SO4{"No diff with\ndefault branch?"}
+        SO5["Update node state in DB directly\n→ validated"]
+        SO6["Create feature branch\ncommit solved file · open PR\nmerge PR"]
+        SO7["Validated state propagates\nupward through DAG"]
+        SO1 --> SO2 --> SO3 -->|"valid"| SO4
+        SO4 -->|"yes"| SO5 --> SO7
+        SO4 -->|"no"| SO6 --> SO7
+        SO3 -->|"compile error"| FAIL3["❌ Errors returned to client"]
+    end
+
+    subgraph COMPUTE["Computation Node"]
+        CO1["Create computation child\nextract parent signature\ngenerate .lean axiom stub + Python template\nverify parent+axiom · open PR · merge"]
+        CO2["Submit Python payload\n(source + entrypoint + input_data)"]
+        CO3["Dispatch to computation_queue\nsandboxed subprocess execution"]
+        CO4{"sufficient?"}
+        CO5["Replace axiom with concrete\nLean definition embedding evidence\nre-verify via Lean worker\nopen PR · merge · validated"]
+        CO6["Persist result in node metadata\nno PR created"]
+        CO1 --> CO2 --> CO3 --> CO4
+        CO4 -->|"yes"| CO5 --> SO7
+        CO4 -->|"no"| CO6
+        CO3 -->|"execution error"| CO6
+    end
+
+    subgraph COLLAB["Collaboration & Locking"]
+        CB1["Contributors work on\nisolated feature branches"]
+        CB2["Redis Redlock\nprevents concurrent repo writes"]
+        CB3["Backend merges PRs\nvia GitHub REST API\nverifies merged: true before DB update"]
+    end
+
+    AUTH --> PROJ
+    PC4 --> SPLIT
+    SP6 --> SOLVE
+    SP6 --> COMPUTE
+    SOLVE -.-> COLLAB
+    SPLIT -.-> COLLAB
+    COMPUTE -.-> COLLAB
+
+    ROOT_VALID["✅ Root node validated\nAll DAG nodes proven in Lean"]
+    SO7 --> ROOT_VALID
+```
+
+---
+
 ## System Overview
 
 ```mermaid
