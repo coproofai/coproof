@@ -16,6 +16,7 @@ services:
       - CELERY_LEAN_QUEUE=lean_queue
       - CELERY_COMPUTATION_QUEUE=computation_queue
       - CELERY_GIT_ENGINE_QUEUE=git_engine_queue
+      - CELERY_NL2FL_QUEUE=nl2fl_queue
       - JWT_SECRET_KEY=dev_jwt_secret_key_do_not_use_in_prod
       - SECRET_KEY=dev_secret_key_do_not_use_in_prod
     depends_on:
@@ -26,6 +27,8 @@ services:
       lean-worker:
         condition: service_started
       computation-worker:
+        condition: service_started
+      nl2fl-worker:
         condition: service_started
 
   celery_worker:
@@ -42,6 +45,7 @@ services:
       - CELERY_LEAN_QUEUE=lean_queue
       - CELERY_COMPUTATION_QUEUE=computation_queue
       - CELERY_GIT_ENGINE_QUEUE=git_engine_queue
+      - CELERY_NL2FL_QUEUE=nl2fl_queue
       - REPO_STORAGE_PATH=/tmp/coproof-storage
     depends_on:
       db:
@@ -51,6 +55,8 @@ services:
       lean-worker:
         condition: service_started
       computation-worker:
+        condition: service_started
+      nl2fl-worker:
         condition: service_started
 
   lean-worker:
@@ -73,6 +79,21 @@ services:
       - CELERY_COMPUTATION_QUEUE=computation_queue
     depends_on:
       redis:
+        condition: service_started
+
+  nl2fl-worker:
+    build:
+      context: ./nl2fl
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_NL2FL_QUEUE=nl2fl_queue
+      - CELERY_LEAN_QUEUE=lean_queue
+      - COPILOT_BASE_URL=http://host.docker.internal:8000
+    depends_on:
+      redis:
+        condition: service_started
+      lean-worker:
         condition: service_started
 
   frontend:

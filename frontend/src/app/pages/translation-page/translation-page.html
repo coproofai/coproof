@@ -1,27 +1,166 @@
-    <div class="max-wrap">
-      <h1>Traducción a Formalismo Lean</h1>
+<div class="page-wrap">
+  @if (vm$ | async; as vm) {
 
-      <div class="panel">
-        <h2>Editor de Traducción</h2>
-        <button class="btn-primary" (click)="simulateTranslation()" [disabled]="translating">
-          {{ translating ? 'Traduciendo...' : 'Traducir a Lean' }}
-        </button>
-      </div>
+    <!-- ── Settings panel ───────────────────────────────────────────── -->
+    <div class="settings-panel">
+      <button class="settings-toggle" (click)="settingsOpen = !settingsOpen">
+        <span>⚙ Configuración</span>
+        <span class="toggle-chevron">{{ settingsOpen ? '▲' : '▼' }}</span>
+      </button>
 
-      <div class="columns">
-        <div>
-          <h3>Lenguaje Natural (Entrada)</h3>
-          <textarea
-            [(ngModel)]="naturalText"
-            class="text-area"
-            placeholder="Escribe aquí el teorema o proposición que deseas formalizar en Lean."
-          ></textarea>
+      @if (settingsOpen) {
+        <div class="settings-body">
+
+          <!-- Model selector -->
+          <div class="setting-group">
+            <label for="model-select">Modelo LLM</label>
+            <select id="model-select"
+              [(ngModel)]="selectedModelId"
+              (ngModelChange)="onModelChange()">
+              <option value="">— Selecciona un modelo —</option>
+              @for (m of (models$ | async) ?? []; track m.id) {
+                <option [value]="m.id">{{ m.provider }} · {{ m.name }}</option>
+              }
+            </select>
+          </div>
+
+          <!-- API key (only when logged in) -->
+          @if (isLoggedIn) {
+            <div class="setting-group">
+              <label>API Key (OpenRouter)</label>
+              @if (maskedKey) {
+                <span class="masked-key">{{ maskedKey }}</span>
+              }
+              <div class="api-key-row">
+                <input type="password"
+                  [(ngModel)]="apiKeyInput"
+                  placeholder="sk-or-…"
+                  autocomplete="new-password" />
+                <button class="btn-save"
+                  (click)="saveApiKey()"
+                  [disabled]="apiKeySaving || !apiKeyInput.trim()">
+                  {{ apiKeySaving ? 'Guardando…' : 'Guardar' }}
+                </button>
+              </div>
+              @if (apiKeyError) {
+                <p class="error-text">{{ apiKeyError }}</p>
+              }
+            </div>
+          }
+
+          <!-- System prompt -->
+          <div class="setting-group wide">
+            <label for="system-prompt">System Prompt</label>
+            <textarea id="system-prompt"
+              [(ngModel)]="systemPrompt"
+              rows="4"></textarea>
+          </div>
+
+          <!-- Max retries -->
+          <div class="setting-group narrow">
+            <label for="max-retries">Reintentos máx.</label>
+            <input id="max-retries"
+              type="number"
+              [(ngModel)]="maxRetries"
+              min="1"
+              max="10" />
+          </div>
+
         </div>
-
-        <div>
-          <h3>Formalismo Lean (Salida)</h3>
-          <pre class="text-area output">{{ leanOutput }}</pre>
-        </div>
-      </div>
+      }
     </div>
-  
+
+    <!-- ── Status bar ────────────────────────────────────────────────── -->
+    <div class="status-bar" [class]="'status-bar status-' + vm.state">
+      <span class="status-dot"></span>
+      <span class="status-label">{{ getStatusLabel(vm.state) }}</span>
+      @if (vm.result) {
+        <span class="status-meta">
+          {{ vm.result.attempts }} intento(s) · {{ vm.result.processing_time_seconds | number:'1.1-1' }}s
+        </span>
+      }
+    </div>
+
+    <!-- ── Three-column layout ───────────────────────────────────────── -->
+    <div class="columns">
+
+      <!-- Col 1 · Natural language input -->
+      <div class="col">
+        <h3>Lenguaje Natural</h3>
+        <textarea class="text-area"
+          [(ngModel)]="naturalText"
+          placeholder="Escribe aquí el teorema o proposición en lenguaje natural…"
+          [disabled]="vm.state === 'translating'"></textarea>
+        <div class="col-actions">
+          <button class="btn-primary"
+            (click)="submit()"
+            [disabled]="vm.state === 'translating' || !naturalText.trim() || !selectedModelId">
+            @if (vm.state === 'translating') { Traduciendo… } @else { Traducir a Lean }
+          </button>
+          @if (vm.state !== 'idle') {
+            <button class="btn-ghost" (click)="reset()">Limpiar</button>
+          }
+        </div>
+        @if (vm.state === 'error') {
+          <p class="error-text server-error">{{ vm.serverError }}</p>
+        }
+      </div>
+
+      <!-- Col 2 · Generated Lean code -->
+      <div class="col">
+        <h3>Código Lean Generado</h3>
+        @if (vm.result) {
+          <pre class="code-block"
+            [class.code-valid]="vm.result.valid"
+            [class.code-invalid]="!vm.result.valid">{{ vm.result.final_lean }}</pre>
+        } @else if (vm.state === 'translating') {
+          <div class="placeholder">
+            <div class="spinner"></div>
+            <p>Llamando al LLM y verificando en Lean…</p>
+          </div>
+        } @else {
+          <div class="placeholder muted-placeholder">
+            <p>El código Lean aparecerá aquí tras la traducción.</p>
+          </div>
+        }
+      </div>
+
+      <!-- Col 3 · Attempt history -->
+      <div class="col">
+        <h3>Historial de Intentos</h3>
+        @if (vm.result && vm.result.history.length > 0) {
+          @for (attempt of vm.result.history; track attempt.attempt) {
+            <div class="attempt-row">
+              <button class="attempt-header" (click)="toggleAttempt(attempt.attempt)">
+                <span class="attempt-num">Intento #{{ attempt.attempt }}</span>
+                <span class="attempt-badge"
+                  [class.badge-ok]="attempt.errors.length === 0"
+                  [class.badge-err]="attempt.errors.length > 0">
+                  {{ attempt.errors.length === 0 ? '✓ OK' : attempt.errors.length + ' error(es)' }}
+                </span>
+                <span class="expand-chevron">
+                  {{ expandedAttempts.has(attempt.attempt) ? '▲' : '▼' }}
+                </span>
+              </button>
+              @if (expandedAttempts.has(attempt.attempt)) {
+                <pre class="attempt-code">{{ attempt.lean_code }}</pre>
+                @if (attempt.errors.length > 0) {
+                  <ul class="error-list">
+                    @for (err of attempt.errors; track $index) {
+                      <li>L{{ err.line }}:{{ err.column }} — {{ err.message }}</li>
+                    }
+                  </ul>
+                }
+              }
+            </div>
+          }
+        } @else if (vm.state === 'translating') {
+          <p class="muted">Los intentos aparecerán al finalizar.</p>
+        } @else {
+          <p class="muted">Sin historial aún.</p>
+        }
+      </div>
+
+    </div>
+  }
+</div>
