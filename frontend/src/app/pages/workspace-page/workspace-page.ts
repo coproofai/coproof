@@ -2,6 +2,7 @@ import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
 import { JsonPipe, NgClass, NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { TaskService } from '../../task.service';
 import {
   NewNodeDto,
@@ -59,9 +60,19 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   computationEntrypoint = 'run';
   computationTimeoutSeconds = 120;
 
+  activeTab: 'node' | 'tex' | 'prs' | 'defs' = 'node';
+  sidebarCollapsed = false;
   graphCollapsed = false;
-  editorCollapsed = false;
-  prsCollapsed = false;
+  sectionEditor = true;
+  sectionActions = true;
+  sectionResults = true;
+  sectionPreview = true;
+  texSource = '';
+  texPath = '';
+  texLoading = false;
+  texError = '';
+  texViewMode: 'source' | 'preview' = 'source';
+  texRenderedHtml: SafeHtml = '';
 
   graphScale = 1;
   graphOffsetX = 0;
@@ -73,7 +84,8 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
 
   constructor(
     private readonly route: ActivatedRoute,
-    private readonly taskService: TaskService
+    private readonly taskService: TaskService,
+    private readonly sanitizer: DomSanitizer
   ) {}
 
   ngOnInit(): void {
@@ -305,6 +317,12 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.verificationErrors = [];
     this.sorryLocations = [];
     this.isNodeFileLoading = true;
+    this.texSource = '';
+    this.texPath = '';
+    this.texError = '';
+    this.texLoading = false;
+    this.texRenderedHtml = '';
+    this.texViewMode = 'source';
     this.status = `Cargando archivo de ${node.name}...`;
 
     this.taskService.getNodeLeanFile(this.projectId, node.id).subscribe({
@@ -670,6 +688,129 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     }
 
     return result;
+  }
+
+  switchToTexPreview() {
+    this.texViewMode = 'preview';
+    this.renderTexPreview();
+  }
+
+  switchToTexTab() {
+    this.activeTab = 'tex';
+    if (this.selectedNode && !this.texSource && !this.texLoading) {
+      this.loadTexFile(this.selectedNode.id);
+    }
+  }
+
+  private loadTexFile(nodeId: string) {
+    if (!this.projectId) return;
+    this.texLoading = true;
+    this.texError = '';
+    this.texPath = '';
+    this.taskService.getNodeTexFile(this.projectId, nodeId).subscribe({
+      next: (response) => {
+        this.texPath = response.path;
+        this.texSource = response.content || '';
+        this.texLoading = false;
+        if (this.texViewMode === 'preview') {
+          this.renderTexPreview();
+        }
+      },
+      error: (error) => {
+        if (this.handleAuthError(error)) {
+          this.texLoading = false;
+          return;
+        }
+        this.texLoading = false;
+        this.texError = this.getBackendErrorMessage(error) || 'No se pudo cargar el archivo .tex del nodo.';
+      }
+    });
+  }
+
+  renderTexPreview() {
+    const src = this.texSource.trim();
+    if (!src) {
+      this.texRenderedHtml = this.sanitizer.bypassSecurityTrustHtml('<p class="tex-empty">Sin contenido para renderizar.</p>');
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const katex = (window as any)['katex'];
+    if (!katex) {
+      this.texRenderedHtml = this.sanitizer.bypassSecurityTrustHtml('<p>KaTeX no está disponible aún. Intenta de nuevo en un momento.</p>');
+      return;
+    }
+
+    try {
+      let body = src;
+      const bodyMatch = body.match(/\\begin\{document\}([\s\S]*?)\\end\{document\}/);
+      if (bodyMatch) {
+        body = bodyMatch[1];
+      }
+
+      const displayPlaceholders: string[] = [];
+      // $$...$$ display math
+      body = body.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
+        const idx = displayPlaceholders.length;
+        try { displayPlaceholders.push('<div class="tex-display">' + katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) + '</div>'); }
+        catch { displayPlaceholders.push(`<div class="tex-err">$$${this.escapeHtml(math)}$$</div>`); }
+        return `\x00DISP${idx}\x00`;
+      });
+      // \[...\] display math
+      body = body.replace(/\\\[([\s\S]*?)\\\]/g, (_, math) => {
+        const idx = displayPlaceholders.length;
+        try { displayPlaceholders.push('<div class="tex-display">' + katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) + '</div>'); }
+        catch { displayPlaceholders.push(`<div class="tex-err">\\[${this.escapeHtml(math)}\\]</div>`); }
+        return `\x00DISP${idx}\x00`;
+      });
+      // $...$ inline math
+      const inlinePlaceholders: string[] = [];
+      body = body.replace(/\$([^$\n]{1,300}?)\$/g, (_, math) => {
+        const idx = inlinePlaceholders.length;
+        try { inlinePlaceholders.push(katex.renderToString(math.trim(), { displayMode: false, throwOnError: false })); }
+        catch { inlinePlaceholders.push(`$${this.escapeHtml(math)}$`); }
+        return `\x00INLN${idx}\x00`;
+      });
+
+      // Escape HTML in plain text parts
+      body = this.escapeHtml(body);
+
+      // Restore math
+      inlinePlaceholders.forEach((html, i) => { body = body.replace(`\x00INLN${i}\x00`, html); });
+      displayPlaceholders.forEach((html, i) => { body = body.replace(`\x00DISP${i}\x00`, html); });
+
+      // Basic LaTeX structure → HTML
+      body = body.replace(/\\section\{([^}]{1,120})\}/g, '<h2 class="tex-h2">$1</h2>');
+      body = body.replace(/\\subsection\{([^}]{1,120})\}/g, '<h3 class="tex-h3">$1</h3>');
+      body = body.replace(/\\subsubsection\{([^}]{1,120})\}/g, '<h4 class="tex-h4">$1</h4>');
+      body = body.replace(/\\textbf\{([^}]{1,200})\}/g, '<strong>$1</strong>');
+      body = body.replace(/\\textit\{([^}]{1,200})\}/g, '<em>$1</em>');
+      body = body.replace(/\\emph\{([^}]{1,200})\}/g, '<em>$1</em>');
+      body = body.replace(/\\texttt\{([^}]{1,200})\}/g, '<code>$1</code>');
+      body = body.replace(/\\\\(\s*)/g, '<br>');
+      body = body.replace(/\\newline/g, '<br>');
+      body = body.replace(/\\begin\{itemize\}([\s\S]*?)\\end\{itemize\}/g, (_, c) => {
+        const items = c.split('\\item').slice(1).map((s: string) => `<li>${s.trim()}</li>`).join('');
+        return `<ul class="tex-list">${items}</ul>`;
+      });
+      body = body.replace(/\\begin\{enumerate\}([\s\S]*?)\\end\{enumerate\}/g, (_, c) => {
+        const items = c.split('\\item').slice(1).map((s: string) => `<li>${s.trim()}</li>`).join('');
+        return `<ol class="tex-list">${items}</ol>`;
+      });
+      // Strip remaining commands and braces
+      body = body.replace(/\\[a-zA-Z]+(\*?)(\{[^}]*\}|\[[^\]]*\])*/g, '');
+      body = body.replace(/[{}]/g, '');
+      // Paragraphs
+      const paragraphs = body.split(/\n\n+/).map((p: string) => p.trim()).filter(Boolean);
+      body = paragraphs.map((p: string) => {
+        if (/^<(h[1-6]|div|ul|ol)/.test(p)) return p;
+        return `<p>${p.replace(/\n/g, ' ')}</p>`;
+      }).join('\n');
+
+      this.texRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(body);
+    } catch {
+      this.texRenderedHtml = this.sanitizer.bypassSecurityTrustHtml('<p>Error al renderizar el TeX.</p>');
+    }
   }
 
   private handleAuthError(error: any): boolean {

@@ -1,28 +1,106 @@
 import { Component } from '@angular/core';
-import { NgClass } from '@angular/common';
+import { AsyncPipe, DecimalPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Observable, Subject, of, timer } from 'rxjs';
+import { catchError, filter, map, shareReplay, startWith, switchMap, take, timeout } from 'rxjs/operators';
+import { TaskService } from '../../task.service';
+import { VerifyCompilerResult } from '../../task.models';
+
+type ValidationState = 'idle' | 'loading' | 'valid' | 'invalid' | 'error';
+
+interface ValidationVm {
+  state: ValidationState;
+  result: VerifyCompilerResult | null;
+  serverError: string;
+}
+
+const IDLE_VM: ValidationVm = { state: 'idle', result: null, serverError: '' };
 
 @Component({
   selector: 'app-validation-page',
   standalone: true,
-  imports: [NgClass],
+  imports: [FormsModule, DecimalPipe, AsyncPipe],
   templateUrl: './validation-page.html',
   styleUrl: './validation-page.css'
 })
 export class ValidationPageComponent {
-  validated = false;
-  originalContent = '// Contenido subido (código, texto, PDF)\n// Ej: "La suma de dos números pares es par."';
-  leanContent = `-- Código Lean generado
-theorem sum_even_is_even (h1 : even x) (h2 : even y) : even (x + y) :=
-begin
-  -- Demostración en Lean
-end`;
-  naturalContent = `Demostración:
-1. Asumimos que x y y son números pares.
-2. Por definición, x=2k y y=2m para enteros k, m.
-3. Entonces x+y = 2k + 2m = 2(k+m).
-4. Como k+m es un entero, x+y es par.`;
+  code = '';
+  fileName = '';
+  fileError = '';
 
-  simulateValidation() {
-    this.validated = true;
+  private readonly validate$ = new Subject<string | null>();
+
+  readonly vm$: Observable<ValidationVm> = this.validate$.pipe(
+    switchMap(code => {
+      if (!code) return of(IDLE_VM);
+      return this.taskService.submitLeanSnippet(code).pipe(
+        switchMap(({ task_id }) =>
+          timer(500, 500).pipe(
+            switchMap(() => this.taskService.getLeanSnippetResult(task_id)),
+            filter((res: any) => res?.status !== 'pending'),
+            take(1),
+            timeout(60_000),
+          )
+        ),
+        map((res: any): ValidationVm => ({
+          state: res.valid ? 'valid' : 'invalid',
+          result: res as VerifyCompilerResult,
+          serverError: '',
+        })),
+        startWith<ValidationVm>({ ...IDLE_VM, state: 'loading' }),
+        catchError(err => of<ValidationVm>({
+          state: 'error',
+          result: null,
+          serverError: err?.name === 'TimeoutError'
+            ? 'Tiempo de espera agotado. El servidor Lean no respondió.'
+            : (err?.error?.error ?? 'Error al obtener el resultado.'),
+        })),
+      );
+    }),
+    startWith(IDLE_VM),
+    shareReplay(1),
+  );
+
+  constructor(private readonly taskService: TaskService) {}
+
+  onFileSelected(event: Event): void {
+    this.fileError = '';
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.lean')) {
+      this.fileError = 'Solo se aceptan archivos .lean';
+      return;
+    }
+    this.fileName = file.name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      this.code = (e.target?.result as string) ?? '';
+    };
+    reader.readAsText(file);
+  }
+
+  validate(): void {
+    if (!this.code.trim()) return;
+    this.fileError = '';
+    this.validate$.next(this.code);
+  }
+
+  clearAll(): void {
+    this.code = '';
+    this.fileName = '';
+    this.fileError = '';
+    this.validate$.next(null);
+  }
+
+  getStatusLabel(state: ValidationState): string {
+    const map: Record<ValidationState, string> = {
+      idle: 'Esperando entrada',
+      loading: 'Verificando...',
+      valid: 'Demostración correcta',
+      invalid: 'Errores encontrados',
+      error: 'Error del servidor',
+    };
+    return map[state];
   }
 }

@@ -12,6 +12,8 @@ import {
   ProjectDto,
   SimpleGraphResponse,
   TaskResult,
+  TexFileResponse,
+  VerifyCompilerResult,
   VerifyNodeResponse
 } from './task.models';
 
@@ -230,6 +232,25 @@ export class TaskService {
     return this.http.get<DefinitionsFileResponse>(`${this.apiBaseUrl}/projects/${projectId}/definitions`, {
       headers: this.authHeaders()
     });
+  }
+
+  getNodeTexFile(projectId: string, nodeId: string): Observable<TexFileResponse> {
+    return this.http.get<TexFileResponse>(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/tex-content`, {
+      headers: this.authHeaders()
+    });
+  }
+
+  submitLeanSnippet(code: string): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${this.apiBaseUrl}/nodes/tools/verify-snippet`,
+      { code }
+    );
+  }
+
+  getLeanSnippetResult(taskId: string): Observable<VerifyCompilerResult | { status: 'pending' }> {
+    return this.http.get<VerifyCompilerResult | { status: 'pending' }>(
+      `${this.apiBaseUrl}/nodes/tools/verify-snippet/${taskId}/result`
+    );
   }
 
   verifyNode(projectId: string, nodeId: string): Observable<VerifyNodeResponse> {
