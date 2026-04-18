@@ -87,6 +87,13 @@ export interface DefinitionsFileResponse {
   content: string;
 }
 
+export interface TexFileResponse {
+  project_id: string;
+  node_id: string;
+  path: string;
+  content: string;
+}
+
 export interface VerificationErrorItem {
   line: number;
   column: number;

@@ -60,29 +60,61 @@ nodes_bp = Blueprint('nodes', __name__, url_prefix='/api/v1/nodes')
 #     }), 200
 
 
-# @nodes_bp.route('/tools/verify-snippet/public', methods=['POST'])
-# def verify_snippet_public():
-#     """
-#     Dev-only endpoint for end-to-end smoke testing:
-#     Client -> Backend -> Lean compiler service -> Backend -> Client.
-#     """
-#     if os.getenv('FLASK_ENV') != 'development':
-#         return jsonify({"error": "Public verify endpoint is disabled outside development"}), 403
+@nodes_bp.route('/tools/verify-snippet', methods=['POST'])
+def verify_snippet_public():
+    """
+    Public endpoint: dispatches a Lean 4 snippet for verification.
+    Accepts JSON { "code": "..." } or multipart .lean file.
+    Returns { task_id } immediately (non-blocking).
+    """
+    code = None
 
-#     data = request.get_json() or {}
-#     code = data.get('code')
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        file = request.files.get('file')
+        if not file:
+            return jsonify({"error": "No file provided"}), 400
+        filename = file.filename or 'upload.lean'
+        if not filename.endswith('.lean'):
+            return jsonify({"error": "Only .lean files are accepted"}), 400
+        code = file.read().decode('utf-8', errors='replace')
+    else:
+        data = request.get_json(silent=True) or {}
+        code = data.get('code', '').strip()
 
-#     if not code:
-#         return jsonify({"error": "No code provided"}), 400
+    if not code:
+        return jsonify({"error": "No Lean code provided"}), 400
 
-#     try:
-#         result = CompilerClient.verify_snippet(code)
-#         return jsonify({
-#             "flow": "client -> backend -> lean -> backend -> client",
-#             "result": result
-#         }), 200
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 503
+    if len(code) > 100_000:
+        return jsonify({"error": "Code exceeds maximum allowed size (100 KB)"}), 413
+
+    try:
+        celery_app = CompilerClient._get_celery()
+        task = celery_app.send_task(
+            'tasks.verify_snippet',
+            args=[code, 'snippet.lean'],
+            queue=CompilerClient.LEAN_QUEUE_NAME,
+        )
+        return jsonify({"task_id": task.id}), 202
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
+
+
+@nodes_bp.route('/tools/verify-snippet/<task_id>/result', methods=['GET'])
+def get_snippet_result(task_id):
+    """
+    Polls the result of a previously submitted snippet verification.
+    Returns the VerifyCompilerResult when ready, or { status: 'pending' } with HTTP 202.
+    """
+    try:
+        celery_app = CompilerClient._get_celery()
+        async_result = celery_app.AsyncResult(task_id)
+        if async_result.ready():
+            if async_result.successful():
+                return jsonify(async_result.result), 200
+            return jsonify({"error": "Lean verification task failed"}), 500
+        return jsonify({"status": "pending"}), 202
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
 
 
 @nodes_bp.route('/<uuid:project_id>/<uuid:node_id>/solve', methods=['POST'])
@@ -760,6 +792,39 @@ def get_node_file_content(project_id, node_id):
         "project_id": str(project.id),
         "node_id": str(node.id),
         "path": node_main_path,
+        "content": content,
+    }), 200
+
+
+@nodes_bp.route('/<uuid:project_id>/<uuid:node_id>/tex-content', methods=['GET'])
+@jwt_required()
+def get_node_tex_content(project_id, node_id):
+    user_id = get_jwt_identity()
+    user = User.query.get_or_404(user_id)
+    project = Project.query.get_or_404(project_id)
+    node = Node.query.filter_by(id=node_id, project_id=project.id).first_or_404()
+
+    github_token = AuthService.refresh_github_token_if_needed(user)
+    if not github_token:
+        raise CoProofError("You must link your GitHub account.", code=400)
+
+    node_lean_path = GitHubService.extract_repo_path_from_node_url(node.url)
+    if not node_lean_path or not node_lean_path.endswith('.lean'):
+        raise CoProofError("Node URL does not map to a valid .lean file path.", code=400)
+
+    tex_path = node_lean_path[:-len('.lean')] + '.tex'
+
+    content = GitHubService.get_file_content(
+        remote_repo_url=project.remote_repo_url,
+        token=github_token,
+        path=tex_path,
+        branch=project.default_branch,
+    )
+
+    return jsonify({
+        "project_id": str(project.id),
+        "node_id": str(node.id),
+        "path": tex_path,
         "content": content,
     }), 200
     

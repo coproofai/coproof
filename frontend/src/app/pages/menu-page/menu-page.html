@@ -1,8 +1,33 @@
-    <h1 class="title">Menú Principal</h1>
+<div class="home-hero">
+  <h1 class="hero-title">CoProof</h1>
+  <p class="hero-sub">Plataforma colaborativa de demostraciones formales con Lean 4</p>
+</div>
 
-    <div class="menu-grid">
-      <a *ngFor="let item of menuItems" [routerLink]="item.route" class="menu-item">
-        <p class="menu-item-title">{{ item.title }}</p>
+<section class="card-section">
+  <h2 class="section-heading">Herramientas</h2>
+  <div class="card-grid">
+    <a *ngFor="let item of publicItems" [routerLink]="item.route" class="card">
+      <span class="card-title">{{ item.title }}</span>
+      <span class="card-desc">{{ item.description }}</span>
+    </a>
+  </div>
+</section>
+
+<section class="card-section">
+  <h2 class="section-heading">Workspace
+    <span *ngIf="!(isLoggedIn$ | async)" class="section-auth-badge">Requiere autenticación</span>
+  </h2>
+  <div class="card-grid">
+    <ng-container *ngFor="let item of workspaceItems">
+      <a *ngIf="(isLoggedIn$ | async)" [routerLink]="item.route" class="card">
+        <span class="card-title">{{ item.title }}</span>
+        <span class="card-desc">{{ item.description }}</span>
       </a>
-    </div>
-  
+      <div *ngIf="!(isLoggedIn$ | async)" class="card card-locked">
+        <span class="card-title">{{ item.title }}</span>
+        <span class="card-desc">{{ item.description }}</span>
+        <span class="card-lock-label">Auth</span>
+      </div>
+    </ng-container>
+  </div>
+</section>

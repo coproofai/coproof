@@ -1,250 +1,293 @@
-    <header class="top-header">
-      <div>
-        <h1>Proyecto: {{ projectName || 'Workspace' }}</h1>
-        <small>{{ sessionLabel }}</small>
+<header class="top-header">
+  <div>
+    <h1>{{ projectName || 'Workspace' }}</h1>
+    <small>{{ sessionLabel }}</small>
+  </div>
+  <div class="header-actions">
+    <button (click)="reloadAll()">Recargar</button>
+  </div>
+</header>
+
+
+<p *ngIf="status" class="status-bar">{{ status }}</p>
+
+<div *ngIf="graphCollapsed && sidebarCollapsed" class="both-hidden-bar">
+  <button class="ghost" (click)="graphCollapsed = false">▶ Mostrar Grafo</button>
+  <button class="ghost" (click)="sidebarCollapsed = false">▶ Mostrar Panel</button>
+</div>
+
+<div class="workspace-layout" [class.sidebar-hidden]="sidebarCollapsed" [class.graph-hidden]="graphCollapsed" *ngIf="projectId; else noProjectSelected">
+
+  <!-- ── GRAPH PANEL ── -->
+  <section class="graph-section">
+    <div class="graph-header" *ngIf="!graphCollapsed">
+      <h2>Grafo de Dependencias</h2>
+      <div class="graph-actions">
+        <button class="ghost" (click)="resetGraphTransform()">Reset</button>
+        <button class="ghost toggle-btn" (click)="graphCollapsed = true" title="Ocultar grafo">◀ Grafo</button>
+        <button class="ghost toggle-btn" (click)="sidebarCollapsed = !sidebarCollapsed"
+          [title]="sidebarCollapsed ? 'Mostrar panel lateral' : 'Ocultar panel lateral'">
+          {{ sidebarCollapsed ? 'Panel ▶' : 'Panel ◀' }}
+        </button>
       </div>
-      <div class="header-actions">
-        <button (click)="reloadAll()">Recargar</button>
-      </div>
-    </header>
+    </div>
 
-    <p *ngIf="status" class="status">{{ status }}</p>
-
-    <div class="workspace-grid" *ngIf="projectId; else noProjectSelected">
-      <section class="panel graph-panel" [class.collapsed]="graphCollapsed">
-        <div class="panel-head">
-          <h2>Grafo de Dependencias</h2>
-          <div class="panel-actions">
-            <button *ngIf="!graphCollapsed" class="ghost" (click)="resetGraphTransform()">Reset View</button>
-            <button class="ghost" (click)="graphCollapsed = !graphCollapsed">
-              {{ graphCollapsed ? 'Expandir' : 'Colapsar' }}
-            </button>
-          </div>
-        </div>
-
-        <div class="panel-body" *ngIf="!graphCollapsed">
-          <div class="graph-canvas" *ngIf="viewNodes.length > 0; else emptyGraph">
-            <svg
-              [attr.viewBox]="graphViewBox"
-              preserveAspectRatio="xMidYMid meet"
-              (wheel)="onGraphWheel($event)"
-              (mousedown)="onGraphMouseDown($event)"
-              (mousemove)="onGraphMouseMove($event)"
-              (mouseleave)="stopGraphPan()"
-              [class.panning]="isGraphPanning"
+    <div class="graph-canvas-wrap" *ngIf="!graphCollapsed">
+      <div class="graph-canvas" *ngIf="viewNodes.length > 0; else emptyGraph">
+        <svg
+          [attr.viewBox]="graphViewBox"
+          preserveAspectRatio="xMidYMid meet"
+          (wheel)="onGraphWheel($event)"
+          (mousedown)="onGraphMouseDown($event)"
+          (mousemove)="onGraphMouseMove($event)"
+          (mouseleave)="stopGraphPan()"
+          [class.panning]="isGraphPanning"
+        >
+          <g [attr.transform]="graphTransform">
+            <line
+              *ngFor="let edge of edges"
+              class="graph-link"
+              [attr.x1]="edge.x1" [attr.y1]="edge.y1"
+              [attr.x2]="edge.x2" [attr.y2]="edge.y2"
+            ></line>
+            <g
+              *ngFor="let node of viewNodes"
+              class="graph-node"
+              [class.selected]="selectedNode?.id === node.id"
+              [ngClass]="node.state"
+              (click)="selectNode(node)"
             >
-              <g [attr.transform]="graphTransform">
-                <line
-                  *ngFor="let edge of edges"
-                  class="graph-link"
-                  [attr.x1]="edge.x1"
-                  [attr.y1]="edge.y1"
-                  [attr.x2]="edge.x2"
-                  [attr.y2]="edge.y2"
-                ></line>
+              <circle [attr.cx]="node.x" [attr.cy]="node.y" r="28"></circle>
+              <text [attr.x]="node.x" [attr.y]="node.y + 44">{{ node.name }}</text>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <ng-template #emptyGraph>
+        <div class="graph-empty">No hay nodos en este proyecto.</div>
+      </ng-template>
+    </div>
 
-                <g
-                  *ngFor="let node of viewNodes"
-                  class="graph-node"
-                  [class.selected]="selectedNode?.id === node.id"
-                  [ngClass]="node.state"
-                  (click)="selectNode(node)"
-                >
-                  <circle [attr.cx]="node.x" [attr.cy]="node.y" r="28"></circle>
-                  <text [attr.x]="node.x" [attr.y]="node.y + 44">{{ node.name }}</text>
-                </g>
-              </g>
-            </svg>
+    <p class="graph-tip" *ngIf="!graphCollapsed">Drag para mover · rueda para zoom · click en nodo para editar</p>
+  </section>
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="workspace-sidebar" *ngIf="!sidebarCollapsed">
+    <nav class="tab-nav">
+      <button class="tab-btn graph-restore-btn" *ngIf="graphCollapsed"
+        (click)="graphCollapsed = false" title="Mostrar grafo">▶ Grafo</button>
+      <button class="tab-btn" [class.active]="activeTab === 'node'" (click)="activeTab = 'node'">Nodo</button>
+      <button class="tab-btn" [class.active]="activeTab === 'tex'"  (click)="switchToTexTab()">TeX</button>
+      <button class="tab-btn" [class.active]="activeTab === 'prs'"  (click)="activeTab = 'prs'">
+        PRs<span *ngIf="openPulls.length" class="tab-badge">{{ openPulls.length }}</span>
+      </button>
+      <button class="tab-btn" [class.active]="activeTab === 'defs'" (click)="activeTab = 'defs'">Defs</button>
+    </nav>
+
+    <div class="tab-content">
+
+      <!-- ── NODE TAB ── -->
+      <div *ngIf="activeTab === 'node'" class="tab-pane">
+        <ng-container *ngIf="selectedNode; else selectNodeHint">
+
+          <div class="node-meta-grid">
+            <span class="meta-key">Nodo</span>
+            <span class="meta-val">{{ selectedNode.name }}</span>
+            <span class="meta-key">Estado</span>
+            <span class="meta-val state-chip" [ngClass]="'chip-' + (selectedNode.state || 'open')">{{ selectedNode.state || 'open' }}</span>
+            <span class="meta-key">Tipo</span>
+            <span class="meta-val">{{ selectedNode.node_kind || 'proof' }}</span>
+            <span class="meta-key">Archivo</span>
+            <span class="meta-val small-mono">{{ nodePath || '…' }}</span>
           </div>
 
-          <p class="graph-tip">Drag para mover, rueda para zoom.</p>
-        </div>
+          <div class="section-divider" *ngIf="!isComputationNode">
+            <button class="btn-secondary btn-sm" (click)="createComputationChildNode()">+ Nodo Computación</button>
+          </div>
 
-        <ng-template #emptyGraph>
-          <p>No hay nodos en este proyecto.</p>
-        </ng-template>
-      </section>
-
-      <section class="panel editor-panel" [class.collapsed]="editorCollapsed">
-        <div class="panel-head">
-          <h2>Editor de Nodo</h2>
-          <div class="panel-actions">
-            <button class="ghost" (click)="editorCollapsed = !editorCollapsed">
-              {{ editorCollapsed ? 'Expandir' : 'Colapsar' }}
+          <!-- Editor section -->
+          <div class="collapsible-section">
+            <button class="section-toggle" (click)="sectionEditor = !sectionEditor">
+              <span>Editor .lean</span>
+              <span class="toggle-arrow">{{ sectionEditor ? '▲' : '▼' }}</span>
             </button>
+            <div *ngIf="sectionEditor">
+              <p *ngIf="isNodeFileLoading" class="hint-msg">Cargando archivo .lean…</p>
+              <textarea
+                *ngIf="!isNodeFileLoading"
+                [(ngModel)]="leanCode"
+                name="leanCode"
+                rows="12"
+                placeholder="Contenido .lean del nodo seleccionado"
+              ></textarea>
+            </div>
           </div>
-        </div>
 
-        <div class="panel-body" *ngIf="!editorCollapsed">
-          <ng-container *ngIf="selectedNode; else selectNodeHint">
-            <p class="meta"><strong>Nodo:</strong> {{ selectedNode.name }}</p>
-            <p class="meta"><strong>Estado:</strong> {{ selectedNode.state }}</p>
-            <p class="meta"><strong>Tipo:</strong> {{ selectedNode.node_kind || 'proof' }}</p>
-            <p class="meta"><strong>Archivo:</strong> {{ nodePath || '...' }}</p>
+          <!-- Actions section -->
+          <div class="collapsible-section">
+            <button class="section-toggle" (click)="sectionActions = !sectionActions">
+              <span>{{ isComputationNode ? 'Computación' : 'Acciones' }}</span>
+              <span class="toggle-arrow">{{ sectionActions ? '▲' : '▼' }}</span>
+            </button>
+            <div *ngIf="sectionActions">
+              <div class="actions" *ngIf="!isComputationNode">
+                <button (click)="verifySelectedNode()">Verify</button>
+                <button (click)="submitSolve()">Solve</button>
+                <button (click)="submitSplit()">Split</button>
+              </div>
 
-            <div class="create-computation-box">
-              <p class="meta"><strong>Crear hijo de computación</strong></p>
-              <button *ngIf="!isComputationNode" (click)="createComputationChildNode()">Crear Computation Node</button>
+              <div class="computation-box" *ngIf="isComputationNode">
+            <p class="section-label">Payload Computation</p>
+            <label class="field-label">Entrypoint</label>
+            <input [(ngModel)]="computationEntrypoint" name="computationEntrypoint" type="text" placeholder="run" />
+            <label class="field-label">Lean Statement</label>
+            <input [(ngModel)]="computationLeanStatement" name="computationLeanStatement" type="text" placeholder="GoalDef" />
+            <label class="field-label">Target JSON</label>
+            <textarea [(ngModel)]="computationTargetJson" name="computationTargetJson" rows="3" placeholder='{ "kind": "range_check" }'></textarea>
+            <label class="field-label">Input Data JSON</label>
+            <textarea [(ngModel)]="computationInputJson" name="computationInputJson" rows="3" placeholder='{ "samples": 1000 }'></textarea>
+            <label class="field-label">Código Python</label>
+            <textarea [(ngModel)]="computationCode" name="computationCode" rows="7" placeholder="def run(input_data, target): ..."></textarea>
+            <div class="inline-fields">
+              <label class="field-label timeout-label">Timeout (s)</label>
+              <input [(ngModel)]="computationTimeoutSeconds" name="computationTimeoutSeconds" type="number" min="1" max="900" />
+              <button (click)="submitCompute()">Submit Compute</button>
             </div>
+            </div><!-- /computation-box -->
+            </div><!-- /sectionActions body -->
+          </div><!-- /collapsible-section actions -->
 
-            <p *ngIf="isNodeFileLoading" class="meta">Cargando archivo .lean...</p>
-
-            <textarea
-              *ngIf="!isNodeFileLoading"
-              [(ngModel)]="leanCode"
-              name="leanCode"
-              rows="12"
-              placeholder="Contenido .lean del nodo seleccionado"
-            ></textarea>
-
-            <div class="actions" *ngIf="!isComputationNode">
-              <button (click)="verifySelectedNode()">Verify</button>
-              <button (click)="submitSolve()">Submit Solve</button>
-              <button (click)="submitSplit()">Submit Split</button>
-            </div>
-
-            <div class="computation-box" *ngIf="isComputationNode">
-              <p class="meta"><strong>Payload Computation Node</strong></p>
-
-              <label class="meta">Entrypoint</label>
-              <input [(ngModel)]="computationEntrypoint" name="computationEntrypoint" type="text" placeholder="run" />
-
-              <label class="meta">Lean Statement (objetivo del nodo)</label>
-              <input [(ngModel)]="computationLeanStatement" name="computationLeanStatement" type="text" placeholder="GoalDef" />
-
-              <label class="meta">Target JSON</label>
-              <textarea
-                [(ngModel)]="computationTargetJson"
-                name="computationTargetJson"
-                rows="4"
-                placeholder="{ &quot;kind&quot;: &quot;range_check&quot; }"
-              ></textarea>
-
-              <label class="meta">Input Data JSON</label>
-              <textarea
-                [(ngModel)]="computationInputJson"
-                name="computationInputJson"
-                rows="4"
-                placeholder="{ &quot;samples&quot;: 1000 }"
-              ></textarea>
-
-              <label class="meta">Código Python</label>
-              <textarea
-                [(ngModel)]="computationCode"
-                name="computationCode"
-                rows="8"
-                placeholder="def run(input_data, target): ..."
-              ></textarea>
-
-              <div class="inline-fields">
-                <label class="meta timeout-label">Timeout (s)</label>
-                <input
-                  [(ngModel)]="computationTimeoutSeconds"
-                  name="computationTimeoutSeconds"
-                  type="number"
-                  min="1"
-                  max="900"
-                />
-                <button (click)="submitCompute()">Submit Compute</button>
+          <!-- Results section -->
+          <div class="collapsible-section" *ngIf="verificationSummary || verificationErrors.length > 0 || sorryLocations.length > 0 || lastResponse">
+            <button class="section-toggle" (click)="sectionResults = !sectionResults">
+              <span>Resultados</span>
+              <span class="toggle-arrow">{{ sectionResults ? '▲' : '▼' }}</span>
+            </button>
+            <div *ngIf="sectionResults">
+              <div class="verify-box" *ngIf="verificationSummary || verificationErrors.length > 0 || sorryLocations.length > 0">
+                <p class="section-label">{{ verificationSummary || 'Sin resumen.' }}</p>
+                <ng-container *ngIf="verificationErrors.length > 0">
+                  <p class="issue-title">Errores de compilación</p>
+                  <ul class="issue-list">
+                    <li *ngFor="let issue of verificationErrors">L{{ issue.line }}:C{{ issue.column }} – {{ issue.message }}</li>
+                  </ul>
+                </ng-container>
+                <ng-container *ngIf="sorryLocations.length > 0">
+                  <p class="issue-title">Sorries detectados</p>
+                  <ul class="issue-list">
+                    <li *ngFor="let loc of sorryLocations">{{ loc.file }}:{{ loc.line }} – {{ loc.snippet }}</li>
+                  </ul>
+                </ng-container>
+              </div>
+              <div *ngIf="lastResponse" class="response-wrap">
+                <p class="section-label">Respuesta backend</p>
+                <pre class="response">{{ lastResponse | json }}</pre>
               </div>
             </div>
+          </div><!-- /collapsible-section results -->
 
-            <div class="verify-box" *ngIf="verificationSummary || verificationErrors.length > 0 || sorryLocations.length > 0">
-              <p class="meta"><strong>Resultado de verificación:</strong> {{ verificationSummary || 'Sin resumen disponible.' }}</p>
-
-              <p class="meta issue-title" *ngIf="verificationErrors.length > 0">Errores de compilación:</p>
-              <ul class="issue-list" *ngIf="verificationErrors.length > 0">
-                <li *ngFor="let issue of verificationErrors">
-                  L{{ issue.line }}:C{{ issue.column }} - {{ issue.message }}
-                </li>
-              </ul>
-
-              <p class="meta issue-title" *ngIf="sorryLocations.length > 0">Sorries detectados:</p>
-              <ul class="issue-list" *ngIf="sorryLocations.length > 0">
-                <li *ngFor="let location of sorryLocations">
-                  {{ location.file }}:{{ location.line }} - {{ location.snippet }}
-                </li>
-              </ul>
-            </div>
-
-            <div *ngIf="lastResponse" class="response-wrap">
-              <p class="meta"><strong>Respuesta backend</strong></p>
-              <pre class="response">{{ lastResponse | json }}</pre>
-            </div>
-
-            <div class="preview-card" *ngIf="!isNodeFileLoading && leanCode">
-              <div class="preview-head">
-                <strong>Preview del Nodo</strong>
-                <span>{{ leanCodeLineCount }} líneas</span>
-              </div>
-              <div class="code-preview">
-                <div class="code-line" *ngFor="let line of leanCodeLines; let index = index">
-                  <span class="line-no">{{ index + 1 }}</span>
-                  <span class="line-code" [innerHTML]="formatLeanLine(line)"></span>
-                </div>
-              </div>
-            </div>
-
-            <div class="definitions-box">
-              <h3>Definiciones del Proyecto</h3>
-              <p class="meta"><strong>Archivo:</strong> {{ definitionsPath || 'Definitions.lean' }}</p>
-              <p class="meta" *ngIf="definitionsLoading">Cargando definiciones...</p>
-              <p class="meta" *ngIf="definitionsError">{{ definitionsError }}</p>
-              <div class="preview-card" *ngIf="!definitionsLoading && projectDefinitions">
+          <!-- Preview section -->
+          <div class="collapsible-section" *ngIf="!isNodeFileLoading && leanCode">
+            <button class="section-toggle" (click)="sectionPreview = !sectionPreview">
+              <span>Preview Lean</span>
+              <span class="toggle-arrow">{{ sectionPreview ? '▲' : '▼' }}</span>
+            </button>
+            <div *ngIf="sectionPreview">
+              <div class="preview-card">
                 <div class="preview-head">
-                  <strong>Preview Definitions</strong>
-                  <span>{{ definitionsLineCount }} líneas</span>
+                  <strong>Preview Lean</strong>
+                  <span>{{ leanCodeLineCount }} líneas</span>
                 </div>
-                <div class="code-preview definitions-preview">
-                  <div class="code-line" *ngFor="let line of definitionsLines; let index = index">
-                    <span class="line-no">{{ index + 1 }}</span>
+                <div class="code-preview">
+                  <div class="code-line" *ngFor="let line of leanCodeLines; let i = index">
+                    <span class="line-no">{{ i + 1 }}</span>
                     <span class="line-code" [innerHTML]="formatLeanLine(line)"></span>
                   </div>
                 </div>
               </div>
             </div>
-          </ng-container>
-        </div>
+          </div><!-- /collapsible-section preview -->
 
+        </ng-container>
         <ng-template #selectNodeHint>
-          <p>Selecciona un nodo del grafo para cargar su archivo .lean.</p>
+          <p class="hint-msg">Selecciona un nodo del grafo para cargar su archivo .lean.</p>
         </ng-template>
-      </section>
+      </div><!-- /node tab-pane -->
 
-      <section class="panel pr-panel" [class.collapsed]="prsCollapsed">
-        <div class="panel-head">
-          <h2>Pull Requests Abiertos</h2>
-          <div class="panel-actions">
-            <button class="ghost" (click)="prsCollapsed = !prsCollapsed">
-              {{ prsCollapsed ? 'Expandir' : 'Colapsar' }}
-            </button>
+      <!-- ── TEX TAB ── -->
+      <div *ngIf="activeTab === 'tex'" class="tab-pane tex-pane">
+        <div class="tex-toolbar">
+          <span class="section-label">Visor TeX / LaTeX</span>
+          <div class="view-mode-btns">
+            <button class="ghost" [class.mode-active]="texViewMode === 'source'"  (click)="texViewMode = 'source'">Fuente</button>
+            <button class="ghost" [class.mode-active]="texViewMode === 'preview'" (click)="switchToTexPreview()">Renderizado</button>
           </div>
         </div>
 
-        <div class="panel-body" *ngIf="!prsCollapsed">
-          <div class="pr-list" *ngIf="openPulls.length > 0; else emptyPrs">
-            <div class="pr-item" *ngFor="let pr of openPulls">
-              <div>
-                <p class="pr-title">#{{ pr.number }} - {{ pr.title }}</p>
-                <p class="pr-meta">{{ pr.head }} → {{ pr.base }} · {{ pr.author }}</p>
-              </div>
-              <div class="pr-actions">
-                <a [href]="pr.url" target="_blank" rel="noopener">Abrir</a>
-                <button (click)="mergePullRequest(pr)">Merge</button>
-              </div>
+        <p *ngIf="texPath" class="meta small-mono">{{ texPath }}</p>
+        <p *ngIf="texLoading" class="hint-msg">Cargando archivo .tex…</p>
+        <p *ngIf="texError" class="error-msg">{{ texError }}</p>
+        <p *ngIf="!selectedNode && !texLoading" class="hint-msg">Selecciona un nodo para cargar su archivo .tex.</p>
+        <p *ngIf="selectedNode && !texLoading && !texSource && !texError" class="hint-msg">Sin archivo .tex para este nodo.</p>
+
+        <textarea
+          *ngIf="texViewMode === 'source' && !texLoading"
+          [(ngModel)]="texSource"
+          name="texSource"
+          rows="22"
+          class="tex-source"
+          placeholder="% .tex del nodo se cargará aquí automáticamente"
+        ></textarea>
+
+        <div *ngIf="texViewMode === 'preview' && !texLoading" class="tex-preview-wrap">
+          <div class="tex-preview-content" [innerHTML]="texRenderedHtml"></div>
+        </div>
+      </div>
+
+      <!-- ── PRs TAB ── -->
+      <div *ngIf="activeTab === 'prs'" class="tab-pane">
+        <div class="pr-list" *ngIf="openPulls.length > 0; else emptyPrs">
+          <div class="pr-item" *ngFor="let pr of openPulls">
+            <div class="pr-info">
+              <p class="pr-title">#{{ pr.number }} – {{ pr.title }}</p>
+              <p class="pr-meta">{{ pr.head }} → {{ pr.base }} · {{ pr.author }}</p>
+            </div>
+            <div class="pr-actions">
+              <a [href]="pr.url" target="_blank" rel="noopener">Abrir</a>
+              <button (click)="mergePullRequest(pr)">Merge</button>
             </div>
           </div>
         </div>
-
         <ng-template #emptyPrs>
-          <p>No hay PRs abiertos para este proyecto.</p>
+          <p class="hint-msg">No hay PRs abiertos para este proyecto.</p>
         </ng-template>
-      </section>
-    </div>
-
-    <ng-template #noProjectSelected>
-      <div class="panel">
-        <p>Falta projectId en la URL. Ve a "Open Workspace" y selecciona un proyecto.</p>
       </div>
-    </ng-template>
-  
+
+      <!-- ── DEFS TAB ── -->
+      <div *ngIf="activeTab === 'defs'" class="tab-pane">
+        <p class="meta"><strong>Archivo:</strong> {{ definitionsPath || 'Definitions.lean' }}</p>
+        <p class="hint-msg" *ngIf="definitionsLoading">Cargando definiciones…</p>
+        <p class="error-msg"  *ngIf="definitionsError">{{ definitionsError }}</p>
+        <div class="preview-card" *ngIf="!definitionsLoading && projectDefinitions">
+          <div class="preview-head">
+            <strong>Definitions.lean</strong>
+            <span>{{ definitionsLineCount }} líneas</span>
+          </div>
+          <div class="code-preview definitions-preview">
+            <div class="code-line" *ngFor="let line of definitionsLines; let i = index">
+              <span class="line-no">{{ i + 1 }}</span>
+              <span class="line-code" [innerHTML]="formatLeanLine(line)"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-content -->
+  </aside>
+</div>
+
+<ng-template #noProjectSelected>
+  <div class="panel">
+    <p>Falta projectId en la URL. Ve a "Open Workspace" y selecciona un proyecto.</p>
+  </div>
+</ng-template>

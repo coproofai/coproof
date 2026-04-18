@@ -20,20 +20,20 @@ export const routes: Routes = [
 	{
 		path: '',
 		component: ShellComponent,
-		canActivate: [authGuard],
 		children: [
 			{ path: 'menu', component: MenuPageComponent },
 			{ path: 'validation', component: ValidationPageComponent },
 			{ path: 'translation', component: TranslationPageComponent },
 			{ path: 'proof-search', component: ProofSearchPageComponent },
 			{ path: 'lineage-search', component: LineageSearchPageComponent },
-			{ path: 'create-project', component: CreateProjectPageComponent },
 			{ path: 'project-search', component: ProjectSearchPageComponent },
-			{ path: 'open-workspace', component: OpenWorkspacePageComponent },
-			{ path: 'workspace', component: WorkspacePageComponent },
-			{ path: 'account-config', component: AccountConfigPageComponent },
 			{ path: 'environment-config', component: EnvironmentConfigPageComponent },
 			{ path: 'debug-executors', component: DebugExecutorsPageComponent },
+			// — Protected: require authentication —
+			{ path: 'create-project', component: CreateProjectPageComponent, canActivate: [authGuard] },
+			{ path: 'open-workspace', component: OpenWorkspacePageComponent, canActivate: [authGuard] },
+			{ path: 'workspace', component: WorkspacePageComponent, canActivate: [authGuard] },
+			{ path: 'account-config', component: AccountConfigPageComponent, canActivate: [authGuard] },
 			{ path: '', pathMatch: 'full', redirectTo: 'menu' }
 		]
 	},

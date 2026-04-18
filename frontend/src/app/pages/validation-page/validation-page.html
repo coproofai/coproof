@@ -1,25 +1,108 @@
-    <h1>Validar Demostración</h1>
-    <div class="control-panel">
-      <button class="upload-button" (click)="simulateValidation()">Subir Archivo de Validación</button>
-      <div class="validation-result" [ngClass]="validated ? 'result-validated' : 'result-pending'">
-        Resultado: {{ validated ? 'Validación Exitosa' : 'Pendiente de Subida/Validación' }}
+<div class="vp-header">
+  <div class="vp-header-left">
+    <h1 class="vp-title">Validar Demostración</h1>
+    <p class="vp-subtitle">Carga un archivo Lean 4 o escribe código directamente para verificar su corrección.</p>
+  </div>
+  <div class="status-badge" [ngClass]="'status-' + state">{{ statusLabel }}</div>
+</div>
+
+<div class="vp-layout">
+  <!-- LEFT: User input -->
+  <section class="vp-panel input-panel">
+    <div class="panel-toolbar">
+      <span class="panel-label">Entrada</span>
+      <div class="toolbar-actions">
+        <label class="btn btn-secondary" for="lean-file-input">
+          Cargar .lean
+          <input id="lean-file-input" type="file" accept=".lean" (change)="onFileSelected($event)" hidden />
+        </label>
+        <button class="btn btn-ghost" (click)="clearAll()" [disabled]="state === 'loading'">Limpiar</button>
+      </div>
+    </div>
+    <div class="file-name-bar" *ngIf="fileName">
+      <span class="file-icon">&#9679;</span> {{ fileName }}
+    </div>
+    <textarea
+      class="code-editor"
+      [(ngModel)]="code"
+      placeholder="-- Escribe o carga código Lean 4 aquí..."
+      spellcheck="false"
+      [disabled]="state === 'loading'"
+    ></textarea>
+    <div class="panel-footer">
+      <button
+        class="btn btn-primary"
+        (click)="validate()"
+        [disabled]="!code.trim() || state === 'loading'"
+      >
+        <span *ngIf="state !== 'loading'">Verificar</span>
+        <span *ngIf="state === 'loading'" class="spinner-inline">Verificando...</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- RIGHT: Formatted output -->
+  <section class="vp-panel output-panel">
+    <div class="panel-toolbar">
+      <span class="panel-label">Resultado</span>
+      <div class="result-meta" *ngIf="result">
+        <span class="meta-chip">{{ result.theorem_count }} teorema(s)</span>
+        <span class="meta-chip">{{ result.processing_time_seconds | number:'1.2-3' }}s</span>
       </div>
     </div>
 
-    <div class="columns-container">
-      <div class="column">
-        <div class="column-header">1. Demostración Original (Usuario)</div>
-        <pre>{{ originalContent }}</pre>
+    <!-- Idle / loading -->
+    <div class="output-placeholder" *ngIf="state === 'idle'">
+      <span class="placeholder-icon">&#9654;</span>
+      <p>Ejecuta la verificación para ver el resultado aquí.</p>
+    </div>
+    <div class="output-placeholder loading" *ngIf="state === 'loading'">
+      <div class="spinner"></div>
+      <p>Enviando al servidor Lean...</p>
+    </div>
+
+    <!-- Server error -->
+    <div class="output-error-banner" *ngIf="state === 'error'">
+      <strong>Error:</strong> {{ serverError }}
+    </div>
+
+    <!-- Success result -->
+    <div class="output-content" *ngIf="result">
+      <div class="result-verdict" [ngClass]="result.valid ? 'verdict-valid' : 'verdict-invalid'">
+        <span class="verdict-icon">{{ result.valid ? '&#10003;' : '&#10007;' }}</span>
+        <span>{{ result.valid ? 'La demostración es válida' : 'La demostración contiene errores' }}</span>
       </div>
 
-      <div class="column">
-        <div class="column-header">2. Versión en Lean (Generada)</div>
-        <pre>{{ leanContent }}</pre>
+      <!-- Error list -->
+      <div class="error-list" *ngIf="!result.valid && result.errors.length > 0">
+        <div class="error-list-header">{{ result.errors.length }} error(es) encontrado(s)</div>
+        <div class="error-item" *ngFor="let err of result.errors; trackBy: trackByIndex">
+          <span class="err-location">L{{ err.line }}:C{{ err.column }}</span>
+          <span class="err-message">{{ err.message }}</span>
+        </div>
       </div>
 
-      <div class="column">
-        <div class="column-header">3. Versión en Lenguaje Natural</div>
-        <pre>{{ naturalContent }}</pre>
+      <!-- No errors but invalid (warnings / timeout) -->
+      <div class="no-errors-note" *ngIf="!result.valid && result.errors.length === 0">
+        El proceso terminó con código {{ result.return_code }}.
+        Revisa los mensajes del compilador.
+      </div>
+
+      <!-- Valid: show theorem count -->
+      <div class="valid-details" *ngIf="result.valid">
+        <div class="detail-row">
+          <span class="detail-label">Teoremas verificados</span>
+          <span class="detail-value">{{ result.theorem_count }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Mensajes del compilador</span>
+          <span class="detail-value">{{ result.message_count }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Tiempo de procesamiento</span>
+          <span class="detail-value">{{ result.processing_time_seconds | number:'1.2-3' }}s</span>
+        </div>
       </div>
     </div>
-  
+  </section>
+</div>
