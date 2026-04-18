@@ -1,116 +1,99 @@
-import { ChangeDetectorRef, Component, NgZone, OnDestroy } from '@angular/core';
-import { DecimalPipe, NgClass, NgFor, NgIf } from '@angular/common';
+import { Component } from '@angular/core';
+import { AsyncPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subject, timer } from 'rxjs';
-import { filter, switchMap, take, takeUntil, timeout } from 'rxjs/operators';
+import { Observable, Subject, of, timer } from 'rxjs';
+import { catchError, filter, map, shareReplay, startWith, switchMap, take, timeout } from 'rxjs/operators';
 import { TaskService } from '../../task.service';
 import { VerifyCompilerResult } from '../../task.models';
 
 type ValidationState = 'idle' | 'loading' | 'valid' | 'invalid' | 'error';
 
+interface ValidationVm {
+  state: ValidationState;
+  result: VerifyCompilerResult | null;
+  serverError: string;
+}
+
+const IDLE_VM: ValidationVm = { state: 'idle', result: null, serverError: '' };
+
 @Component({
   selector: 'app-validation-page',
   standalone: true,
-  imports: [NgClass, NgFor, NgIf, FormsModule, DecimalPipe],
+  imports: [FormsModule, DecimalPipe, AsyncPipe],
   templateUrl: './validation-page.html',
   styleUrl: './validation-page.css'
 })
-export class ValidationPageComponent implements OnDestroy {
+export class ValidationPageComponent {
   code = '';
   fileName = '';
-  state: ValidationState = 'idle';
-  result: VerifyCompilerResult | null = null;
-  serverError = '';
+  fileError = '';
 
-  private readonly destroy$ = new Subject<void>();
-  private readonly cancel$  = new Subject<void>();
+  private readonly validate$ = new Subject<string | null>();
 
-  constructor(
-    private readonly taskService: TaskService,
-    private readonly zone: NgZone,
-    private readonly cdr: ChangeDetectorRef,
-  ) {}
+  readonly vm$: Observable<ValidationVm> = this.validate$.pipe(
+    switchMap(code => {
+      if (!code) return of(IDLE_VM);
+      return this.taskService.submitLeanSnippet(code).pipe(
+        switchMap(({ task_id }) =>
+          timer(500, 500).pipe(
+            switchMap(() => this.taskService.getLeanSnippetResult(task_id)),
+            filter((res: any) => res?.status !== 'pending'),
+            take(1),
+            timeout(60_000),
+          )
+        ),
+        map((res: any): ValidationVm => ({
+          state: res.valid ? 'valid' : 'invalid',
+          result: res as VerifyCompilerResult,
+          serverError: '',
+        })),
+        startWith<ValidationVm>({ ...IDLE_VM, state: 'loading' }),
+        catchError(err => of<ValidationVm>({
+          state: 'error',
+          result: null,
+          serverError: err?.name === 'TimeoutError'
+            ? 'Tiempo de espera agotado. El servidor Lean no respondió.'
+            : (err?.error?.error ?? 'Error al obtener el resultado.'),
+        })),
+      );
+    }),
+    startWith(IDLE_VM),
+    shareReplay(1),
+  );
 
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
+  constructor(private readonly taskService: TaskService) {}
 
   onFileSelected(event: Event): void {
+    this.fileError = '';
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
     if (!file.name.endsWith('.lean')) {
-      this.serverError = 'Solo se aceptan archivos .lean';
-      this.state = 'error';
+      this.fileError = 'Solo se aceptan archivos .lean';
       return;
     }
     this.fileName = file.name;
     const reader = new FileReader();
     reader.onload = (e) => {
       this.code = (e.target?.result as string) ?? '';
-      this.state = 'idle';
-      this.result = null;
-      this.serverError = '';
     };
     reader.readAsText(file);
   }
 
   validate(): void {
     if (!this.code.trim()) return;
-    this.cancel$.next(); // cancel any in-flight poll
-    this.state = 'loading';
-    this.result = null;
-    this.serverError = '';
-
-    // Run the entire subscription inside Angular's zone so that the
-    // timer's setInterval is zone-patched and CD fires automatically.
-    this.zone.run(() => {
-      this.taskService.submitLeanSnippet(this.code).pipe(
-        switchMap(({ task_id }) => {
-          console.log('[Validation] Task dispatched:', task_id);
-          return timer(500, 500).pipe(
-            switchMap(() => this.taskService.getLeanSnippetResult(task_id)),
-            filter((res: any) => {
-              console.log('[Validation] Poll response:', res);
-              return res?.status !== 'pending';
-            }),
-            take(1),
-            timeout(60_000),
-          );
-        }),
-        takeUntil(this.cancel$),
-        takeUntil(this.destroy$),
-      ).subscribe({
-        next: (res: any) => {
-          console.log('[Validation] next() fired, inAngularZone:', NgZone.isInAngularZone(), res);
-          this.result = res as VerifyCompilerResult;
-          this.state = this.result.valid ? 'valid' : 'invalid';
-          this.cdr.detectChanges();
-          console.log('[Validation] state after detectChanges:', this.state);
-        },
-        error: (err) => {
-          console.error('[Validation] error() fired, inAngularZone:', NgZone.isInAngularZone(), err);
-          this.serverError = err?.name === 'TimeoutError'
-            ? 'Tiempo de espera agotado. El servidor Lean no respondió.'
-            : (err?.error?.error ?? 'Error al obtener el resultado.');
-          this.state = 'error';
-          this.cdr.detectChanges();
-        }
-      });
-    });
+    this.fileError = '';
+    this.validate$.next(this.code);
   }
 
   clearAll(): void {
-    this.cancel$.next();
     this.code = '';
     this.fileName = '';
-    this.state = 'idle';
-    this.result = null;
-    this.serverError = '';
+    this.fileError = '';
+    this.validate$.next(null);
   }
 
-  get statusLabel(): string {
+  getStatusLabel(state: ValidationState): string {
     const map: Record<ValidationState, string> = {
       idle: 'Esperando entrada',
       loading: 'Verificando...',
@@ -118,8 +101,6 @@ export class ValidationPageComponent implements OnDestroy {
       invalid: 'Errores encontrados',
       error: 'Error del servidor',
     };
-    return map[this.state];
+    return map[state];
   }
-
-  trackByIndex(index: number): number { return index; }
 }
