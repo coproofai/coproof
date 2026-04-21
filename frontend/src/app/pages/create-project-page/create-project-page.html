@@ -7,30 +7,126 @@
           <input [(ngModel)]="projectName" name="projectName" placeholder="Ej: Fundamentos de la Teoría de Conjuntos" />
         </div>
 
-        <div class="field">
-          <label>Objetivo lógico (goal) *</label>
-          <textarea [(ngModel)]="goal" name="goal" rows="4" placeholder="Ej: ∀ a b : Nat, a + b = b + a"></textarea>
+        <!-- ── Goal / Imports / Definitions — two-tab input ────────────── -->
+        <div class="goal-tab-bar">
+          <button type="button" class="goal-tab" [class.goal-tab-active]="goalInputTab === 'nl'" (click)="switchGoalTab('nl')">
+            Lenguaje Natural
+          </button>
+          <button type="button" class="goal-tab" [class.goal-tab-active]="goalInputTab === 'manual'" (click)="switchGoalTab('manual')">
+            Manual
+          </button>
         </div>
 
-        <div class="field">
-          <label>Imports de Mathlib (opcional)</label>
-          <textarea
-            [(ngModel)]="goalImportsText"
-            name="goalImportsText"
-            rows="3"
-            placeholder="Una línea por módulo, ej:\nMathlib.Data.Real.Basic\nMathlib.Algebra.Group.Defs"
-          ></textarea>
+        <!-- NL tab -->
+        <div *ngIf="goalInputTab === 'nl'" class="tab-pane">
+          <ng-container *ngIf="nlVm$ | async as nlVm">
+
+          <div class="field">
+            <label>Descripción del proyecto en lenguaje natural *</label>
+            <!-- subtab bar -->
+            <div class="nl-subtab-bar">
+              <button type="button" class="nl-subtab" [class.nl-subtab-active]="nlSubTab === 'input'" (click)="switchNlSubTab('input')">Entrada</button>
+              <button type="button" class="nl-subtab" [class.nl-subtab-active]="nlSubTab === 'preview'" (click)="switchNlSubTab('preview')">Vista LaTeX</button>
+            </div>
+            <textarea *ngIf="nlSubTab === 'input'"
+              [(ngModel)]="nlDescription"
+              name="nlDescription"
+              rows="5"
+              placeholder="Ej: Quiero formalizar que la suma de dos números naturales es conmutativa, usando la biblioteca Mathlib."
+              [disabled]="nlVm.state === 'translating'"
+            ></textarea>
+            <div *ngIf="nlSubTab === 'preview'" class="nl-tex-preview" [innerHTML]="nlRenderedHtml"></div>
+          </div>
+
+          <div class="nl-config-row">
+            <div class="field nl-field-model">
+              <label>Modelo LLM</label>
+              <select [(ngModel)]="nlModelId" name="nlModelId" (ngModelChange)="onNlModelChange()" [disabled]="nlVm.state === 'translating'">
+                <option value="">— Selecciona un modelo —</option>
+                <option *ngFor="let m of nlModels" [value]="m.id">{{ m.provider }} · {{ m.name }}</option>
+              </select>
+              <span *ngIf="nlModelsLoading" class="muted-sm">Cargando modelos…</span>
+            </div>
+
+            <div class="field nl-field-key">
+              <label>API Key</label>
+              <span *ngIf="nlMaskedKey" class="masked-key-sm">{{ nlMaskedKey }}</span>
+              <div class="api-key-row-sm">
+                <input
+                  type="password"
+                  [(ngModel)]="nlApiKeyInput"
+                  name="nlApiKeyInput"
+                  placeholder="sk-…"
+                  autocomplete="new-password"
+                  [disabled]="nlVm.state === 'translating'" />
+                <button type="button" class="btn-save-sm"
+                  (click)="saveNlApiKey()"
+                  [disabled]="nlApiKeySaving || !nlApiKeyInput.trim() || !nlModelId">
+                  {{ nlApiKeySaving ? 'Guardando…' : 'Guardar' }}
+                </button>
+              </div>
+              <p *ngIf="nlApiKeyError" class="error-sm">{{ nlApiKeyError }}</p>
+            </div>
+          </div>
+
+          <div class="nl-actions">
+            <div class="field nl-field-retries">
+              <label>Reintentos máx.</label>
+              <input type="number" [(ngModel)]="nlMaxRetries" name="nlMaxRetries" min="1" max="5" [disabled]="nlVm.state === 'translating'" />
+            </div>
+            <button type="button" class="btn-primary"
+              (click)="translateGoalFromNl()"
+              [disabled]="nlVm.state === 'translating' || !nlDescription.trim() || !nlModelId">
+              {{ nlVm.state === 'translating' ? 'Traduciendo…' : 'Traducir a Lean' }}
+            </button>
+          </div>
+
+          <div *ngIf="nlVm.state === 'translating'" class="nl-progress">
+            <span class="nl-spinner"></span>
+            <span class="muted-sm">Generando estructura Lean… (máx. {{ nlMaxRetries }} intento(s), puede tomar varios minutos)</span>
+          </div>
+
+          <p *ngIf="nlVm.state === 'error'" class="error-sm error-block">{{ nlVm.error }}</p>
+
+          <div *ngIf="nlVm.state === 'done' && nlVm.lean" class="nl-preview">
+            <p class="nl-preview-label">Lean generado ({{ nlVm.attempts }} intento(s) — campos poblados en pestaña Manual):</p>
+            <pre class="nl-code">{{ nlVm.lean }}</pre>
+          </div>
+          <p *ngIf="nlVm.state === 'done' && !nlVm.lean" class="error-sm error-block">
+            El modelo no produjo código Lean. Intenta con otra descripción.
+          </p>
+
+          </ng-container>
         </div>
 
-        <div class="field">
-          <label>Definiciones Lean para el Goal (opcional)</label>
-          <textarea
-            [(ngModel)]="goalDefinitions"
-            name="goalDefinitions"
-            rows="5"
-            placeholder="Ej:\nabbrev Monotona (f : Nat → Nat) : Prop :=\n  ∀ (a b : Nat), a ≤ b → f a ≤ f b"
-          ></textarea>
+        <!-- Manual tab -->
+        <div *ngIf="goalInputTab === 'manual'" class="tab-pane">
+          <div class="field">
+            <label>Objetivo lógico (goal) *</label>
+            <textarea [(ngModel)]="goal" name="goal" rows="4" placeholder="Ej: ∀ a b : Nat, a + b = b + a"></textarea>
+          </div>
+
+          <div class="field">
+            <label>Imports de Mathlib (opcional)</label>
+            <textarea
+              [(ngModel)]="goalImportsText"
+              name="goalImportsText"
+              rows="3"
+              placeholder="Una línea por módulo, ej:&#10;Mathlib.Data.Real.Basic&#10;Mathlib.Algebra.Group.Defs"
+            ></textarea>
+          </div>
+
+          <div class="field">
+            <label>Definiciones Lean para el Goal (opcional)</label>
+            <textarea
+              [(ngModel)]="goalDefinitions"
+              name="goalDefinitions"
+              rows="5"
+              placeholder="Ej:&#10;abbrev Monotona (f : Nat → Nat) : Prop :=&#10;  ∀ (a b : Nat), a ≤ b → f a ≤ f b"
+            ></textarea>
+          </div>
         </div>
+        <!-- ──────────────────────────────────────────────────────────────── -->
 
         <div class="field">
           <label>Descripción</label>

@@ -86,11 +86,21 @@
 
       <!-- Col 1 · Natural language input -->
       <div class="col">
-        <h3>Lenguaje Natural</h3>
-        <textarea class="text-area"
-          [(ngModel)]="naturalText"
-          placeholder="Escribe aquí el teorema o proposición en lenguaje natural…"
-          [disabled]="vm.state === 'translating'"></textarea>
+        <!-- Tab bar -->
+        <div class="col-tabs">
+          <button class="col-tab" [class.col-tab-active]="nlTab === 'input'" (click)="switchNlTab('input')">Entrada</button>
+          <button class="col-tab" [class.col-tab-active]="nlTab === 'preview'" (click)="switchNlTab('preview')">Vista LaTeX</button>
+        </div>
+
+        @if (nlTab === 'input') {
+          <textarea class="text-area"
+            [(ngModel)]="naturalText"
+            placeholder="Escribe aquí el teorema o proposición en lenguaje natural…"
+            [disabled]="vm.state === 'translating'"></textarea>
+        } @else {
+          <div class="tex-preview-pane" [innerHTML]="nlRenderedHtml"></div>
+        }
+
         <div class="col-actions">
           <button class="btn-primary"
             (click)="submit()"

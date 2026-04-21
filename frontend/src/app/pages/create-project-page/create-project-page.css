@@ -58,4 +58,160 @@
       border: 1px solid #fecaca;
       color: #991b1b;
     }
+
+    /* ── Goal input tabs ──────────────────────────────────────────────── */
+    .goal-tab-bar {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid #e5e7eb;
+      margin-bottom: 16px;
+    }
+    .goal-tab {
+      padding: 9px 20px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #6b7280;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+    }
+    .goal-tab:hover { color: #374151; }
+    .goal-tab-active { color: #4f46e5; border-bottom-color: #4f46e5; }
+
+    .tab-pane { margin-bottom: 4px; }
+
+    /* ── NL tab internals ─────────────────────────────────────────────── */
+    .nl-config-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .nl-field-model, .nl-field-key { display: flex; flex-direction: column; gap: 6px; }
+
+    .masked-key-sm {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.8rem;
+      color: #4b5563;
+      background: #f3f4f6;
+      padding: 3px 7px;
+      border-radius: 5px;
+      width: fit-content;
+    }
+
+    .api-key-row-sm { display: flex; gap: 6px; }
+    .api-key-row-sm input {
+      flex: 1;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.88rem;
+      outline: none;
+    }
+    .api-key-row-sm input:focus { border-color: #6366f1; }
+
+    .btn-save-sm {
+      background: #4f46e5;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-save-sm:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .nl-actions { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
+
+    /* ── NL description subtabs ─────────────────────────────────────── */
+    .nl-subtab-bar {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid #e5e7eb;
+      margin-bottom: 6px;
+    }
+    .nl-subtab {
+      padding: 5px 14px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #6b7280;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      cursor: pointer;
+    }
+    .nl-subtab:hover { color: #374151; }
+    .nl-subtab-active { color: #4f46e5; border-bottom-color: #4f46e5; }
+
+    .nl-tex-preview {
+      min-height: 130px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fafafa;
+      font-size: 0.9rem;
+      line-height: 1.7;
+      overflow: auto;
+      color: #1f2937;
+    }
+    .nl-tex-preview p { margin: 0 0 0.6em; }
+    .nl-tex-preview .tex-display { margin: 0.8em 0; overflow-x: auto; }
+    .nl-tex-preview .tex-err { color: #b91c1c; font-family: monospace; font-size: 0.8rem; }
+    .nl-tex-preview .tex-empty { color: #9ca3af; font-style: italic; }
+    .nl-field-retries { display: flex; flex-direction: column; gap: 4px; min-width: 110px; }
+    .nl-field-retries label { font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+    .nl-field-retries input { padding: 7px 10px; font-size: 0.88rem; border: 1px solid #d1d5db; border-radius: 8px; width: 80px; }
+
+    .nl-progress {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    .nl-spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #bfdbfe;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      flex-shrink: 0;
+      animation: nl-spin 0.75s linear infinite;
+    }
+    @keyframes nl-spin { to { transform: rotate(360deg); } }
+
+    .muted-sm { font-size: 0.82rem; color: #9ca3af; }
+
+    .error-sm { font-size: 0.82rem; color: #dc2626; margin: 0; }
+    .error-block {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+    }
+
+    .nl-preview { margin-top: 10px; }
+    .nl-preview-label { font-size: 0.8rem; font-weight: 600; color: #6b7280; margin: 0 0 6px; }
+    .nl-code {
+      margin: 0;
+      padding: 12px;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-family: 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 260px;
+      overflow: auto;
+    }
   

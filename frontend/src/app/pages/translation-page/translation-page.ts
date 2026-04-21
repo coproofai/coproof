@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { AsyncPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Observable, Subject, defer, of, timer } from 'rxjs';
 import {
   catchError,
@@ -57,6 +58,9 @@ export class TranslationPageComponent {
   // Settings panel toggle
   settingsOpen = false;
 
+  // Natural-language column tab
+  nlTab: 'input' | 'preview' = 'input';
+  nlRenderedHtml: SafeHtml = '';
   // API key UI state (updated imperatively from one-shot HTTP calls)
   maskedKey: string | null = null;
   apiKeySaving = false;
@@ -125,7 +129,108 @@ export class TranslationPageComponent {
     return !!this.taskService.getCurrentUserIdFromToken();
   }
 
-  constructor(private readonly taskService: TaskService) {}
+  constructor(private readonly taskService: TaskService, private readonly sanitizer: DomSanitizer) {}
+
+  switchNlTab(tab: 'input' | 'preview'): void {
+    this.nlTab = tab;
+    if (tab === 'preview') {
+      this.renderNlPreview();
+    }
+  }
+
+  renderNlPreview(): void {
+    const src = this.naturalText.trim();
+    if (!src) {
+      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(
+        '<p class="tex-empty">Sin contenido para renderizar.</p>',
+      );
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const katex = (window as any)['katex'];
+    if (!katex) {
+      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(
+        '<p>KaTeX no está disponible. Recarga la página e inténtalo de nuevo.</p>',
+      );
+      return;
+    }
+
+    try {
+      let body = src;
+
+      const displayPlaceholders: string[] = [];
+      // $$...$$ display math
+      body = body.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
+        const idx = displayPlaceholders.length;
+        try {
+          displayPlaceholders.push(
+            '<div class="tex-display">' +
+              katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) +
+              '</div>',
+          );
+        } catch {
+          displayPlaceholders.push(
+            `<div class="tex-err">$$${this._escapeHtml(math)}$$</div>`,
+          );
+        }
+        return `\x00DISP${idx}\x00`;
+      });
+      // \[...\] display math
+      body = body.replace(/\\\[([\s\S]*?)\\\]/g, (_, math) => {
+        const idx = displayPlaceholders.length;
+        try {
+          displayPlaceholders.push(
+            '<div class="tex-display">' +
+              katex.renderToString(math.trim(), { displayMode: true, throwOnError: false }) +
+              '</div>',
+          );
+        } catch {
+          displayPlaceholders.push(
+            `<div class="tex-err">\\[${this._escapeHtml(math)}\\]</div>`,
+          );
+        }
+        return `\x00DISP${idx}\x00`;
+      });
+      // $...$ inline math
+      const inlinePlaceholders: string[] = [];
+      body = body.replace(/\$([^$\n]{1,300}?)\$/g, (_, math) => {
+        const idx = inlinePlaceholders.length;
+        try {
+          inlinePlaceholders.push(
+            katex.renderToString(math.trim(), { displayMode: false, throwOnError: false }),
+          );
+        } catch {
+          inlinePlaceholders.push(`$${this._escapeHtml(math)}$`);
+        }
+        return `\x00INLN${idx}\x00`;
+      });
+
+      body = this._escapeHtml(body);
+      inlinePlaceholders.forEach((html, i) => { body = body.replace(`\x00INLN${i}\x00`, html); });
+      displayPlaceholders.forEach((html, i) => { body = body.replace(`\x00DISP${i}\x00`, html); });
+
+      const paragraphs = body.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
+      body = paragraphs
+        .map(p => (/^<(div|h[1-6])/.test(p) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`))
+        .join('\n');
+
+      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(body);
+    } catch {
+      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(
+        '<p>Error al renderizar el LaTeX.</p>',
+      );
+    }
+  }
+
+  private _escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 
   submit(): void {
     if (!this.naturalText.trim() || !this.selectedModelId) return;
