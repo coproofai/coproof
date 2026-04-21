@@ -3,6 +3,8 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
   AccessibleProjectsResponse,
+  ApiKeyStatus,
+  AvailableModel,
   ComputeNodePayload,
   CreateComputationChildPayload,
   CreateProjectPayload,
@@ -13,6 +15,8 @@ import {
   SimpleGraphResponse,
   TaskResult,
   TexFileResponse,
+  TranslatePayload,
+  TranslationResult,
   VerifyCompilerResult,
   VerifyNodeResponse
 } from './task.models';
@@ -297,5 +301,40 @@ export class TaskService {
     return this.http.post(`${this.apiBaseUrl}/projects/${projectId}/pulls/${pullNumber}/merge`, {}, {
       headers: this.authHeaders()
     });
+  }
+
+  // --- NL2FL / Translation ---
+
+  submitTranslation(payload: TranslatePayload): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${this.apiBaseUrl}/translate/submit`,
+      payload,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  getTranslationResult(taskId: string): Observable<TranslationResult | { status: 'pending' }> {
+    return this.http.get<TranslationResult | { status: 'pending' }>(
+      `${this.apiBaseUrl}/translate/${taskId}/result`
+    );
+  }
+
+  getAvailableModels(): Observable<AvailableModel[]> {
+    return this.http.get<AvailableModel[]>(`${this.apiBaseUrl}/translate/models`);
+  }
+
+  saveApiKey(modelId: string, apiKey: string): Observable<ApiKeyStatus> {
+    return this.http.post<ApiKeyStatus>(
+      `${this.apiBaseUrl}/translate/api-key`,
+      { model_id: modelId, api_key: apiKey },
+      { headers: this.authHeaders() }
+    );
+  }
+
+  getApiKeyStatus(modelId: string): Observable<ApiKeyStatus> {
+    return this.http.get<ApiKeyStatus>(
+      `${this.apiBaseUrl}/translate/api-key/${modelId}`,
+      { headers: this.authHeaders() }
+    );
   }
 }

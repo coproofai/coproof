@@ -33,6 +33,7 @@ def create_app(config_class=None):
     lean_queue = app.config['CELERY_LEAN_QUEUE']
     computation_queue = app.config['CELERY_COMPUTATION_QUEUE']
     git_engine_queue = app.config['CELERY_GIT_ENGINE_QUEUE']
+    nl2fl_queue = app.config['CELERY_NL2FL_QUEUE']
     app.config['CELERY_CONFIG'] = {
         'broker_url': app.config['CELERY_BROKER_URL'],
         'result_backend': app.config['CELERY_RESULT_BACKEND'],
@@ -41,6 +42,7 @@ def create_app(config_class=None):
             Queue(lean_queue, Exchange(lean_queue, type='direct'), routing_key=lean_queue),
             Queue(computation_queue, Exchange(computation_queue, type='direct'), routing_key=computation_queue),
             Queue(git_engine_queue, Exchange(git_engine_queue, type='direct'), routing_key=git_engine_queue),
+            Queue(nl2fl_queue, Exchange(nl2fl_queue, type='direct'), routing_key=nl2fl_queue),
         )
     }
     celery.conf.update(app.config['CELERY_CONFIG'])
@@ -56,12 +58,14 @@ def create_app(config_class=None):
     from app.api.nodes import nodes_bp
     from app.api.agents import agent_bp
     from app.api.webhooks import webhooks_bp
+    from app.api.translate import translate_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(projects_bp)
     app.register_blueprint(nodes_bp)
     app.register_blueprint(agent_bp)
     app.register_blueprint(webhooks_bp)
+    app.register_blueprint(translate_bp)
 
     return app
 

@@ -182,3 +182,39 @@ export interface ComputeNodePayload {
   lean_statement: string;
   timeout_seconds?: number;
 }
+
+// --- NL2FL / Translation ---
+
+export interface TranslationAttempt {
+  attempt: number;
+  lean_code: string;
+  errors: VerificationErrorItem[];
+}
+
+export interface TranslationResult {
+  valid: boolean;
+  attempts: number;
+  final_lean: string;
+  history: TranslationAttempt[];
+  processing_time_seconds: number;
+}
+
+export interface AvailableModel {
+  id: string;       // e.g. "openai/gpt-4o"
+  name: string;     // e.g. "GPT-4o"
+  provider: string; // e.g. "OpenAI"
+}
+
+export interface ApiKeyStatus {
+  model_id: string;
+  masked_key: string | null; // "sk-***...abc", or null when has_key is false
+  has_key: boolean;
+}
+
+export interface TranslatePayload {
+  natural_text: string;
+  model_id: string;
+  api_key?: string;
+  max_retries?: number;
+  system_prompt?: string;
+}
