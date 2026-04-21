@@ -1,16 +1,33 @@
-import { Component } from '@angular/core';
-import { AsyncPipe, NgIf, NgFor } from '@angular/common';
+import { Component, OnInit } from '@angular/core';
+import { AsyncPipe, DecimalPipe, NgIf, NgFor } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { TaskService } from '../../task.service';
-import { AvailableModel, TranslatePayload } from '../../task.models';
+import { AvailableModel, Fl2NlPayload, Fl2NlResult, TranslatePayload } from '../../task.models';
 import { finalize, timeout, filter, take, switchMap, startWith, catchError, map, shareReplay, tap } from 'rxjs/operators';
 import { Observable, Subject, of, timer } from 'rxjs';
 
 type NlState = 'idle' | 'translating' | 'done' | 'error';
 interface NlVm { state: NlState; lean: string; attempts: number; error: string; }
 const IDLE_NL_VM: NlVm = { state: 'idle', lean: '', attempts: 0, error: '' };
+
+type GoalTexState = 'idle' | 'translating' | 'done' | 'error';
+interface GoalTexVm { state: GoalTexState; naturalText: string; renderedHtml: SafeHtml; error: string; }
+const IDLE_GOAL_TEX_VM: GoalTexVm = { state: 'idle', naturalText: '', renderedHtml: '', error: '' };
+
+const FL2NL_GOAL_SYSTEM_PROMPT =
+  'You are an expert in formal mathematics and mathematical writing. ' +
+  'Given one or more Lean 4 theorems (possibly with proofs), produce a structured mathematical exposition in natural language. ' +
+  'For EACH theorem or lemma found in the input, output exactly the following structure:\n\n' +
+  '**Theorem.** <state the mathematical claim clearly, using LaTeX notation ($...$ inline, $$...$$ display)>\n\n' +
+  '*Proof.* <explain the proof strategy and key steps in natural language, using LaTeX where appropriate. ' +
+  'If the proof body contains `sorry` or is otherwise left unsolved, write exactly "Unsolved." instead.>\n\n' +
+  'Rules:\n' +
+  '- Capture the mathematical ESSENCE and meaning of what the Lean statement expresses. Do NOT attempt to solve or prove anything.\n' +
+  '- Do NOT reproduce any Lean 4 syntax in your output.\n' +
+  '- Do NOT add commentary outside the Theorem/Proof blocks.\n' +
+  '- If there are multiple theorems, repeat the Theorem/Proof block for each one in order.';
 
 const NL_PROJECT_SYSTEM_PROMPT =
   'You are a Lean 4 expert. Given a natural language description of a math formalization project, ' +
@@ -28,11 +45,11 @@ const NL_PROJECT_SYSTEM_PROMPT =
 @Component({
   selector: 'app-create-project-page',
   standalone: true,
-  imports: [AsyncPipe, NgIf, NgFor, FormsModule],
+  imports: [AsyncPipe, DecimalPipe, NgIf, NgFor, FormsModule],
   templateUrl: './create-project-page.html',
   styleUrl: './create-project-page.css'
 })
-export class CreateProjectPageComponent {
+export class CreateProjectPageComponent implements OnInit {
   projectName = '';
   goal = '';
   goalImportsText = '';
@@ -57,7 +74,12 @@ export class CreateProjectPageComponent {
   nlApiKeySaving = false;
   nlApiKeyError = '';
 
+  // ── Goal Tex Preview ──
+  goalTexConfirmed = false;
+  goalTexPreview = '';
+
   private readonly nlSubmit$ = new Subject<TranslatePayload | null>();
+  private readonly goalTexSubmit$ = new Subject<{ leanCode: string; modelId: string; apiKey?: string } | null>();
 
   readonly nlVm$: Observable<NlVm> = this.nlSubmit$.pipe(
     switchMap(payload => {
@@ -101,11 +123,61 @@ export class CreateProjectPageComponent {
     shareReplay(1),
   );
 
+  // FL→NL state machine for goal theorem preview
+  readonly goalTexVm$: Observable<GoalTexVm> = this.goalTexSubmit$.pipe(
+    switchMap(req => {
+      if (!req) return of(IDLE_GOAL_TEX_VM);
+
+      const payload: Fl2NlPayload = {
+        lean_code: req.leanCode,
+        model_id: req.modelId,
+        system_prompt: FL2NL_GOAL_SYSTEM_PROMPT,
+        ...(req.apiKey ? { api_key: req.apiKey } : {}),
+      };
+
+      return this.taskService.submitFl2nl(payload).pipe(
+        switchMap(({ task_id }) =>
+          timer(2000, 3000).pipe(
+            switchMap(() => this.taskService.getFl2nlResult(task_id)),
+            filter((res: any) => res?.status !== 'pending'),
+            take(1),
+            timeout(300_000),
+          )
+        ),
+        map((res: any): GoalTexVm => ({
+          state: 'done',
+          naturalText: (res as Fl2NlResult).natural_text,
+          renderedHtml: this._renderLatex((res as Fl2NlResult).natural_text),
+          error: '',
+        })),
+        startWith<GoalTexVm>({ ...IDLE_GOAL_TEX_VM, state: 'translating' }),
+        catchError(err => of<GoalTexVm>({
+          state: 'error',
+          naturalText: '',
+          renderedHtml: '',
+          error: err?.name === 'TimeoutError'
+            ? 'Tiempo de espera agotado.'
+            : (err?.error?.error ?? err?.message ?? 'Error al obtener el resultado.'),
+        })),
+      );
+    }),
+    startWith(IDLE_GOAL_TEX_VM),
+    shareReplay(1),
+  );
+
   constructor(
     private readonly taskService: TaskService,
     private readonly router: Router,
     private readonly sanitizer: DomSanitizer,
   ) {}
+
+  ngOnInit(): void {
+    this.nlModelsLoading = true;
+    this.taskService.getAvailableModels().subscribe({
+      next: m => { this.nlModels = m; this.nlModelsLoading = false; },
+      error: () => { this.nlModels = []; this.nlModelsLoading = false; },
+    });
+  }
 
   switchNlSubTab(tab: 'input' | 'preview'): void {
     this.nlSubTab = tab;
@@ -113,23 +185,25 @@ export class CreateProjectPageComponent {
   }
 
   renderNlPreview(): void {
-    const src = this.nlDescription.trim();
-    if (!src) {
-      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(
+    this.nlRenderedHtml = this._renderLatex(this.nlDescription);
+  }
+
+  private _renderLatex(src: string): SafeHtml {
+    const text = src.trim();
+    if (!text) {
+      return this.sanitizer.bypassSecurityTrustHtml(
         '<p class="tex-empty">Sin contenido para renderizar.</p>',
       );
-      return;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const katex = (window as any)['katex'];
     if (!katex) {
-      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(
+      return this.sanitizer.bypassSecurityTrustHtml(
         '<p>KaTeX no está disponible. Recarga la página e inténtalo de nuevo.</p>',
       );
-      return;
     }
     try {
-      let body = src;
+      let body = text;
       const dispPlaceholders: string[] = [];
       body = body.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
         const idx = dispPlaceholders.length;
@@ -153,11 +227,14 @@ export class CreateProjectPageComponent {
       body = this._escapeHtml(body);
       inlinePlaceholders.forEach((html, i) => { body = body.replace(`\x00INLN${i}\x00`, html); });
       dispPlaceholders.forEach((html, i) => { body = body.replace(`\x00DISP${i}\x00`, html); });
+      // Basic Markdown: bold (**text**) and italic (*text*)
+      body = body.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+      body = body.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
       const paragraphs = body.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
       body = paragraphs.map(p => (/^<(div|h[1-6])/.test(p) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`)).join('\n');
-      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(body);
+      return this.sanitizer.bypassSecurityTrustHtml(body);
     } catch {
-      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml('<p>Error al renderizar el LaTeX.</p>');
+      return this.sanitizer.bypassSecurityTrustHtml('<p>Error al renderizar el LaTeX.</p>');
     }
   }
 
@@ -167,13 +244,6 @@ export class CreateProjectPageComponent {
 
   switchGoalTab(tab: 'nl' | 'manual'): void {
     this.goalInputTab = tab;
-    if (tab === 'nl' && this.nlModels.length === 0 && !this.nlModelsLoading) {
-      this.nlModelsLoading = true;
-      this.taskService.getAvailableModels().subscribe({
-        next: models => { this.nlModels = models; this.nlModelsLoading = false; },
-        error: () => { this.nlModels = []; this.nlModelsLoading = false; },
-      });
-    }
   }
 
   onNlModelChange(): void {
@@ -287,6 +357,42 @@ export class CreateProjectPageComponent {
     };
   }
 
+  buildGoalLeanSnippet(): string {
+    const importLines = this.goalImportsText.trim()
+      ? this.goalImportsText.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+          .map(l => l.startsWith('import ') ? l : `import ${l}`).join('\n')
+      : 'import Mathlib';
+    const defs = this.goalDefinitions.trim() ? '\n' + this.goalDefinitions.trim() + '\n' : '';
+    return `${importLines}\n${defs}\ntheorem goal : ${this.goal.trim()} := by sorry`;
+  }
+
+  requestGoalTexPreview(): void {
+    if (!this.goal.trim() || !this.nlModelId) return;
+    this.goalTexConfirmed = false;
+    this.goalTexPreview = '';
+    const apiKey = !this.nlMaskedKey ? (this.nlApiKeyInput.trim() || undefined) : undefined;
+    this.goalTexSubmit$.next({ leanCode: this.buildGoalLeanSnippet(), modelId: this.nlModelId, apiKey });
+  }
+
+  confirmGoalTex(naturalText: string): void {
+    this.goalTexPreview = naturalText;
+    this.goalTexConfirmed = true;
+  }
+
+  resetGoalTexPreview(): void {
+    this.goalTexConfirmed = false;
+    this.goalTexPreview = '';
+    this.goalTexSubmit$.next(null);
+  }
+
+  onGoalFieldChange(): void {
+    if (this.goalTexConfirmed || this.goalTexSubmit$) {
+      this.goalTexConfirmed = false;
+      this.goalTexPreview = '';
+      this.goalTexSubmit$.next(null);
+    }
+  }
+
   createProject() {
     if (!this.projectName.trim()) {
       this.statusKind = 'error';
@@ -297,6 +403,12 @@ export class CreateProjectPageComponent {
     if (!this.goal.trim()) {
       this.statusKind = 'error';
       this.statusMessage = 'El objetivo lógico (goal) es obligatorio.';
+      return;
+    }
+
+    if (!this.goalTexConfirmed) {
+      this.statusKind = 'error';
+      this.statusMessage = 'Debes confirmar el enunciado del teorema antes de crear el proyecto.';
       return;
     }
 
@@ -315,6 +427,7 @@ export class CreateProjectPageComponent {
       goal: this.goal.trim(),
       goal_imports: this.parseGoalImports(this.goalImportsText),
       goal_definitions: this.goalDefinitions.trim() || undefined,
+      goal_tex: this.goalTexPreview || undefined,
       description: this.description.trim() || undefined,
       visibility: this.visibility
     }).pipe(

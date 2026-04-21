@@ -103,7 +103,9 @@
         <div *ngIf="goalInputTab === 'manual'" class="tab-pane">
           <div class="field">
             <label>Objetivo lógico (goal) *</label>
-            <textarea [(ngModel)]="goal" name="goal" rows="4" placeholder="Ej: ∀ a b : Nat, a + b = b + a"></textarea>
+            <textarea [(ngModel)]="goal" name="goal" rows="4"
+              placeholder="Ej: ∀ a b : Nat, a + b = b + a"
+              (ngModelChange)="onGoalFieldChange()"></textarea>
           </div>
 
           <div class="field">
@@ -113,6 +115,7 @@
               name="goalImportsText"
               rows="3"
               placeholder="Una línea por módulo, ej:&#10;Mathlib.Data.Real.Basic&#10;Mathlib.Algebra.Group.Defs"
+              (ngModelChange)="onGoalFieldChange()"
             ></textarea>
           </div>
 
@@ -123,10 +126,97 @@
               name="goalDefinitions"
               rows="5"
               placeholder="Ej:&#10;abbrev Monotona (f : Nat → Nat) : Prop :=&#10;  ∀ (a b : Nat), a ≤ b → f a ≤ f b"
+              (ngModelChange)="onGoalFieldChange()"
             ></textarea>
           </div>
         </div>
         <!-- ──────────────────────────────────────────────────────────────── -->
+
+        <!-- ── Theorem Preview & Confirmation ────────────────────────────── -->
+        <div class="goal-confirm-section" *ngIf="goal.trim()">
+
+          <div class="goal-confirm-header">
+            <span class="goal-confirm-title">Confirmar Enunciado del Teorema</span>
+            <span class="badge-confirmed" *ngIf="goalTexConfirmed">✓ Confirmado</span>
+          </div>
+
+          <!-- Compact model / API-key selector -->
+          <div class="confirm-model-row" *ngIf="!goalTexConfirmed">
+            <div class="field nl-field-model">
+              <label>Modelo LLM</label>
+              <select [(ngModel)]="nlModelId" name="confirmModelId" (ngModelChange)="onNlModelChange()">
+                <option value="">— Selecciona un modelo —</option>
+                <option *ngFor="let m of nlModels" [value]="m.id">{{ m.provider }} · {{ m.name }}</option>
+              </select>
+              <span *ngIf="nlModelsLoading" class="muted-sm">Cargando modelos…</span>
+            </div>
+            <div class="field nl-field-key" *ngIf="nlModelId">
+              <label>API Key</label>
+              <span *ngIf="nlMaskedKey" class="masked-key-sm">{{ nlMaskedKey }}</span>
+              <div class="api-key-row-sm">
+                <input type="password" [(ngModel)]="nlApiKeyInput" name="confirmApiKey"
+                       placeholder="sk-…" autocomplete="new-password" />
+                <button type="button" class="btn-save-sm" (click)="saveNlApiKey()"
+                        [disabled]="nlApiKeySaving || !nlApiKeyInput.trim() || !nlModelId">
+                  {{ nlApiKeySaving ? 'Guardando…' : 'Guardar' }}
+                </button>
+              </div>
+              <p *ngIf="nlApiKeyError" class="error-sm">{{ nlApiKeyError }}</p>
+            </div>
+          </div>
+
+          <ng-container *ngIf="goalTexVm$ | async as gtVm">
+
+            <!-- idle or error: show generate button -->
+            <div *ngIf="gtVm.state === 'idle' || gtVm.state === 'error'" class="confirm-generate-row">
+              <button type="button" class="btn-preview"
+                (click)="requestGoalTexPreview()"
+                [disabled]="!goal.trim() || !nlModelId">
+                {{ gtVm.state === 'error' ? 'Reintentar generación' : 'Generar vista previa del enunciado' }}
+              </button>
+              <p *ngIf="gtVm.state === 'error'" class="error-sm error-block confirm-error">{{ gtVm.error }}</p>
+            </div>
+
+            <!-- translating: spinner -->
+            <div *ngIf="gtVm.state === 'translating'" class="nl-progress">
+              <span class="nl-spinner"></span>
+              <span class="muted-sm">Interpretando el teorema Lean… puede tardar unos segundos</span>
+            </div>
+
+            <!-- done: two-column result -->
+            <div *ngIf="gtVm.state === 'done'" class="confirm-result">
+              <div class="confirm-cols">
+                <div class="confirm-col">
+                  <h4 class="confirm-col-title">Texto generado</h4>
+                  <div class="confirm-raw-text">{{ gtVm.naturalText }}</div>
+                </div>
+                <div class="confirm-col">
+                  <h4 class="confirm-col-title">Vista LaTeX</h4>
+                  <div class="confirm-tex-preview" [innerHTML]="gtVm.renderedHtml"></div>
+                </div>
+              </div>
+
+              <div *ngIf="!goalTexConfirmed" class="confirm-actions">
+                <button type="button" class="btn-confirm"
+                        (click)="confirmGoalTex(gtVm.naturalText)">
+                  ✓&nbsp; Sí, este es el teorema que quiero probar
+                </button>
+                <button type="button" class="btn-ghost-sm" (click)="resetGoalTexPreview()">
+                  Regenerar
+                </button>
+              </div>
+
+              <div *ngIf="goalTexConfirmed" class="confirm-confirmed-bar">
+                <span class="confirm-ok-text">✓ Enunciado confirmado</span>
+                <button type="button" class="btn-ghost-sm" (click)="resetGoalTexPreview()">
+                  Cambiar
+                </button>
+              </div>
+            </div>
+
+          </ng-container>
+        </div>
+        <!-- ──────────────────────────────────────────────────────────────────── -->
 
         <div class="field">
           <label>Descripción</label>
@@ -141,7 +231,9 @@
           </div>
         </div>
 
-        <button class="btn-primary" type="button" [disabled]="loading" (click)="createProject()">
+        <button class="btn-primary" type="button"
+          [disabled]="loading || (!!goal.trim() && !goalTexConfirmed)"
+          (click)="createProject()">
           {{ loading ? 'Creando...' : 'Crear Proyecto' }}
         </button>
         <p

@@ -159,6 +159,7 @@ export interface CreateProjectPayload {
   goal: string;
   goal_imports?: string[];
   goal_definitions?: string;
+  goal_tex?: string;
   description?: string;
   visibility?: 'public' | 'private';
   tags?: string[];
