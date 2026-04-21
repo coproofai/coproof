@@ -232,3 +232,83 @@ def get_api_key_status(model_id: str):
         "masked_key": record.masked_key(),
         "has_key": True,
     }), 200
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/translate/fl2nl/submit
+# ---------------------------------------------------------------------------
+@translate_bp.route('/fl2nl/submit', methods=['POST'])
+@jwt_required(optional=True)
+def submit_fl2nl():
+    """
+    Dispatch a Lean 4 → natural-language translation task.
+
+    Body (JSON):
+        lean_code     str  required   – Lean 4 source to describe
+        model_id      str  required
+        api_key       str  optional   (required if user has no saved key)
+        system_prompt str  optional
+
+    Returns 202 { task_id: str }
+    """
+    data = request.get_json(silent=True) or {}
+
+    lean_code = (data.get('lean_code') or '').strip()
+    model_id = (data.get('model_id') or '').strip()
+    api_key = (data.get('api_key') or '').strip()
+    system_prompt = data.get('system_prompt')
+
+    if not lean_code:
+        return jsonify({"error": "lean_code is required"}), 400
+    if not model_id:
+        return jsonify({"error": "model_id is required"}), 400
+
+    # Load saved key from DB if not provided
+    user_id = get_jwt_identity()
+    if not api_key and user_id:
+        record = UserApiKey.query.filter_by(user_id=user_id, model_id=model_id).first()
+        if record:
+            try:
+                api_key = record.decrypt_key().strip()
+            except Exception as exc:
+                logger.warning('Failed to decrypt API key for user %s model %s: %s',
+                               user_id, model_id, exc)
+
+    if not api_key:
+        return jsonify({
+            "error": "api_key is required (provide in body or save one for this model)"
+        }), 400
+
+    payload = {
+        "lean_code": lean_code,
+        "model_id": model_id,
+        "api_key": api_key,
+    }
+    if system_prompt:
+        payload["system_prompt"] = system_prompt
+
+    try:
+        task_id = TranslateClient.submit_fl2nl(payload)
+        return jsonify({"task_id": task_id}), 202
+    except CoProofError as e:
+        return jsonify({"error": e.message}), e.code
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/translate/fl2nl/<task_id>/result
+# ---------------------------------------------------------------------------
+@translate_bp.route('/fl2nl/<task_id>/result', methods=['GET'])
+def get_fl2nl_result(task_id: str):
+    """
+    Poll the result of a FL→NL translation task.
+
+    Returns 200 + { natural_text, processing_time_seconds } when complete.
+    Returns 202 { status: 'pending' } while still running.
+    """
+    try:
+        result = TranslateClient.get_fl2nl_result(task_id)
+        if result is None:
+            return jsonify({"status": "pending"}), 202
+        return jsonify(result), 200
+    except CoProofError as e:
+        return jsonify({"error": e.message}), e.code

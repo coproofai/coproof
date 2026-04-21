@@ -298,6 +298,75 @@
 .server-error { background: #fef2f2; border-radius: 6px; padding: 8px 12px; }
 .muted { color: #9ca3af; font-size: 0.85rem; margin: 0; }
 
+/* ── Status: done (FL→NL) ───────────────────────────────────────────── */
+.status-done { background: #f0fdf4; color: #16a34a; }
+
+/* ── Direction toggle ───────────────────────────────────────────────── */
+.direction-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dir-pill {
+  padding: 6px 18px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #9ca3af;
+  background: #f3f4f6;
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+}
+.dir-pill-active {
+  background: #ede9fe;
+  color: #4f46e5;
+}
+
+.btn-swap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+.btn-swap:hover {
+  background: #f5f3ff;
+  border-color: #a5b4fc;
+  color: #4f46e5;
+  transform: rotate(180deg);
+}
+
+/* ── FL→NL: raw natural text block ─────────────────────────────────── */
+.nl-text-block {
+  margin: 0;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #fafafa;
+  font-size: 0.9rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 280px;
+  color: #1f2937;
+}
+
+/* ── Lean code input textarea ───────────────────────────────────────── */
+.code-input {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.82rem;
+  background: #f8fafc;
+}
+
 /* ── NL column tabs ─────────────────────────────────────────────────── */
 .col-tabs {
   display: flex;

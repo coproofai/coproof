@@ -337,4 +337,20 @@ export class TaskService {
       { headers: this.authHeaders() }
     );
   }
+
+  // --- FL → NL (converse translation) ---
+
+  submitFl2nl(payload: import('./task.models').Fl2NlPayload): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${this.apiBaseUrl}/translate/fl2nl/submit`,
+      payload,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  getFl2nlResult(taskId: string): Observable<import('./task.models').Fl2NlResult | { status: 'pending' }> {
+    return this.http.get<import('./task.models').Fl2NlResult | { status: 'pending' }>(
+      `${this.apiBaseUrl}/translate/fl2nl/${taskId}/result`
+    );
+  }
 }

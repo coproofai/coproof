@@ -218,3 +218,15 @@ export interface TranslatePayload {
   max_retries?: number;
   system_prompt?: string;
 }
+
+export interface Fl2NlPayload {
+  lean_code: string;
+  model_id: string;
+  api_key?: string;
+  system_prompt?: string;
+}
+
+export interface Fl2NlResult {
+  natural_text: string;
+  processing_time_seconds: number;
+}

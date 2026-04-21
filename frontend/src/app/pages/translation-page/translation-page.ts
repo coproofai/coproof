@@ -16,14 +16,23 @@ import {
   timeout,
 } from 'rxjs/operators';
 import { TaskService } from '../../task.service';
-import { AvailableModel, TranslatePayload, TranslationResult } from '../../task.models';
+import { AvailableModel, Fl2NlPayload, Fl2NlResult, TranslatePayload, TranslationResult } from '../../task.models';
 
 type TranslationState = 'idle' | 'translating' | 'valid' | 'invalid' | 'error';
+type Fl2NlState = 'idle' | 'translating' | 'done' | 'error';
 
 interface TranslationVm {
   state: TranslationState;
   result: TranslationResult | null;
   serverError: string;
+}
+
+interface Fl2NlVm {
+  state: Fl2NlState;
+  naturalText: string;
+  renderedHtml: SafeHtml;
+  processingTime: number;
+  error: string;
 }
 
 interface TranslateRequest {
@@ -34,11 +43,32 @@ interface TranslateRequest {
   systemPrompt: string;
 }
 
+interface Fl2NlRequest {
+  leanCode: string;
+  modelId: string;
+  apiKey?: string;
+  systemPrompt: string;
+}
+
 const IDLE_VM: TranslationVm = { state: 'idle', result: null, serverError: '' };
+const IDLE_FL2NL_VM: Fl2NlVm = { state: 'idle', naturalText: '', renderedHtml: '', processingTime: 0, error: '' };
 
 const DEFAULT_SYSTEM_PROMPT =
   "You are an expert in Lean 4 formal mathematics. Transcribe the following natural language mathematical statement into a Lean 4 statement. Break the input into goal and steps, make their equivalentes in Lean 4 and integrate them in the output. Make it fast and precise, you only have 3 minutes to answer. Reply ONLY with a single" + 
   "```lean code block and nothing else."
+
+const FL2NL_SYSTEM_PROMPT =
+  'You are an expert in formal mathematics and mathematical writing. ' +
+  'Given one or more Lean 4 theorems (possibly with proofs), produce a structured mathematical exposition in natural language. ' +
+  'For EACH theorem or lemma found in the input, output exactly the following structure:\n\n' +
+  '**Theorem.** <state the mathematical claim clearly, using LaTeX notation ($...$ inline, $$...$$ display)>\n\n' +
+  '*Proof.* <explain the proof strategy and key steps in natural language, using LaTeX where appropriate. ' +
+  'If the proof body contains `sorry` or is otherwise left unsolved, write exactly "Unsolved." instead.>\n\n' +
+  'Rules:\n' +
+  '- Capture the mathematical ESSENCE and meaning of what the Lean statement expresses. Do NOT attempt to solve or prove anything.\n' +
+  '- Do NOT reproduce any Lean 4 syntax in your output.\n' +
+  '- Do NOT add commentary outside the Theorem/Proof blocks.\n' +
+  '- If there are multiple theorems, repeat the Theorem/Proof block for each one in order.'
 
 @Component({
   selector: 'app-translation-page',
@@ -48,8 +78,12 @@ const DEFAULT_SYSTEM_PROMPT =
   styleUrl: './translation-page.css',
 })
 export class TranslationPageComponent {
+  // Direction toggle
+  direction: 'nl2fl' | 'fl2nl' = 'nl2fl';
+
   // Form fields
   naturalText = '';
+  leanCodeInput = '';
   selectedModelId = '';
   apiKeyInput = '';
   systemPrompt = DEFAULT_SYSTEM_PROMPT;
@@ -69,8 +103,9 @@ export class TranslationPageComponent {
   // Accordion state for attempt history
   expandedAttempts = new Set<number>();
 
-  // Trigger for the main translation pipeline
+  // Triggers for both pipelines
   private readonly submit$ = new Subject<TranslateRequest | null>();
+  private readonly fl2nlSubmit$ = new Subject<Fl2NlRequest | null>();
 
   // Model catalogue — loaded once, async piped in template
   readonly models$: Observable<AvailableModel[]> = defer(() =>
@@ -81,7 +116,52 @@ export class TranslationPageComponent {
     shareReplay(1),
   );
 
-  // Main translation state machine driven by submit$
+  // FL→NL state machine
+  readonly fl2nlVm$: Observable<Fl2NlVm> = this.fl2nlSubmit$.pipe(
+    switchMap(req => {
+      if (!req) return of(IDLE_FL2NL_VM);
+
+      const payload: Fl2NlPayload = {
+        lean_code: req.leanCode,
+        model_id: req.modelId,
+        system_prompt: req.systemPrompt,
+        ...(req.apiKey ? { api_key: req.apiKey } : {}),
+      };
+
+      return this.taskService.submitFl2nl(payload).pipe(
+        switchMap(({ task_id }) =>
+          timer(2000, 3000).pipe(
+            switchMap(() => this.taskService.getFl2nlResult(task_id)),
+            filter((res: any) => res?.status !== 'pending'),
+            take(1),
+            timeout(300_000),
+          )
+        ),
+        map((res: any): Fl2NlVm => ({
+          state: 'done',
+          naturalText: (res as Fl2NlResult).natural_text,
+          renderedHtml: this._renderLatex((res as Fl2NlResult).natural_text),
+          processingTime: (res as Fl2NlResult).processing_time_seconds,
+          error: '',
+        })),
+        startWith<Fl2NlVm>({ ...IDLE_FL2NL_VM, state: 'translating' }),
+        catchError(err => of<Fl2NlVm>({
+          state: 'error',
+          naturalText: '',
+          renderedHtml: '',
+          processingTime: 0,
+          error:
+            err?.name === 'TimeoutError'
+              ? 'Tiempo de espera agotado.'
+              : (err?.error?.error ?? err?.message ?? 'Error al obtener el resultado.'),
+        })),
+      );
+    }),
+    startWith(IDLE_FL2NL_VM),
+    shareReplay(1),
+  );
+
+  // NL→FL state machine
   readonly vm$: Observable<TranslationVm> = this.submit$.pipe(
     switchMap(req => {
       if (!req) return of(IDLE_VM);
@@ -139,25 +219,27 @@ export class TranslationPageComponent {
   }
 
   renderNlPreview(): void {
-    const src = this.naturalText.trim();
-    if (!src) {
-      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(
+    this.nlRenderedHtml = this._renderLatex(this.naturalText);
+  }
+
+  private _renderLatex(src: string): SafeHtml {
+    const text = src.trim();
+    if (!text) {
+      return this.sanitizer.bypassSecurityTrustHtml(
         '<p class="tex-empty">Sin contenido para renderizar.</p>',
       );
-      return;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const katex = (window as any)['katex'];
     if (!katex) {
-      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(
+      return this.sanitizer.bypassSecurityTrustHtml(
         '<p>KaTeX no está disponible. Recarga la página e inténtalo de nuevo.</p>',
       );
-      return;
     }
 
     try {
-      let body = src;
+      let body = text;
 
       const displayPlaceholders: string[] = [];
       // $$...$$ display math
@@ -210,14 +292,18 @@ export class TranslationPageComponent {
       inlinePlaceholders.forEach((html, i) => { body = body.replace(`\x00INLN${i}\x00`, html); });
       displayPlaceholders.forEach((html, i) => { body = body.replace(`\x00DISP${i}\x00`, html); });
 
+      // Basic Markdown: bold (**text**) and italic (*text*) — applied after HTML escaping
+      body = body.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+      body = body.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
+
       const paragraphs = body.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
       body = paragraphs
         .map(p => (/^<(div|h[1-6])/.test(p) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`))
         .join('\n');
 
-      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(body);
+      return this.sanitizer.bypassSecurityTrustHtml(body);
     } catch {
-      this.nlRenderedHtml = this.sanitizer.bypassSecurityTrustHtml(
+      return this.sanitizer.bypassSecurityTrustHtml(
         '<p>Error al renderizar el LaTeX.</p>',
       );
     }
@@ -230,6 +316,28 @@ export class TranslationPageComponent {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  toggleDirection(): void {
+    this.direction = this.direction === 'nl2fl' ? 'fl2nl' : 'nl2fl';
+    this.systemPrompt = this.direction === 'nl2fl' ? DEFAULT_SYSTEM_PROMPT : FL2NL_SYSTEM_PROMPT;
+    this.submit$.next(null);
+    this.fl2nlSubmit$.next(null);
+  }
+
+  submitFl2nl(): void {
+    if (!this.leanCodeInput.trim() || !this.selectedModelId) return;
+    const apiKey = !this.maskedKey ? (this.apiKeyInput.trim() || undefined) : undefined;
+    this.fl2nlSubmit$.next({
+      leanCode: this.leanCodeInput,
+      modelId: this.selectedModelId,
+      apiKey,
+      systemPrompt: this.systemPrompt,
+    });
+  }
+
+  resetFl2nl(): void {
+    this.fl2nlSubmit$.next(null);
   }
 
   submit(): void {
@@ -300,6 +408,16 @@ export class TranslationPageComponent {
       translating: 'Traduciendo y verificando…',
       valid:       'Demostración correcta',
       invalid:     'Verificación fallida',
+      error:       'Error del servidor',
+    };
+    return labels[state];
+  }
+
+  getFl2NlStatusLabel(state: Fl2NlState): string {
+    const labels: Record<Fl2NlState, string> = {
+      idle:        'Esperando código Lean',
+      translating: 'Interpretando Lean…',
+      done:        'Traducción completada',
       error:       'Error del servidor',
     };
     return labels[state];
