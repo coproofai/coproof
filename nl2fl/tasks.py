@@ -10,6 +10,7 @@ def translate_and_verify_task(payload: dict) -> dict:
         api_key=payload['api_key'],
         max_retries=payload.get('max_retries', 3),
         system_prompt=payload.get('system_prompt'),
+        definitions_content=payload.get('definitions_content'),
     )
 
 

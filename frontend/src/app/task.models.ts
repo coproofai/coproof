@@ -218,6 +218,7 @@ export interface TranslatePayload {
   api_key?: string;
   max_retries?: number;
   system_prompt?: string;
+  definitions_content?: string;
 }
 
 export interface Fl2NlPayload {
@@ -229,5 +230,21 @@ export interface Fl2NlPayload {
 
 export interface Fl2NlResult {
   natural_text: string;
+  processing_time_seconds: number;
+}
+
+// --- Agents / Suggest ---
+
+export interface SuggestPayload {
+  prompt: string;
+  model_id: string;
+  api_key?: string;
+  system_prompt?: string;
+  context?: string;
+}
+
+export interface SuggestResult {
+  suggestion: string;
+  model_id: string;
   processing_time_seconds: number;
 }

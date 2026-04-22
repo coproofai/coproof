@@ -167,12 +167,63 @@
 
                 <!-- NL tab -->
                 <div *ngIf="actionMode === 'nl'" class="submenu-body">
-                  <p class="submenu-hint">
-                    <ng-container *ngIf="activeAction === 'create-computation'">Describe en lenguaje natural la computación que quieres crear y la IA configurará el nodo.</ng-container>
-                    <ng-container *ngIf="activeAction !== 'create-computation'">Describe en lenguaje natural lo que quieres lograr y la IA generará el código Lean.</ng-container>
-                  </p>
-                  <textarea class="submenu-input" rows="3" placeholder="Ej: Verificar que el rango de valores es válido…"></textarea>
-                  <button class="submenu-confirm" disabled>Próximamente</button>
+
+                  <!-- Resolver: NL → FL → solveNode pipeline -->
+                  <ng-container *ngIf="activeAction === 'solve'">
+                    <p class="submenu-hint">Describe el enunciado en lenguaje natural. La IA lo traducirá a Lean 4, verificará la prueba y creará un PR con el .tex generado.</p>
+
+                    <label class="field-label">Enunciado en lenguaje natural <span class="field-required">*</span></label>
+                    <textarea class="submenu-input" rows="4"
+                      [(ngModel)]="nlSolveText" name="nlSolveText"
+                      [disabled]="isBlocked"
+                      placeholder="Ej: Para todo número natural n, la suma de los primeros n naturales es n*(n+1)/2…"></textarea>
+
+                    <div class="solve-model-row">
+                      <div class="solve-model-field">
+                        <label class="field-label">Modelo <span class="field-required">*</span></label>
+                        <select [(ngModel)]="nlSolveModelId" name="nlSolveModelId"
+                          (ngModelChange)="onNlSolveModelChange()"
+                          class="solve-model-select" [disabled]="isBlocked">
+                          <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                          <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                        </select>
+                      </div>
+                      <div class="solve-model-field" *ngIf="nlSolveModelId">
+                        <label class="field-label">API Key</label>
+                        <div *ngIf="nlSolveMaskedKey" class="masked-key-sm">{{ nlSolveMaskedKey }} ✓</div>
+                        <div *ngIf="!nlSolveMaskedKey" class="api-key-row-sm">
+                          <input type="password" [(ngModel)]="nlSolveApiKeyInput" name="nlSolveApiKeyInput"
+                            placeholder="sk-…" autocomplete="off" [disabled]="isBlocked" />
+                          <button class="btn-save-sm"
+                            [disabled]="nlSolveApiKeySaving || !nlSolveApiKeyInput.trim() || isBlocked"
+                            (click)="saveNlSolveApiKey()">
+                            {{ nlSolveApiKeySaving ? '…' : 'Guardar' }}
+                          </button>
+                        </div>
+                        <p *ngIf="nlSolveApiKeyError" class="solve-key-error">{{ nlSolveApiKeyError }}</p>
+                      </div>
+                    </div>
+
+                    <p *ngIf="isActionRunning && nlSolvePhase" class="ai-auto-phase">⟳ {{ nlSolvePhase }}</p>
+
+                    <button class="submenu-confirm"
+                      [disabled]="isBlocked || !nlSolveModelId || !nlSolveText.trim()"
+                      (click)="submitNlSolve()">
+                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                      <span>{{ isActionRunning ? 'Ejecutando…' : 'Resolver desde NL' }}</span>
+                    </button>
+                  </ng-container>
+
+                  <!-- All other actions: not yet implemented -->
+                  <ng-container *ngIf="activeAction !== 'solve'">
+                    <p class="submenu-hint">
+                      <ng-container *ngIf="activeAction === 'create-computation'">Describe en lenguaje natural la computación que quieres crear y la IA configurará el nodo.</ng-container>
+                      <ng-container *ngIf="activeAction !== 'create-computation'">Describe en lenguaje natural lo que quieres lograr y la IA generará el código Lean.</ng-container>
+                    </p>
+                    <textarea class="submenu-input" rows="3" placeholder="Ej: Verificar que el rango de valores es válido…" disabled></textarea>
+                    <button class="submenu-confirm" disabled>Próximamente</button>
+                  </ng-container>
+
                 </div>
 
                 <!-- FL tab -->
@@ -255,8 +306,62 @@
 
                 <!-- AI tab -->
                 <div *ngIf="actionMode === 'ai'" class="submenu-body">
-                  <p class="submenu-hint">La IA analizará el nodo y aplicará la acción de forma automática sin intervención manual.</p>
-                  <button class="submenu-confirm" disabled>Próximamente</button>
+
+                  <!-- Resolver + IA Automático: full pipeline -->
+                  <ng-container *ngIf="activeAction === 'solve' || activeAction === 'split'">
+                    <p class="submenu-hint">
+                      <ng-container *ngIf="activeAction === 'solve'">La IA consultará el .tex del nodo, generará una estrategia de prueba en lenguaje natural, la traducirá a Lean 4 y creará un PR automáticamente.</ng-container>
+                      <ng-container *ngIf="activeAction === 'split'">La IA propondrá cómo dividir el teorema en sub-metas, traducirá el plan a Lean 4 y generará los .tex del nodo padre e hijos en un PR.</ng-container>
+                    </p>
+
+                    <label class="field-label">Sugerencia inicial (opcional)</label>
+                    <textarea class="submenu-input" rows="2"
+                      [(ngModel)]="aiAutoPrompt" name="aiAutoPrompt"
+                      [disabled]="isBlocked"
+                      [placeholder]="activeAction === 'split' ? 'Ej: Divide usando un lema auxiliar sobre primos…' : 'Ej: Usa inducción sobre n, o aplica el lema de distribución…'"></textarea>
+
+                    <div class="solve-model-row">
+                      <div class="solve-model-field">
+                        <label class="field-label">Modelo <span class="field-required">*</span></label>
+                        <select [(ngModel)]="aiAutoModelId" name="aiAutoModelId"
+                          (ngModelChange)="onAiAutoModelChange()"
+                          class="solve-model-select" [disabled]="isBlocked">
+                          <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                          <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                        </select>
+                      </div>
+                      <div class="solve-model-field" *ngIf="aiAutoModelId">
+                        <label class="field-label">API Key</label>
+                        <div *ngIf="aiAutoMaskedKey" class="masked-key-sm">{{ aiAutoMaskedKey }} ✓</div>
+                        <div *ngIf="!aiAutoMaskedKey" class="api-key-row-sm">
+                          <input type="password" [(ngModel)]="aiAutoApiKeyInput" name="aiAutoApiKeyInput"
+                            placeholder="sk-…" autocomplete="off" [disabled]="isBlocked" />
+                          <button class="btn-save-sm"
+                            [disabled]="aiAutoApiKeySaving || !aiAutoApiKeyInput.trim() || isBlocked"
+                            (click)="saveAiAutoApiKey()">
+                            {{ aiAutoApiKeySaving ? '…' : 'Guardar' }}
+                          </button>
+                        </div>
+                        <p *ngIf="aiAutoApiKeyError" class="solve-key-error">{{ aiAutoApiKeyError }}</p>
+                      </div>
+                    </div>
+
+                    <p *ngIf="isActionRunning && aiAutoPhase" class="ai-auto-phase">⟳ {{ aiAutoPhase }}</p>
+
+                    <button class="submenu-confirm"
+                      [disabled]="isBlocked || !aiAutoModelId"
+                      (click)="activeAction === 'solve' ? submitAiAuto() : submitAiSplit()">
+                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                      <span>{{ isActionRunning ? 'Ejecutando…' : 'Ejecutar IA Auto' }}</span>
+                    </button>
+                  </ng-container>
+
+                  <!-- Other actions: not yet implemented -->
+                  <ng-container *ngIf="activeAction !== 'solve' && activeAction !== 'split'">
+                    <p class="submenu-hint">La IA analizará el nodo y aplicará la acción de forma automática sin intervención manual.</p>
+                    <button class="submenu-confirm" disabled>Próximamente</button>
+                  </ng-container>
+
                 </div>
 
               </div><!-- /action-submenu -->

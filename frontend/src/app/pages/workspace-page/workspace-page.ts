@@ -3,14 +3,18 @@ import { AsyncPipe, JsonPipe, NgClass, NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { Observable, Subject, of } from 'rxjs';
-import { catchError, map, shareReplay, startWith, switchMap } from 'rxjs/operators';
+import { Observable, Subject, forkJoin, of, timer } from 'rxjs';
+import { catchError, filter, map, shareReplay, startWith, switchMap, take, timeout } from 'rxjs/operators';
 import { TaskService } from '../../task.service';
 import {
   AvailableModel,
   NewNodeDto,
   PullRequestItem,
   SorryLocationItem,
+  SuggestPayload,
+  SuggestResult,
+  TranslatePayload,
+  TranslationResult,
   VerificationErrorItem,
   VerifyNodeResponse
 } from '../../task.models';
@@ -121,6 +125,22 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   splitApiKeyInput = '';
   splitApiKeySaving = false;
   splitApiKeyError = '';
+  // Model selector (NL → FL → Solve pipeline, "Resolver / Lenguaje Natural" tab)
+  nlSolveModelId = '';
+  nlSolveMaskedKey: string | null = null;
+  nlSolveApiKeyInput = '';
+  nlSolveApiKeySaving = false;
+  nlSolveApiKeyError = '';
+  nlSolveText = '';
+  nlSolvePhase = '';
+  // Model selector + prompt (used by IA Auto pipeline)
+  aiAutoModelId = '';
+  aiAutoMaskedKey: string | null = null;
+  aiAutoApiKeyInput = '';
+  aiAutoApiKeySaving = false;
+  aiAutoApiKeyError = '';
+  aiAutoPrompt = '';
+  aiAutoPhase = '';          // current phase label shown inside the submenu
   get isBlocked(): boolean { return this.isVerifying || this.isActionRunning; }
 
   sidebarWidth = 420;
@@ -895,6 +915,503 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.taskService.saveApiKey(this.splitModelId, this.splitApiKeyInput).subscribe({
       next: status => { this.splitMaskedKey = status.masked_key; this.splitApiKeyInput = ''; this.splitApiKeySaving = false; },
       error: err => { this.splitApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.splitApiKeySaving = false; },
+    });
+  }
+
+  onNlSolveModelChange(): void {
+    this.nlSolveMaskedKey = null;
+    this.nlSolveApiKeyError = '';
+    if (!this.nlSolveModelId) return;
+    this.taskService.getApiKeyStatus(this.nlSolveModelId).subscribe({
+      next: s => { this.nlSolveMaskedKey = s.has_key ? s.masked_key : null; },
+      error: () => { this.nlSolveMaskedKey = null; },
+    });
+  }
+
+  saveNlSolveApiKey(): void {
+    if (!this.nlSolveApiKeyInput.trim() || !this.nlSolveModelId) return;
+    this.nlSolveApiKeySaving = true;
+    this.nlSolveApiKeyError = '';
+    this.taskService.saveApiKey(this.nlSolveModelId, this.nlSolveApiKeyInput).subscribe({
+      next: status => { this.nlSolveMaskedKey = status.masked_key; this.nlSolveApiKeyInput = ''; this.nlSolveApiKeySaving = false; },
+      error: err => { this.nlSolveApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.nlSolveApiKeySaving = false; },
+    });
+  }
+
+  onAiAutoModelChange(): void {
+    this.aiAutoMaskedKey = null;
+    this.aiAutoApiKeyError = '';
+    if (!this.aiAutoModelId) return;
+    this.taskService.getApiKeyStatus(this.aiAutoModelId).subscribe({
+      next: s => { this.aiAutoMaskedKey = s.has_key ? s.masked_key : null; },
+      error: () => { this.aiAutoMaskedKey = null; },
+    });
+  }
+
+  saveAiAutoApiKey(): void {
+    if (!this.aiAutoApiKeyInput.trim() || !this.aiAutoModelId) return;
+    this.aiAutoApiKeySaving = true;
+    this.aiAutoApiKeyError = '';
+    this.taskService.saveApiKey(this.aiAutoModelId, this.aiAutoApiKeyInput).subscribe({
+      next: status => { this.aiAutoMaskedKey = status.masked_key; this.aiAutoApiKeyInput = ''; this.aiAutoApiKeySaving = false; },
+      error: err => { this.aiAutoApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.aiAutoApiKeySaving = false; },
+    });
+  }
+
+  // ── NL Solve pipeline (Resolver / Lenguaje Natural) ─────────────────────
+
+  submitNlSolve(): void {
+    if (!this.selectedNode || this.isComputationNode || this.isBlocked) return;
+    if (!this.nlSolveModelId) {
+      this.status = 'Debes seleccionar un modelo para la traducción NL→FL.';
+      return;
+    }
+    const text = this.nlSolveText.trim();
+    if (!text) {
+      this.status = 'Escribe la descripción en lenguaje natural del enunciado que quieres resolver.';
+      return;
+    }
+
+    const apiKey = !this.nlSolveMaskedKey ? (this.nlSolveApiKeyInput.trim() || undefined) : undefined;
+    this.isActionRunning = true;
+    this.lastResultSource = 'Resolver (NL)';
+    this.nlSolvePhase = 'Cargando contexto del nodo…';
+    this.status = 'Resolver NL: cargando contexto del nodo…';
+
+    const nodeId = this.selectedNode.id;
+    // Fetch .tex, current .lean (already in memory), and Definitions.lean in parallel
+    forkJoin({
+      tex: this.taskService.getNodeTexFile(this.projectId, nodeId).pipe(
+        catchError(() => of({ content: '', path: '' }))
+      ),
+      defs: this.taskService.getProjectDefinitions(this.projectId).pipe(
+        catchError(() => of({ content: '', path: '' }))
+      ),
+    }).subscribe(({ tex, defs }) => {
+      const texContent = tex.content?.trim() || '';
+      const leanContent = this.leanCode?.trim() || '';
+      const defsContent = defs.content?.trim() || '';
+
+      // Build context included in the prompt so the model can preserve
+      // theorem name, imports, and the LaTeX statement being proved.
+      const contextParts: string[] = [];
+      if (texContent) contextParts.push(`=== Current .tex (LaTeX theorem statement) ===\n${texContent}`);
+      if (leanContent) contextParts.push(`=== Current .lean (use the same theorem name and imports) ===\n${leanContent}`);
+      const context = contextParts.join('\n\n');
+
+      const nl2flSystemPrompt =
+        'You are an expert in Lean 4 formal mathematics. Transcribe the following natural language mathematical statement into a Lean 4 proof. ' +
+        'The context section contains the existing .tex statement and the current .lean skeleton for this node — ' +
+        'you MUST use the exact same theorem name and keep all existing imports from the .lean skeleton. ' +
+        'Always write `import Definitions` (never `import Mathlib` directly) when the skeleton uses it. ' +
+        'Break the input into goal and proof steps, translate each to Lean 4 and integrate them. ' +
+        'Make it fast and precise, you only have 3 minutes to answer. Reply ONLY with a single ' +
+        '```lean code block and nothing else.';
+
+      this.nlSolvePhase = 'Traduciendo a Lean (NL→FL)…';
+      this.status = 'Resolver NL: traduciendo a Lean…';
+
+      const fullPrompt = context
+        ? `${text}\n\n${context}`
+        : text;
+
+      const payload: TranslatePayload = {
+        natural_text: fullPrompt,
+        model_id: this.nlSolveModelId,
+        ...(apiKey ? { api_key: apiKey } : {}),
+        max_retries: 3,
+        system_prompt: nl2flSystemPrompt,
+        ...(defsContent ? { definitions_content: defsContent } : {}),
+      };
+      this.taskService.submitTranslation(payload).subscribe({
+        next: ({ task_id }) => this._pollNlSolveFl(task_id, apiKey),
+        error: err => this._nlSolveError(err, 'Error al enviar al traductor NL→FL.'),
+      });
+    });
+  }
+
+  private _pollNlSolveFl(taskId: string, apiKey: string | undefined): void {
+    this._pollResult<TranslationResult>(
+      taskId,
+      id => this.taskService.getTranslationResult(id),
+      result => {
+        if (!result.valid || !result.final_lean?.trim()) {
+          this._nlSolveError(null,
+            `NL→FL no pudo generar Lean válido tras ${result.attempts} intento(s).`);
+          return;
+        }
+        this.nlSolvePhase = 'Verificando Lean y generando .tex…';
+        this.status = 'Resolver NL: verificando Lean y generando .tex…';
+        this._nlRunSolve(result.final_lean.trim(), apiKey);
+      },
+      err => this._nlSolveError(err, 'Error en la traducción NL→FL.'),
+    );
+  }
+
+  private _nlRunSolve(leanCode: string, apiKey: string | undefined): void {
+    if (!this.selectedNode) { this._nlSolveError(null, 'Nodo no seleccionado.'); return; }
+
+    const texPhaseTimer = setTimeout(() => {
+      if (this.isActionRunning) {
+        this.nlSolvePhase = 'Compilación Lean correcta. Generando .tex…';
+        this.status = 'Resolver NL: compilación Lean correcta. Generando .tex…';
+      }
+    }, 20000);
+
+    this.taskService.solveNode(
+      this.projectId, this.selectedNode.id, leanCode, this.nlSolveModelId, apiKey
+    ).subscribe({
+      next: response => {
+        clearTimeout(texPhaseTimer);
+        this.isActionRunning = false;
+        this.nlSolvePhase = '';
+        this.lastResponse = response;
+        const backendStatus = (response as { status?: string } | null)?.status;
+        if (backendStatus === 'already_solved') {
+          this.status = 'Resolver NL completado. El nodo ya estaba resuelto (sin cambios).';
+          this.loadGraph();
+          this.loadOpenPulls();
+          return;
+        }
+        this.status = 'Resolver NL completado. Se generó el .tex y se creó un PR.';
+        this.loadOpenPulls();
+      },
+      error: err => {
+        clearTimeout(texPhaseTimer);
+        this._nlSolveError(err, 'Error al verificar y crear PR.');
+      },
+    });
+  }
+
+  private _nlSolveError(error: any, fallback: string): void {
+    this.isActionRunning = false;
+    this.nlSolvePhase = '';
+    if (error && this.handleAuthError(error)) {
+      this.lastResponse = error?.error || error;
+      return;
+    }
+    if (error) this.lastResponse = error?.error || error;
+    this.status = this.getBackendErrorMessage(error) || fallback;
+  }
+
+  // ── IA Auto pipeline ─────────────────────────────────────────────────────
+
+  submitAiAuto(): void {
+    if (!this.selectedNode || this.isComputationNode || this.isBlocked) return;
+    if (!this.aiAutoModelId) {
+      this.status = 'Debes seleccionar un modelo para IA Auto.';
+      return;
+    }
+
+    const nodeId = this.selectedNode.id;
+    const apiKey = !this.aiAutoMaskedKey ? (this.aiAutoApiKeyInput.trim() || undefined) : undefined;
+
+    this.isActionRunning = true;
+    this.lastResultSource = 'IA Auto';
+    this.aiAutoPhase = 'Consultando IA…';
+    this.status = 'IA Auto: consultando modelo…';
+
+    // Load the node's .tex as context; fall back to the Lean source if unavailable.
+    // Fetch .tex (agent context) and Definitions.lean (NL2FL verification) in parallel
+    forkJoin({
+      tex: this.taskService.getNodeTexFile(this.projectId, nodeId).pipe(
+        catchError(() => of({ content: '', path: '' }))
+      ),
+      defs: this.taskService.getProjectDefinitions(this.projectId).pipe(
+        catchError(() => of({ content: '', path: '' }))
+      ),
+    }).subscribe(({ tex, defs }) => {
+      const texContent = tex.content?.trim() || '';
+      const leanContent = this.leanCode?.trim() || '';
+      const defsContent = defs.content?.trim() || '';
+      // Agent gets the .tex as context so its suggestion is theorem-aware
+      const agentContext = texContent || leanContent;
+
+      const systemPrompt =
+        'You are a mathematical proof assistant. ' +
+        'Given a theorem (provided as context), describe ONE direct proof strategy in no more than 5 sentences. ' +
+        'Write only the mathematical argument itself — no Lean or Mathlib references, ' +
+        'no alternative approaches, no historical background, no notation explanations.';
+
+      const suggestPayload: SuggestPayload = {
+        prompt: this.aiAutoPrompt.trim() || 'Suggest a proof strategy for this theorem.',
+        model_id: this.aiAutoModelId,
+        ...(apiKey ? { api_key: apiKey } : {}),
+        system_prompt: systemPrompt,
+        context: agentContext,
+      };
+
+      this.taskService.submitSuggest(suggestPayload).subscribe({
+        next: ({ task_id }) => this._pollAiSuggest(task_id, apiKey, texContent, leanContent, defsContent),
+        error: err => this._aiAutoError(err, 'Error al enviar solicitud a la IA.'),
+      });
+    });
+  }
+
+  private _pollAiSuggest(
+    taskId: string, apiKey: string | undefined,
+    texContent: string, leanContent: string, defsContent: string,
+  ): void {
+    this._pollResult<SuggestResult>(
+      taskId,
+      id => this.taskService.getSuggestResult(id),
+      result => {
+        this.aiAutoPhase = 'Traduciendo estrategia a Lean (NL→FL)…';
+        this.status = 'IA Auto: traduciendo estrategia a Lean…';
+        this._aiAutoRunNl2fl(result.suggestion, apiKey, texContent, leanContent, defsContent);
+      },
+      err => this._aiAutoError(err, 'Error en la consulta a la IA.'),
+    );
+  }
+
+  private _aiAutoRunNl2fl(
+    naturalText: string, apiKey: string | undefined,
+    texContent: string, leanContent: string, defsContent: string,
+  ): void {
+    const contextParts: string[] = [];
+    if (texContent) contextParts.push(`=== Current .tex (LaTeX theorem statement) ===\n${texContent}`);
+    if (leanContent) contextParts.push(`=== Current .lean (use the same theorem name and imports) ===\n${leanContent}`);
+    const context = contextParts.join('\n\n');
+
+    const nl2flSystemPrompt =
+      'You are an expert in Lean 4 formal mathematics. Transcribe the following natural language mathematical statement into a Lean 4 proof. ' +
+      'The context section contains the existing .tex statement and the current .lean skeleton for this node — ' +
+      'you MUST use the exact same theorem name and keep all existing imports from the .lean skeleton. ' +
+      'Always write `import Definitions` (never `import Mathlib` directly) when the skeleton uses it. ' +
+      'Break the input into goal and proof steps, translate each to Lean 4 and integrate them. ' +
+      'Make it fast and precise, you only have 3 minutes to answer. Reply ONLY with a single ' +
+      '```lean code block and nothing else.';
+
+    const fullPrompt = context ? `${naturalText}\n\n${context}` : naturalText;
+
+    const payload: TranslatePayload = {
+      natural_text: fullPrompt,
+      model_id: this.aiAutoModelId,
+      ...(apiKey ? { api_key: apiKey } : {}),
+      max_retries: 3,
+      system_prompt: nl2flSystemPrompt,
+      ...(defsContent ? { definitions_content: defsContent } : {}),
+    };
+    this.taskService.submitTranslation(payload).subscribe({
+      next: ({ task_id }) => this._pollAiNl2fl(task_id, apiKey),
+      error: err => this._aiAutoError(err, 'Error al enviar al traductor NL→FL.'),
+    });
+  }
+
+  private _pollAiNl2fl(taskId: string, apiKey: string | undefined): void {
+    this._pollResult<TranslationResult>(
+      taskId,
+      id => this.taskService.getTranslationResult(id),
+      result => {
+        if (!result.valid || !result.final_lean?.trim()) {
+          this._aiAutoError(null,
+            `NL→FL no pudo generar Lean válido tras ${result.attempts} intento(s).`);
+          return;
+        }
+        this.aiAutoPhase = 'Verificando Lean y generando .tex…';
+        this.status = 'IA Auto: verificando Lean y generando .tex…';
+        this._aiAutoRunSolve(result.final_lean.trim(), apiKey);
+      },
+      err => this._aiAutoError(err, 'Error en la traducción NL→FL.'),
+    );
+  }
+
+  private _aiAutoRunSolve(leanCode: string, apiKey: string | undefined): void {
+    if (!this.selectedNode) { this._aiAutoError(null, 'Nodo no seleccionado.'); return; }
+
+    const texPhaseTimer = setTimeout(() => {
+      if (this.isActionRunning) {
+        this.aiAutoPhase = 'Compilación Lean correcta. Generando .tex…';
+        this.status = 'IA Auto: compilación Lean correcta. Generando .tex…';
+      }
+    }, 20000);
+
+    this.taskService.solveNode(
+      this.projectId, this.selectedNode.id, leanCode, this.aiAutoModelId, apiKey
+    ).subscribe({
+      next: response => {
+        clearTimeout(texPhaseTimer);
+        this.isActionRunning = false;
+        this.aiAutoPhase = '';
+        this.lastResponse = response;
+        const backendStatus = (response as { status?: string } | null)?.status;
+        if (backendStatus === 'already_solved') {
+          this.status = 'IA Auto completado. El nodo ya estaba resuelto (sin cambios).';
+          this.loadGraph();
+          this.loadOpenPulls();
+          return;
+        }
+        this.status = 'IA Auto completado. Se generó el .tex y se creó un PR.';
+        this.loadOpenPulls();
+      },
+      error: err => {
+        clearTimeout(texPhaseTimer);
+        this._aiAutoError(err, 'Error al verificar y crear PR.');
+      },
+    });
+  }
+
+  private _aiAutoError(error: any, fallback: string): void {
+    this.isActionRunning = false;
+    this.aiAutoPhase = '';
+    if (error && this.handleAuthError(error)) {
+      this.lastResponse = error?.error || error;
+      return;
+    }
+    if (error) this.lastResponse = error?.error || error;
+    this.status = this.getBackendErrorMessage(error) || fallback;
+  }
+
+  // ── IA Auto (Dividir) pipeline ────────────────────────────────────────────
+
+  submitAiSplit(): void {
+    if (!this.selectedNode || this.isComputationNode || this.isBlocked) return;
+    if (!this.aiAutoModelId) {
+      this.status = 'Debes seleccionar un modelo para IA Auto.';
+      return;
+    }
+
+    const nodeId = this.selectedNode.id;
+    const apiKey = !this.aiAutoMaskedKey ? (this.aiAutoApiKeyInput.trim() || undefined) : undefined;
+
+    this.isActionRunning = true;
+    this.lastResultSource = 'IA Auto (Dividir)';
+    this.aiAutoPhase = 'Consultando IA…';
+    this.status = 'IA Auto Dividir: consultando modelo…';
+
+    this.taskService.getNodeTexFile(this.projectId, nodeId).pipe(
+      catchError(() => of({ content: this.leanCode, path: '' }))
+    ).subscribe(texFile => {
+      const context = texFile.content?.trim() || this.leanCode;
+
+      const systemPrompt =
+        'You are a mathematical proof assistant. ' +
+        'Given a theorem (provided as context), describe ONE way to split it into ' +
+        'simpler sub-goals or helper lemmas that together prove the theorem. ' +
+        'Write only the mathematical argument — no Lean or Mathlib references, ' +
+        'no alternative approaches, no historical background, no notation explanations. ' +
+        'State each sub-goal as a clear natural-language claim, then explain briefly how they combine.';
+
+      const suggestPayload: SuggestPayload = {
+        prompt: this.aiAutoPrompt.trim() || 'Suggest how to split this theorem into simpler sub-goals or lemmas.',
+        model_id: this.aiAutoModelId,
+        ...(apiKey ? { api_key: apiKey } : {}),
+        system_prompt: systemPrompt,
+        context,
+      };
+
+      this.taskService.submitSuggest(suggestPayload).subscribe({
+        next: ({ task_id }) => this._pollAiSplitSuggest(task_id, apiKey),
+        error: err => this._aiAutoError(err, 'Error al enviar solicitud a la IA.'),
+      });
+    });
+  }
+
+  private _pollAiSplitSuggest(taskId: string, apiKey: string | undefined): void {
+    this._pollResult<SuggestResult>(
+      taskId,
+      id => this.taskService.getSuggestResult(id),
+      result => {
+        this.aiAutoPhase = 'Traduciendo plan a Lean (NL→FL)…';
+        this.status = 'IA Auto Dividir: traduciendo plan a Lean…';
+        this._aiAutoSplitRunNl2fl(result.suggestion, apiKey);
+      },
+      err => this._aiAutoError(err, 'Error en la consulta a la IA.'),
+    );
+  }
+
+  private _aiAutoSplitRunNl2fl(naturalText: string, apiKey: string | undefined): void {
+    const nl2flSystemPrompt =
+      'You are an expert in Lean 4 formal mathematics. Transcribe the following natural language mathematical statement into a Lean 4 statement. ' +
+      'Break the input into goal and steps, make their equivalentes in Lean 4 and integrate them in the output. ' +
+      'Make it fast and precise, you only have 3 minutes to answer. Reply ONLY with a single' +
+      '```lean code block and nothing else.';
+
+    const payload: TranslatePayload = {
+      natural_text: naturalText,
+      model_id: this.aiAutoModelId,
+      ...(apiKey ? { api_key: apiKey } : {}),
+      max_retries: 3,
+      system_prompt: nl2flSystemPrompt,
+    };
+    this.taskService.submitTranslation(payload).subscribe({
+      next: ({ task_id }) => this._pollAiSplitNl2fl(task_id, apiKey),
+      error: err => this._aiAutoError(err, 'Error al enviar al traductor NL→FL.'),
+    });
+  }
+
+  private _pollAiSplitNl2fl(taskId: string, apiKey: string | undefined): void {
+    this._pollResult<TranslationResult>(
+      taskId,
+      id => this.taskService.getTranslationResult(id),
+      result => {
+        if (!result.valid || !result.final_lean?.trim()) {
+          this._aiAutoError(null,
+            `NL→FL no pudo generar Lean válido tras ${result.attempts} intento(s).`);
+          return;
+        }
+        this.aiAutoPhase = 'Dividiendo y generando .tex…';
+        this.status = 'IA Auto Dividir: dividiendo y generando .tex…';
+        this._aiAutoRunSplit(result.final_lean.trim(), apiKey);
+      },
+      err => this._aiAutoError(err, 'Error en la traducción NL→FL.'),
+    );
+  }
+
+  private _aiAutoRunSplit(leanCode: string, apiKey: string | undefined): void {
+    if (!this.selectedNode) { this._aiAutoError(null, 'Nodo no seleccionado.'); return; }
+
+    const texPhaseTimer = setTimeout(() => {
+      if (this.isActionRunning) {
+        this.aiAutoPhase = 'Compilación Lean correcta. Generando .tex para padre e hijos…';
+        this.status = 'IA Auto Dividir: generando .tex…';
+      }
+    }, 20000);
+
+    this.taskService.splitNode(
+      this.projectId, this.selectedNode.id, leanCode, this.aiAutoModelId, apiKey
+    ).subscribe({
+      next: response => {
+        clearTimeout(texPhaseTimer);
+        this.isActionRunning = false;
+        this.aiAutoPhase = '';
+        this.lastResponse = response;
+        const created = (response as { created_lemmas?: string[] } | null)?.created_lemmas ?? [];
+        this.status = `IA Auto Dividir completado. .tex generados (padre + ${created.length} hijo${created.length !== 1 ? 's' : ''}). Se creó un PR.`;
+        this.loadOpenPulls();
+      },
+      error: err => {
+        clearTimeout(texPhaseTimer);
+        this._aiAutoError(err, 'Error al dividir y crear PR.');
+      },
+    });
+  }
+
+  /**
+   * Generic polling helper using RxJS timer.  Polls `getter(taskId)` every
+   * `intervalMs` ms, skipping 'pending' responses, and completes on the first
+   * non-pending result.  Errors out after `timeoutMs` (default 10 min) — the
+   * same window used by the Translation page.
+   */
+  private _pollResult<T>(
+    taskId: string,
+    getter: (id: string) => Observable<T | { status: string }>,
+    onDone: (result: T) => void,
+    onError: (err: any) => void,
+    intervalMs = 2500,
+    timeoutMs = 600_000,
+  ): void {
+    timer(0, intervalMs).pipe(
+      switchMap(() => getter(taskId)),
+      filter(res => (res as { status?: string }).status !== 'pending'),
+      take(1),
+      timeout(timeoutMs),
+    ).subscribe({
+      next: res => {
+        if (!this.isActionRunning) return;
+        onDone(res as T);
+      },
+      error: err => onError(err),
     });
   }
 

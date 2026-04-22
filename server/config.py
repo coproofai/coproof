@@ -19,6 +19,7 @@ class Config:
     CELERY_COMPUTATION_QUEUE = os.environ.get('CELERY_COMPUTATION_QUEUE', 'computation_queue')
     CELERY_GIT_ENGINE_QUEUE = os.environ.get('CELERY_GIT_ENGINE_QUEUE', 'git_engine_queue')
     CELERY_NL2FL_QUEUE = os.environ.get('CELERY_NL2FL_QUEUE', 'nl2fl_queue')
+    CELERY_AGENTS_QUEUE = os.environ.get('CELERY_AGENTS_QUEUE', 'agents_queue')
     REPO_STORAGE_PATH = os.environ.get('REPO_STORAGE_PATH', '/tmp/coproof-storage')
     GITHUB_CLIENT_ID = os.environ.get('GITHUB_CLIENT_ID')
     GITHUB_CLIENT_SECRET = os.environ.get('GITHUB_CLIENT_SECRET')

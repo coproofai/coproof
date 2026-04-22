@@ -17,6 +17,8 @@ import {
   TexFileResponse,
   TranslatePayload,
   TranslationResult,
+  SuggestPayload,
+  SuggestResult,
   VerifyCompilerResult,
   VerifyNodeResponse
 } from './task.models';
@@ -353,6 +355,22 @@ export class TaskService {
   getFl2nlResult(taskId: string): Observable<import('./task.models').Fl2NlResult | { status: 'pending' }> {
     return this.http.get<import('./task.models').Fl2NlResult | { status: 'pending' }>(
       `${this.apiBaseUrl}/translate/fl2nl/${taskId}/result`
+    );
+  }
+
+  // --- Agents / Suggest ---
+
+  submitSuggest(payload: SuggestPayload): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${this.apiBaseUrl}/agents/suggest/submit`,
+      payload,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  getSuggestResult(taskId: string): Observable<SuggestResult | { status: 'pending' }> {
+    return this.http.get<SuggestResult | { status: 'pending' }>(
+      `${this.apiBaseUrl}/agents/suggest/${taskId}/result`
     );
   }
 }

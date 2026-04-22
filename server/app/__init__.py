@@ -34,6 +34,7 @@ def create_app(config_class=None):
     computation_queue = app.config['CELERY_COMPUTATION_QUEUE']
     git_engine_queue = app.config['CELERY_GIT_ENGINE_QUEUE']
     nl2fl_queue = app.config['CELERY_NL2FL_QUEUE']
+    agents_queue = app.config['CELERY_AGENTS_QUEUE']
     app.config['CELERY_CONFIG'] = {
         'broker_url': app.config['CELERY_BROKER_URL'],
         'result_backend': app.config['CELERY_RESULT_BACKEND'],
@@ -43,6 +44,7 @@ def create_app(config_class=None):
             Queue(computation_queue, Exchange(computation_queue, type='direct'), routing_key=computation_queue),
             Queue(git_engine_queue, Exchange(git_engine_queue, type='direct'), routing_key=git_engine_queue),
             Queue(nl2fl_queue, Exchange(nl2fl_queue, type='direct'), routing_key=nl2fl_queue),
+            Queue(agents_queue, Exchange(agents_queue, type='direct'), routing_key=agents_queue),
         )
     }
     celery.conf.update(app.config['CELERY_CONFIG'])

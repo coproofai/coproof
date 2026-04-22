@@ -303,6 +303,7 @@ def translate_and_verify(
     api_key: str,
     max_retries: int = 3,
     system_prompt: str | None = None,
+    definitions_content: str | None = None,
 ) -> dict:
     """
     Full NL→Lean translation + verification pipeline.
@@ -381,11 +382,24 @@ def translate_and_verify(
             break  # fatal — stop retrying on LLM errors
 
         lean_code = _extract_lean_code(llm_reply)
-        final_lean = lean_code
+        # For the standalone Lean verifier, `import Definitions` cannot be
+        # resolved (it's a project-local file).  If the caller supplied the
+        # actual content of Definitions.lean, inline it in place of the import
+        # so verification works.  The `final_lean` output always keeps the
+        # original `import Definitions` so downstream code is not affected.
+        lean_code_for_verify = lean_code
+        if definitions_content:
+            lean_code_for_verify = re.sub(
+                r'^\s*import\s+Definitions\s*$',
+                definitions_content.strip(),
+                lean_code,
+                flags=re.MULTILINE,
+            )
+        final_lean = lean_code  # preserve original import statement
 
         # --- Step 2: Verify ---
         try:
-            verification = _verify_with_lean(lean_code)
+            verification = _verify_with_lean(lean_code_for_verify)
         except Exception as exc:
             logger.error('[nl2fl] Lean verification error on attempt %d: %s', attempt, exc)
             verification = {

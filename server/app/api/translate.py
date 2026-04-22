@@ -67,6 +67,7 @@ def submit_translation():
     api_key = (data.get('api_key') or '').strip()
     max_retries = data.get('max_retries', 3)
     system_prompt = data.get('system_prompt')
+    definitions_content = data.get('definitions_content') or None
 
     if not natural_text:
         return jsonify({"error": "natural_text is required"}), 400
@@ -119,6 +120,8 @@ def submit_translation():
     }
     if system_prompt:
         payload["system_prompt"] = system_prompt
+    if definitions_content:
+        payload["definitions_content"] = definitions_content
 
     try:
         task_id = TranslateClient.submit(payload)

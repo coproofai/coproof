@@ -543,6 +543,12 @@
     }
     .btn-save-sm:disabled { opacity: 0.55; cursor: not-allowed; }
     .solve-key-error { color: #ef4444; font-size: 0.76rem; margin: 2px 0 0; }
+    .ai-auto-phase {
+      font-size: 0.8rem;
+      color: #60a5fa;
+      margin: 6px 0 4px;
+      font-style: italic;
+    }
     .btn-secondary {
       border: 1px solid #d1d5db;
       border-radius: 8px;

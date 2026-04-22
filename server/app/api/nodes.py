@@ -290,6 +290,18 @@ def solve_node(project_id, node_id):
         parent_map=parent_map,
         project_goal=project.goal,
     )
+
+    # If the submitted code declared top-level imports (e.g. `import Mathlib`) that
+    # build_verify_payload strips out, but the payload doesn't already start with
+    # those imports, prepend them so the compiler context matches what NL2FL verified.
+    submitted_imports = re.findall(r'(?m)^\s*(import\s+\S+)\s*$', lean_code)
+    payload_import_set = set(re.findall(r'(?m)^\s*(import\s+\S+)\s*$', verification_payload))
+    missing_imports = [imp for imp in submitted_imports
+                       if imp not in payload_import_set
+                       and 'Definitions' not in imp]
+    if missing_imports:
+        verification_payload = '\n'.join(missing_imports) + '\n\n' + verification_payload
+
     verification = CompilerClient.verify_snippet(verification_payload)
 
     if not verification.get('valid'):
