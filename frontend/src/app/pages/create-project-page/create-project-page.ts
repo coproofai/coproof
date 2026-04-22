@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { AsyncPipe, DecimalPipe, NgIf, NgFor } from '@angular/common';
+import { AsyncPipe, NgIf, NgFor } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -45,7 +45,7 @@ const NL_PROJECT_SYSTEM_PROMPT =
 @Component({
   selector: 'app-create-project-page',
   standalone: true,
-  imports: [AsyncPipe, DecimalPipe, NgIf, NgFor, FormsModule],
+  imports: [AsyncPipe, NgIf, NgFor, FormsModule],
   templateUrl: './create-project-page.html',
   styleUrl: './create-project-page.css'
 })

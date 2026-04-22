@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 from urllib.parse import quote
 
 import requests
+from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout
 
 from app.exceptions import CoProofError
 
@@ -267,11 +268,14 @@ class GitHubService:
     def get_pull_request(remote_repo_url, token, pr_number):
         """Fetch one pull request from GitHub."""
         full_name = GitHubService.extract_github_full_name(remote_repo_url)
-        response = requests.get(
-            f"https://api.github.com/repos/{full_name}/pulls/{pr_number}",
-            headers=GitHubService.github_headers(token),
-            timeout=20,
-        )
+        try:
+            response = requests.get(
+                f"https://api.github.com/repos/{full_name}/pulls/{pr_number}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
 
         if response.status_code == 200:
             return response.json()
@@ -286,12 +290,15 @@ class GitHubService:
     def list_open_pull_requests(remote_repo_url, token, base_branch):
         """List open pull requests that target the provided base branch."""
         full_name = GitHubService.extract_github_full_name(remote_repo_url)
-        response = requests.get(
-            f"https://api.github.com/repos/{full_name}/pulls",
-            headers=GitHubService.github_headers(token),
-            params={"state": "open", "base": base_branch, "per_page": 100},
-            timeout=20,
-        )
+        try:
+            response = requests.get(
+                f"https://api.github.com/repos/{full_name}/pulls",
+                headers=GitHubService.github_headers(token),
+                params={"state": "open", "base": base_branch, "per_page": 100},
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
 
         if response.status_code == 200:
             pulls = response.json()
@@ -317,12 +324,15 @@ class GitHubService:
     def merge_pull_request(remote_repo_url, token, pr_number):
         """Merge a pull request through the GitHub API using merge strategy."""
         full_name = GitHubService.extract_github_full_name(remote_repo_url)
-        response = requests.put(
-            f"https://api.github.com/repos/{full_name}/pulls/{pr_number}/merge",
-            headers=GitHubService.github_headers(token),
-            json={"merge_method": "merge"},
-            timeout=20,
-        )
+        try:
+            response = requests.put(
+                f"https://api.github.com/repos/{full_name}/pulls/{pr_number}/merge",
+                headers=GitHubService.github_headers(token),
+                json={"merge_method": "merge"},
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
 
         if response.status_code == 200:
             payload = response.json()
@@ -386,12 +396,15 @@ class GitHubService:
             "base": base_branch,
         }
 
-        response = requests.post(
-            f"https://api.github.com/repos/{full_name}/pulls",
-            json=payload,
-            headers=GitHubService.github_headers(token),
-            timeout=20,
-        )
+        try:
+            response = requests.post(
+                f"https://api.github.com/repos/{full_name}/pulls",
+                json=payload,
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
 
         if response.status_code in (200, 201):
             return response.json()

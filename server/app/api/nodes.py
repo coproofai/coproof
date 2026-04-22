@@ -4,10 +4,12 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 import re
 import uuid
 from app.models.user import User
+from app.models.user_api_key import UserApiKey
 from app.services.computation_service import ComputationService
 from app.services.auth_service import AuthService
 from app.services.integrations.computation_client import ComputationClient
 from app.services.integrations.compiler_client import CompilerClient
+from app.services.integrations.translate_client import TranslateClient
 from app.services.github_service import GitHubService
 from app.services.lean_service import LeanService
 from app.models.project import Project
@@ -16,6 +18,126 @@ from app.exceptions import CoProofError
 from app.extensions import db
 
 nodes_bp = Blueprint('nodes', __name__, url_prefix='/api/v1/nodes')
+
+# System prompt used when generating a .tex from a solved Lean theorem.
+# Uses the same **Theorem.** / *Proof.* Markdown bold/italic format as the
+# create-project FL2NL preview, so the workspace TeX renderer renders them
+# consistently with <strong> / <em>.
+_SOLVE_FL2NL_SYSTEM_PROMPT = (
+    "You are an expert in formal mathematics and mathematical writing. "
+    "Given a Lean 4 theorem with its proof, produce a structured mathematical exposition in natural language. "
+    "For EACH theorem or lemma found in the input, output exactly the following structure:\n\n"
+    "**Theorem.** <state the mathematical claim clearly, using LaTeX notation ($...$ inline, $$...$$ display)>\n\n"
+    "*Proof.* <explain the proof strategy and key steps in natural language, using LaTeX where appropriate. "
+    "If the proof body contains `sorry` or is otherwise unsolved, write exactly \"Unsolved.\" instead.>\n\n"
+    "Rules:\n"
+    "- Capture the mathematical ESSENCE of what the Lean statement expresses. Do NOT attempt to re-prove anything.\n"
+    "- Do NOT reproduce any Lean 4 syntax in your output.\n"
+    "- Do NOT add commentary outside the Theorem/Proof blocks.\n"
+    "- If there are multiple theorems, repeat the Theorem/Proof block for each one in order."
+)
+
+
+def _try_generate_tex(user_id: str, lean_code: str) -> str | None:
+    """
+    Attempt FL→NL tex generation using the user's first available saved API key.
+    Returns a LaTeX string on success, None if no key is available or generation fails.
+    """
+    record = UserApiKey.query.filter_by(user_id=user_id).order_by(UserApiKey.model_id).first()
+    if not record:
+        return None
+    try:
+        api_key = record.decrypt_key().strip()
+    except Exception as exc:
+        logger.warning('_try_generate_tex: key decryption failed: %s', exc)
+        return None
+
+    natural_text = TranslateClient.fl2nl_synchronous(
+        payload={
+            'lean_code': lean_code,
+            'model_id': record.model_id,
+            'api_key': api_key,
+            'system_prompt': _SOLVE_FL2NL_SYSTEM_PROMPT,
+        },
+        timeout=120,
+    )
+    return natural_text or None
+
+
+# System prompt for split child nodes — they have `sorry` proofs, so the proof
+# section should say "Unsolved." while still describing the claim.
+# The label (derived from the Lean name) is injected by the caller as a comment
+# in the .tex file; the model itself is instructed to echo it in the header.
+_SPLIT_CHILD_FL2NL_SYSTEM_PROMPT = (
+    "You are an expert in formal mathematics and mathematical writing. "
+    "Given a Lean 4 theorem or lemma (its proof may be `sorry` or incomplete), "
+    "produce a structured mathematical exposition in natural language. "
+    "For EACH theorem or lemma found in the input, output exactly the following structure:\n\n"
+    "**Theorem (*<Name>*).** <state the mathematical claim clearly, using LaTeX notation ($...$ inline, $$...$$ display)>\n\n"
+    "*Proof.* <If the proof body contains `sorry` or is otherwise unsolved, write exactly \"Unsolved.\" "
+    "Otherwise explain the proof strategy and key steps in natural language with LaTeX where appropriate.>\n\n"
+    "Rules:\n"
+    "- Replace *<Name>* with a short human-readable name derived from the Lean theorem/lemma identifier "
+    "(split on underscores and camelCase, title-case each word — e.g. `myLemmaFoo` → `My Lemma Foo`).\n"
+    "- The name MUST appear in italics inside the parentheses, immediately after **Theorem**, e.g. **Theorem (*My Lemma Foo*)**.\n"
+    "- Do NOT reproduce any Lean 4 syntax in your output.\n"
+    "- Do NOT add commentary outside the Theorem/Proof blocks.\n"
+    "- If there are multiple theorems, repeat the block for each one in order."
+)
+
+
+def _split_parent_fl2nl_system_prompt(child_labels: list[str]) -> str:
+    """
+    Build the system prompt for the parent node after a split.
+    The parent proof should explicitly reference the child lemmas by their labels.
+    Labels are stable identifiers derived from Lean theorem names so they remain
+    consistent across later solve/split operations on the child nodes.
+    """
+    child_ref_hint = ', '.join(f'\\textbf{{{label}}}' for label in child_labels)
+    return (
+        "You are an expert in formal mathematics and mathematical writing. "
+        "Given a Lean 4 theorem whose proof delegates to child lemmas, "
+        "produce a structured mathematical exposition in natural language. "
+        "For EACH theorem or lemma found in the input, output exactly the following structure:\n\n"
+        "**Theorem.** <state the mathematical claim clearly, using LaTeX notation ($...$ inline, $$...$$ display)>\n\n"
+        "*Proof.* <explain how the proof follows from the child lemmas. "
+        f"You MUST reference the following sub-results by their labels: {child_ref_hint}. "
+        "Use LaTeX where appropriate.>\n\n"
+        "Rules:\n"
+        "- Do NOT reproduce any Lean 4 syntax in your output.\n"
+        "- Do NOT add commentary outside the Theorem/Proof blocks.\n"
+        "- Reference each child lemma label exactly as given (they are stable identifiers).\n"
+        "- If there are multiple theorems, repeat the block for each one in order."
+    )
+
+
+def _lean_name_to_label(lean_name: str) -> str:
+    """
+    Convert a Lean theorem/lemma name to a stable human-readable label.
+    E.g. 'myLemmaFoo' -> 'My Lemma Foo', 'my_lemma_foo' -> 'My Lemma Foo'.
+    This label is used as the \\textbf{} reference in parent .tex files and
+    as the display name in child .tex files, so it remains consistent regardless
+    of future operations (solve/split) on the child node.
+    """
+    # Split on underscores and camelCase boundaries
+    import re as _re
+    s = lean_name.replace('_', ' ')
+    s = _re.sub(r'([a-z])([A-Z])', r'\1 \2', s)
+    return s.title()
+
+
+def _resolve_api_key(user_id: str, model_id: str, api_key_body: str) -> str | None:
+    """Resolve api_key from request body or user's saved key. Returns None if unavailable."""
+    if api_key_body:
+        return api_key_body
+    record = UserApiKey.query.filter_by(user_id=user_id, model_id=model_id).first()
+    if not record:
+        return None
+    try:
+        return record.decrypt_key().strip() or None
+    except Exception as exc:
+        logger.warning('_resolve_api_key: decryption failed: %s', exc)
+        return None
 
 
 # @nodes_bp.route('/<uuid:project_id>/<uuid:node_id>/details', methods=['GET'])
@@ -122,14 +244,19 @@ def get_snippet_result(task_id):
 def solve_node(project_id, node_id):
     """
     Receives a complete Lean solution for a node main.lean, verifies it, writes it in a feature branch,
-    and opens a PR targeting main/default branch.
+    and opens a PR targeting main/default branch. Also runs FL→NL to generate an updated .tex file
+    which is included in the same PR. model_id is required for this step.
     """
     user_id = get_jwt_identity()
     data = request.get_json() or {}
     lean_code = data.get('lean_code') or data.get('code')
+    model_id = (data.get('model_id') or '').strip()
+    api_key_body = (data.get('api_key') or '').strip()
 
     if not lean_code:
         return jsonify({"error": "Missing payload: lean_code"}), 400
+    if not model_id:
+        return jsonify({"error": "Missing payload: model_id (required to generate .tex)"}), 400
     lean_code = LeanService.normalize_lean_imports(lean_code)
 
     user = User.query.get_or_404(user_id)
@@ -202,6 +329,34 @@ def solve_node(project_id, node_id):
     for definitions_path in LeanService.definition_file_paths(file_map):
         files_to_commit[definitions_path] = file_map[definitions_path]
 
+    # Resolve API key: prefer request body, fall back to user's saved key for this model.
+    api_key = _resolve_api_key(user_id, model_id, api_key_body)
+
+    if not api_key:
+        return jsonify({
+            "error": "api_key is required (provide in body or save one for this model via /api/v1/translate/api-key)"
+        }), 400
+
+    # Generate updated .tex — this is mandatory; we do not open the PR if it fails.
+    tex_path = node_main_path.rsplit('/', 1)[0] + '/main.tex' if '/' in node_main_path else 'main.tex'
+    generated_tex = TranslateClient.fl2nl_synchronous(
+        payload={
+            'lean_code': lean_code,
+            'model_id': model_id,
+            'api_key': api_key,
+            'system_prompt': _SOLVE_FL2NL_SYSTEM_PROMPT,
+        },
+        timeout=120,
+    )
+    if not generated_tex:
+        return jsonify({
+            "error": "FL→NL generation failed or timed out. The .tex could not be produced. "
+                     "Check that the model and API key are correct and the NL2FL worker is running."
+        }), 502
+
+    files_to_commit[tex_path] = generated_tex
+    logger.info('solve_node: included generated .tex at %s', tex_path)
+
     GitHubService.create_branch(
         remote_repo_url=project.remote_repo_url,
         token=github_token,
@@ -222,6 +377,7 @@ def solve_node(project_id, node_id):
         f"Project ID: {project.id}\n"
         f"Affected node ID: {node.id}\n"
         f"Affected node name: {node.name}\n"
+        f"Includes: updated main.tex (generated via FL→NL)\n"
     )
 
     pr_data = GitHubService.open_pull_request(
@@ -239,6 +395,7 @@ def solve_node(project_id, node_id):
         "project_id": str(project.id),
         "node_id": str(node.id),
         "branch": branch_name,
+        "tex_generated": True,
         "pull_request": {
             "number": pr_data.get('number'),
             "title": pr_data.get('title'),
@@ -580,13 +737,19 @@ def split_node(project_id, node_id):
     """
     Receives a Lean split with new lemmas (using sorry), verifies it with imports,
     creates lemma folders/files, updates node main.lean imports, and opens a PR.
+    Also regenerates .tex for parent and all child nodes via FL→NL.
+    model_id is required for tex generation.
     """
     user_id = get_jwt_identity()
     data = request.get_json() or {}
     lean_code = data.get('lean_code') or data.get('code')
+    model_id = (data.get('model_id') or '').strip()
+    api_key_body = (data.get('api_key') or '').strip()
 
     if not lean_code:
         return jsonify({"error": "Missing payload: lean_code"}), 400
+    if not model_id:
+        return jsonify({"error": "Missing payload: model_id (required to generate .tex files)"}), 400
     lean_code = LeanService.normalize_lean_imports(lean_code)
 
     user = User.query.get_or_404(user_id)
@@ -630,7 +793,7 @@ def split_node(project_id, node_id):
         }), 400
 
     updated_main = LeanService.build_split_main_content(lean_code, child_blocks)
-    lemma_files, tex_files, lemma_names = LeanService.build_split_files(child_blocks)
+    lemma_files, _static_tex_files, lemma_names = LeanService.build_split_files(child_blocks)
 
     file_map = GitHubService.get_repository_files_map(
         remote_repo_url=project.remote_repo_url,
@@ -662,6 +825,62 @@ def split_node(project_id, node_id):
     for definitions_path in LeanService.definition_file_paths(file_map):
         files_to_commit[definitions_path] = file_map[definitions_path]
     files_to_commit.update(lemma_files)
+
+    # ── FL→NL tex generation ──────────────────────────────────────────────────
+    api_key = _resolve_api_key(user_id, model_id, api_key_body)
+    if not api_key:
+        return jsonify({
+            "error": "api_key is required (provide in body or save one for this model via /api/v1/translate/api-key)"
+        }), 400
+
+    # Build stable child labels from Lean theorem names — these are used both
+    # in the child .tex title lines and in the parent's proof references, so
+    # they remain consistent even if the child is later solved or split further.
+    child_labels = {block['name']: _lean_name_to_label(block['name']) for block in child_blocks}
+
+    # Generate child .tex files (proofs are sorry at this stage → "Unsolved.")
+    tex_files: dict[str, str] = {}
+    for block in child_blocks:
+        folder_segment = LeanService.to_unique_node_folder_segment(block['name'], set())
+        child_tex_path = f"{folder_segment}/main.tex"
+        # Use the existing lean file path derived from build_split_files
+        child_lean_code = lemma_files.get(f"{folder_segment}/main.lean", block['content'])
+        label = child_labels[block['name']]
+        child_tex = TranslateClient.fl2nl_synchronous(
+            payload={
+                'lean_code': child_lean_code,
+                'model_id': model_id,
+                'api_key': api_key,
+                'system_prompt': _SPLIT_CHILD_FL2NL_SYSTEM_PROMPT,
+            },
+            timeout=120,
+        )
+        if not child_tex:
+            return jsonify({
+                "error": f"FL→NL generation failed for child lemma '{block['name']}'. "
+                         "Check that the model/API key are correct and the NL2FL worker is running."
+            }), 502
+        # Prepend a stable label header so the child .tex is self-identifying
+        tex_files[child_tex_path] = f"% Label: {label}\n{child_tex}"
+
+    # Generate parent .tex — its proof should reference the child labels
+    parent_tex_path = node_main_path.rsplit('/', 1)[0] + '/main.tex' if '/' in node_main_path else 'main.tex'
+    parent_tex = TranslateClient.fl2nl_synchronous(
+        payload={
+            'lean_code': base_block['content'],
+            'model_id': model_id,
+            'api_key': api_key,
+            'system_prompt': _split_parent_fl2nl_system_prompt(list(child_labels.values())),
+        },
+        timeout=120,
+    )
+    if not parent_tex:
+        return jsonify({
+            "error": "FL→NL generation failed for the parent (base) theorem. "
+                     "Check that the model/API key are correct and the NL2FL worker is running."
+        }), 502
+    tex_files[parent_tex_path] = parent_tex
+
     files_to_commit.update(tex_files)
 
     GitHubService.create_branch(
@@ -703,6 +922,7 @@ def split_node(project_id, node_id):
         "node_id": str(node.id),
         "created_lemmas": lemma_names,
         "branch": branch_name,
+        "tex_generated": True,
         "pull_request": {
             "number": pr_data.get('number'),
             "title": pr_data.get('title'),

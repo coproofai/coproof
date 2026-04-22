@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from celery import Celery
 from celery.exceptions import CeleryError, TimeoutError
 from app.exceptions import CoProofError
@@ -187,3 +188,32 @@ class TranslateClient:
         except Exception as e:
             logger.error('TranslateClient: get_fl2nl_result error for %s: %s', task_id, e)
             raise CoProofError(f'NL2FL Worker Unavailable: {str(e)}', code=503)
+
+    @classmethod
+    def fl2nl_synchronous(cls, payload: dict, timeout: int = 120, poll_interval: float = 3.0) -> str | None:
+        """
+        Dispatch an FL→NL task and block until it completes or the timeout expires.
+
+        Returns the ``natural_text`` string on success, or ``None`` if the task
+        did not finish within *timeout* seconds or if any error occurred.  Never
+        raises — callers should treat ``None`` as "tex generation unavailable".
+        """
+        try:
+            task_id = cls.submit_fl2nl(payload)
+        except Exception as exc:
+            logger.warning('TranslateClient.fl2nl_synchronous: dispatch failed: %s', exc)
+            return None
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                result = cls.get_fl2nl_result(task_id)
+            except Exception as exc:
+                logger.warning('TranslateClient.fl2nl_synchronous: poll error: %s', exc)
+                return None
+            if result is not None:
+                return result.get('natural_text') or None
+            time.sleep(poll_interval)
+
+        logger.warning('TranslateClient.fl2nl_synchronous: timed out after %ds for task %s', timeout, task_id)
+        return None

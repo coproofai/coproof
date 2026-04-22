@@ -263,18 +263,20 @@ export class TaskService {
     });
   }
 
-  solveNode(projectId: string, nodeId: string, leanCode: string): Observable<unknown> {
-    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/solve`, {
-      lean_code: leanCode
-    }, {
+  solveNode(projectId: string, nodeId: string, leanCode: string, modelId?: string, apiKey?: string): Observable<unknown> {
+    const body: Record<string, unknown> = { lean_code: leanCode };
+    if (modelId) body['model_id'] = modelId;
+    if (apiKey) body['api_key'] = apiKey;
+    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/solve`, body, {
       headers: this.authHeaders()
     });
   }
 
-  splitNode(projectId: string, nodeId: string, leanCode: string): Observable<unknown> {
-    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/split`, {
-      lean_code: leanCode
-    }, {
+  splitNode(projectId: string, nodeId: string, leanCode: string, modelId?: string, apiKey?: string): Observable<unknown> {
+    const body: Record<string, unknown> = { lean_code: leanCode };
+    if (modelId) body['model_id'] = modelId;
+    if (apiKey) body['api_key'] = apiKey;
+    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/split`, body, {
       headers: this.authHeaders()
     });
   }
