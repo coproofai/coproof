@@ -321,6 +321,106 @@ class GitHubService:
         raise CoProofError(f"GitHub PR list failed: {response.text}", code=502)
 
     @staticmethod
+    def close_pull_request(remote_repo_url, token, pr_number):
+        """Close (discard) a pull request without merging, then delete its head branch."""
+        full_name = GitHubService.extract_github_full_name(remote_repo_url)
+        # 1. Close the PR
+        try:
+            response = requests.patch(
+                f"https://api.github.com/repos/{full_name}/pulls/{pr_number}",
+                headers=GitHubService.github_headers(token),
+                json={"state": "closed"},
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code not in (200,):
+            if response.status_code in (401, 403):
+                raise CoProofError("GitHub authentication failed while closing PR.", code=401)
+            raise CoProofError(f"GitHub PR close failed: {response.text}", code=502)
+
+        pr_data = response.json()
+        head_branch = pr_data.get("head", {}).get("ref")
+
+        # 2. Delete the head branch (best-effort — ignore 422/404 if already gone)
+        if head_branch:
+            try:
+                requests.delete(
+                    f"https://api.github.com/repos/{full_name}/git/refs/heads/{head_branch}",
+                    headers=GitHubService.github_headers(token),
+                    timeout=20,
+                )
+            except Exception:
+                pass
+
+        return {"closed": True, "pr_number": pr_number, "branch": head_branch}
+
+    @staticmethod
+    def get_pull_request_files(remote_repo_url, token, pr_number):
+        """Return the list of files changed in a pull request with their contents."""
+        import logging
+        _log = logging.getLogger(__name__)
+
+        full_name = GitHubService.extract_github_full_name(remote_repo_url)
+        try:
+            response = requests.get(
+                f"https://api.github.com/repos/{full_name}/pulls/{pr_number}/files",
+                headers=GitHubService.github_headers(token),
+                params={"per_page": 100},
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code != 200:
+            if response.status_code in (401, 403):
+                raise CoProofError("GitHub authentication failed while listing PR files.", code=401)
+            raise CoProofError(f"GitHub PR files failed: {response.text}", code=502)
+
+        _log.debug("[pr_files] PR #%s files API returned %d entries", pr_number, len(response.json()))
+
+        files = []
+        for f in response.json():
+            filename = f.get("filename", "")
+            raw_url = f.get("raw_url") or f.get("blob_url")
+            content = None
+
+            # GitHub PR files API sometimes returns github.com/.../raw/... instead of
+            # raw.githubusercontent.com/... — the former requires a browser session and
+            # returns an HTML 404 when fetched programmatically.  Normalise it.
+            if raw_url:
+                import re as _re
+                from urllib.parse import unquote as _unquote
+                m = _re.match(r'^https://github\.com/(.+?)/raw/(.+)$', raw_url)
+                if m:
+                    raw_url = _unquote(f"https://raw.githubusercontent.com/{m.group(1)}/{m.group(2)}")
+
+            print(f"[pr_files] file={filename!r}  raw_url={raw_url!r}", flush=True)
+            if raw_url:
+                try:
+                    raw_resp = requests.get(
+                        raw_url,
+                        headers={"Authorization": f"token {token}"},
+                        timeout=20,
+                    )
+                    print(f"[pr_files]   raw fetch status={raw_resp.status_code}  len={len(raw_resp.text)}", flush=True)
+                    if raw_resp.status_code == 200:
+                        content = raw_resp.text
+                    else:
+                        print(f"[pr_files]   raw fetch FAILED for {filename!r}: {raw_resp.status_code} {raw_resp.text[:300]}", flush=True)
+                except Exception as exc:
+                    print(f"[pr_files]   raw fetch EXCEPTION for {filename!r}: {exc}", flush=True)
+            files.append({
+                "filename": filename,
+                "status": f.get("status"),
+                "additions": f.get("additions", 0),
+                "deletions": f.get("deletions", 0),
+                "content": content,
+            })
+        return files
+
+    @staticmethod
     def merge_pull_request(remote_repo_url, token, pr_number):
         """Merge a pull request through the GitHub API using merge strategy."""
         full_name = GitHubService.extract_github_full_name(remote_repo_url)

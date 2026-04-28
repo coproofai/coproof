@@ -20,7 +20,8 @@ import {
   SuggestPayload,
   SuggestResult,
   VerifyCompilerResult,
-  VerifyNodeResponse
+  VerifyNodeResponse,
+  PullRequestFilesResponse
 } from './task.models';
 
 @Injectable({
@@ -305,6 +306,19 @@ export class TaskService {
     return this.http.post(`${this.apiBaseUrl}/projects/${projectId}/pulls/${pullNumber}/merge`, {}, {
       headers: this.authHeaders()
     });
+  }
+
+  closePullRequest(projectId: string, pullNumber: number): Observable<unknown> {
+    return this.http.post(`${this.apiBaseUrl}/projects/${projectId}/pulls/${pullNumber}/close`, {}, {
+      headers: this.authHeaders()
+    });
+  }
+
+  getPullRequestFiles(projectId: string, pullNumber: number): Observable<PullRequestFilesResponse> {
+    return this.http.get<PullRequestFilesResponse>(
+      `${this.apiBaseUrl}/projects/${projectId}/pulls/${pullNumber}/files`,
+      { headers: this.authHeaders() }
+    );
   }
 
   // --- NL2FL / Translation ---

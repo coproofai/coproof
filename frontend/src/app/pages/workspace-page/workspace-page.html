@@ -172,11 +172,21 @@
                   <ng-container *ngIf="activeAction === 'solve'">
                     <p class="submenu-hint">Describe el enunciado en lenguaje natural. La IA lo traducirá a Lean 4, verificará la prueba y creará un PR con el .tex generado.</p>
 
-                    <label class="field-label">Enunciado en lenguaje natural <span class="field-required">*</span></label>
-                    <textarea class="submenu-input" rows="4"
+                    <div class="nl-input-header">
+                      <label class="field-label">Enunciado en lenguaje natural <span class="field-required">*</span></label>
+                      <div class="view-mode-btns">
+                        <button type="button" class="ghost" [class.mode-active]="!nlSolveShowPreview" (click)="nlSolveShowPreview = false">Fuente</button>
+                        <button type="button" class="ghost" [class.mode-active]="nlSolveShowPreview" (click)="toggleNlSolvePreview()">Renderizado</button>
+                      </div>
+                    </div>
+                    <textarea *ngIf="!nlSolveShowPreview" class="submenu-input" rows="4"
                       [(ngModel)]="nlSolveText" name="nlSolveText"
+                      (ngModelChange)="onNlSolveTextChange()"
                       [disabled]="isBlocked"
-                      placeholder="Ej: Para todo número natural n, la suma de los primeros n naturales es n*(n+1)/2…"></textarea>
+                      placeholder="Ej: Para todo número natural n, la suma de los primeros n naturales es $n(n+1)/2$…"></textarea>
+                    <div *ngIf="nlSolveShowPreview" class="tex-preview-wrap nl-preview-wrap">
+                      <div class="tex-preview-content" [innerHTML]="nlSolveRendered"></div>
+                    </div>
 
                     <div class="solve-model-row">
                       <div class="solve-model-field">
@@ -214,8 +224,64 @@
                     </button>
                   </ng-container>
 
+                  <!-- Dividir: NL → FL → splitNode pipeline -->
+                  <ng-container *ngIf="activeAction === 'split'">
+                    <p class="submenu-hint">Describe cómo quieres dividir el teorema. La IA generará las sub-metas en Lean 4, verificará la estructura y creará un PR con los .tex padre e hijos.</p>
+
+                    <div class="nl-input-header">
+                      <label class="field-label">Descripción de la división <span class="field-required">*</span></label>
+                      <div class="view-mode-btns">
+                        <button type="button" class="ghost" [class.mode-active]="!nlSplitShowPreview" (click)="nlSplitShowPreview = false">Fuente</button>
+                        <button type="button" class="ghost" [class.mode-active]="nlSplitShowPreview" (click)="toggleNlSplitPreview()">Renderizado</button>
+                      </div>
+                    </div>
+                    <textarea *ngIf="!nlSplitShowPreview" class="submenu-input" rows="4"
+                      [(ngModel)]="nlSplitText" name="nlSplitText"
+                      (ngModelChange)="onNlSplitTextChange()"
+                      [disabled]="isBlocked"
+                      placeholder="Ej: Divide usando un lema que acota el valor de n y otro que verifica todos los casos hasta ese límite…"></textarea>
+                    <div *ngIf="nlSplitShowPreview" class="tex-preview-wrap nl-preview-wrap">
+                      <div class="tex-preview-content" [innerHTML]="nlSplitRendered"></div>
+                    </div>
+
+                    <div class="solve-model-row">
+                      <div class="solve-model-field">
+                        <label class="field-label">Modelo <span class="field-required">*</span></label>
+                        <select [(ngModel)]="nlSplitModelId" name="nlSplitModelId"
+                          (ngModelChange)="onNlSplitModelChange()"
+                          class="solve-model-select" [disabled]="isBlocked">
+                          <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                          <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                        </select>
+                      </div>
+                      <div class="solve-model-field" *ngIf="nlSplitModelId">
+                        <label class="field-label">API Key</label>
+                        <div *ngIf="nlSplitMaskedKey" class="masked-key-sm">{{ nlSplitMaskedKey }} ✓</div>
+                        <div *ngIf="!nlSplitMaskedKey" class="api-key-row-sm">
+                          <input type="password" [(ngModel)]="nlSplitApiKeyInput" name="nlSplitApiKeyInput"
+                            placeholder="sk-…" autocomplete="off" [disabled]="isBlocked" />
+                          <button class="btn-save-sm"
+                            [disabled]="nlSplitApiKeySaving || !nlSplitApiKeyInput.trim() || isBlocked"
+                            (click)="saveNlSplitApiKey()">
+                            {{ nlSplitApiKeySaving ? '…' : 'Guardar' }}
+                          </button>
+                        </div>
+                        <p *ngIf="nlSplitApiKeyError" class="solve-key-error">{{ nlSplitApiKeyError }}</p>
+                      </div>
+                    </div>
+
+                    <p *ngIf="isActionRunning && nlSplitPhase" class="ai-auto-phase">⟳ {{ nlSplitPhase }}</p>
+
+                    <button class="submenu-confirm"
+                      [disabled]="isBlocked || !nlSplitModelId || !nlSplitText.trim()"
+                      (click)="submitNlSplit()">
+                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                      <span>{{ isActionRunning ? 'Ejecutando…' : 'Dividir desde NL' }}</span>
+                    </button>
+                  </ng-container>
+
                   <!-- All other actions: not yet implemented -->
-                  <ng-container *ngIf="activeAction !== 'solve'">
+                  <ng-container *ngIf="activeAction !== 'solve' && activeAction !== 'split'">
                     <p class="submenu-hint">
                       <ng-container *ngIf="activeAction === 'create-computation'">Describe en lenguaje natural la computación que quieres crear y la IA configurará el nodo.</ng-container>
                       <ng-container *ngIf="activeAction !== 'create-computation'">Describe en lenguaje natural lo que quieres lograr y la IA generará el código Lean.</ng-container>
@@ -493,13 +559,56 @@
       <div *ngIf="activeTab === 'prs'" class="tab-pane">
         <div class="pr-list" *ngIf="openPulls.length > 0; else emptyPrs">
           <div class="pr-item" *ngFor="let pr of openPulls">
-            <div class="pr-info">
-              <p class="pr-title">#{{ pr.number }} – {{ pr.title }}</p>
-              <p class="pr-meta">{{ pr.head }} → {{ pr.base }} · {{ pr.author }}</p>
+            <div class="pr-header">
+              <div class="pr-info">
+                <p class="pr-title">#{{ pr.number }} – {{ pr.title }}</p>
+                <p class="pr-meta">{{ pr.head }} → {{ pr.base }} · {{ pr.author }}</p>
+              </div>
+              <div class="pr-actions">
+                <button class="pr-expand-btn" (click)="togglePrExpand(pr)" [title]="prExpandedMap.get(pr.number) ? 'Ocultar archivos' : 'Ver archivos'">
+                  {{ prExpandedMap.get(pr.number) ? '▲' : '▼' }}
+                </button>
+                <a [href]="pr.url" target="_blank" rel="noopener">Abrir</a>
+                <button (click)="mergePullRequest(pr)">Merge</button>
+                <button class="pr-discard-btn" (click)="discardPullRequest(pr)">Descartar</button>
+              </div>
             </div>
-            <div class="pr-actions">
-              <a [href]="pr.url" target="_blank" rel="noopener">Abrir</a>
-              <button (click)="mergePullRequest(pr)">Merge</button>
+
+            <div class="pr-files-panel" *ngIf="prExpandedMap.get(pr.number)">
+              <p class="hint-msg" *ngIf="prFilesLoadingMap.get(pr.number)">Cargando archivos…</p>
+              <ng-container *ngIf="!prFilesLoadingMap.get(pr.number)">
+                <p class="hint-msg" *ngIf="(prFilesMap.get(pr.number) || []).length === 0">No se encontraron archivos.</p>
+                <div class="pr-file-entry" *ngFor="let file of (prFilesMap.get(pr.number) || [])">
+                  <div class="pr-file-header">
+                    <button class="pr-file-collapse-btn" (click)="togglePrFileCollapse(pr.number, file.filename)"
+                      [title]="isPrFileCollapsed(pr.number, file.filename) ? 'Expandir' : 'Colapsar'">
+                      {{ isPrFileCollapsed(pr.number, file.filename) ? '▶' : '▼' }}
+                    </button>
+                    <span class="pr-file-name">{{ file.filename }}</span>
+                    <span class="pr-file-badge" [ngClass]="'badge-' + file.status">{{ file.status }}</span>
+                    <span class="pr-file-diff">+{{ file.additions }} / -{{ file.deletions }}</span>
+                    <button
+                      *ngIf="file.filename.endsWith('.tex') && !isPrFileCollapsed(pr.number, file.filename)"
+                      class="pr-tex-toggle"
+                      (click)="togglePrFileTexView(pr.number, file.filename)">
+                      {{ getTexViewMode(pr.number, file.filename) === 'rendered' ? 'Fuente' : 'Renderizado' }}
+                    </button>
+                  </div>
+                  <div class="pr-file-content" *ngIf="!isPrFileCollapsed(pr.number, file.filename)">
+                    <ng-container *ngIf="file.content != null; else prFileNoContent">
+                      <ng-container *ngIf="file.filename.endsWith('.tex') && getTexViewMode(pr.number, file.filename) === 'rendered'; else prFileSource">
+                        <div class="tex-rendered-preview" [innerHTML]="renderPrFileContent(file.content!)"></div>
+                      </ng-container>
+                      <ng-template #prFileSource>
+                        <pre class="pr-file-source">{{ file.content }}</pre>
+                      </ng-template>
+                    </ng-container>
+                    <ng-template #prFileNoContent>
+                      <p class="pr-file-no-content">Contenido no disponible.</p>
+                    </ng-template>
+                  </div>
+                </div>
+              </ng-container>
             </div>
           </div>
         </div>

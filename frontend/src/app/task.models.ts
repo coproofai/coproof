@@ -148,6 +148,20 @@ export interface PullRequestItem {
   updated_at: string;
 }
 
+export interface PrFileEntry {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  content: string | null;
+}
+
+export interface PullRequestFilesResponse {
+  project_id: string;
+  pr_number: number;
+  files: PrFileEntry[];
+}
+
 export interface OpenPullsResponse {
   project_id: string;
   count: number;

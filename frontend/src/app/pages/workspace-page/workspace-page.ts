@@ -9,6 +9,7 @@ import { TaskService } from '../../task.service';
 import {
   AvailableModel,
   NewNodeDto,
+  PrFileEntry,
   PullRequestItem,
   SorryLocationItem,
   SuggestPayload,
@@ -88,6 +89,11 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   definitionsLoading = false;
   definitionsError = '';
   openPulls: PullRequestItem[] = [];
+  prExpandedMap: Map<number, boolean> = new Map();
+  prFilesMap: Map<number, PrFileEntry[]> = new Map();
+  prFilesLoadingMap: Map<number, boolean> = new Map();
+  prTexViewMap: Map<number, Map<string, 'source' | 'rendered'>> = new Map();
+  prFileCollapsedMap: Map<number, Set<string>> = new Map();
   computationCode = 'def run(input_data, target):\n    return {"evidence": {"input": input_data, "target": target}, "sufficient": True, "summary": "Demo computation succeeded"}\n';
   computationTargetJson = '{\n  "kind": "range_check",\n  "description": "f(x) in [0, 2] for x in [0,1]"\n}';
   computationInputJson = '{\n  "samples": 1000\n}';
@@ -133,6 +139,18 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   nlSolveApiKeyError = '';
   nlSolveText = '';
   nlSolvePhase = '';
+  nlSolveShowPreview = false;
+  nlSolveRendered: SafeHtml = '';
+  // Model selector (NL → FL → Split pipeline, "Dividir / Lenguaje Natural" tab)
+  nlSplitModelId = '';
+  nlSplitMaskedKey: string | null = null;
+  nlSplitApiKeyInput = '';
+  nlSplitApiKeySaving = false;
+  nlSplitApiKeyError = '';
+  nlSplitText = '';
+  nlSplitPhase = '';
+  nlSplitShowPreview = false;
+  nlSplitRendered: SafeHtml = '';
   // Model selector + prompt (used by IA Auto pipeline)
   aiAutoModelId = '';
   aiAutoMaskedKey: string | null = null;
@@ -716,6 +734,80 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     });
   }
 
+  discardPullRequest(pr: PullRequestItem) {
+    this.status = `Descartando PR #${pr.number}...`;
+    this.taskService.closePullRequest(this.projectId, pr.number).subscribe({
+      next: (response) => {
+        this.lastResponse = response;
+        this.status = `PR #${pr.number} descartado.`;
+        this.prExpandedMap.delete(pr.number);
+        this.prFilesMap.delete(pr.number);
+        this.prTexViewMap.delete(pr.number);
+        this.loadOpenPulls();
+      },
+      error: (error) => {
+        if (this.handleAuthError(error)) {
+          this.lastResponse = error?.error || error;
+          return;
+        }
+        this.lastResponse = error?.error || error;
+        this.status = `No se pudo descartar PR #${pr.number}.`;
+      }
+    });
+  }
+
+  togglePrExpand(pr: PullRequestItem) {
+    const expanded = !this.prExpandedMap.get(pr.number);
+    this.prExpandedMap.set(pr.number, expanded);
+    if (expanded && !this.prFilesMap.has(pr.number)) {
+      this.loadPrFiles(pr);
+    }
+  }
+
+  private loadPrFiles(pr: PullRequestItem) {
+    this.prFilesLoadingMap.set(pr.number, true);
+    this.taskService.getPullRequestFiles(this.projectId, pr.number).subscribe({
+      next: (res) => {
+        console.debug('[PR files] raw response:', JSON.stringify(res, null, 2));
+        this.prFilesMap.set(pr.number, res.files || []);
+        this.prFilesLoadingMap.set(pr.number, false);
+      },
+      error: (err) => {
+        console.error('[PR files] error:', err);
+        this.prFilesMap.set(pr.number, []);
+        this.prFilesLoadingMap.set(pr.number, false);
+      }
+    });
+  }
+
+  getTexViewMode(prNumber: number, filename: string): 'source' | 'rendered' {
+    return this.prTexViewMap.get(prNumber)?.get(filename) ?? 'source';
+  }
+
+  togglePrFileTexView(prNumber: number, filename: string) {
+    if (!this.prTexViewMap.has(prNumber)) {
+      this.prTexViewMap.set(prNumber, new Map());
+    }
+    const m = this.prTexViewMap.get(prNumber)!;
+    m.set(filename, m.get(filename) === 'rendered' ? 'source' : 'rendered');
+  }
+
+  renderPrFileContent(content: string): SafeHtml {
+    return this._renderTexHtml(content);
+  }
+
+  isPrFileCollapsed(prNumber: number, filename: string): boolean {
+    return this.prFileCollapsedMap.get(prNumber)?.has(filename) ?? false;
+  }
+
+  togglePrFileCollapse(prNumber: number, filename: string) {
+    if (!this.prFileCollapsedMap.has(prNumber)) {
+      this.prFileCollapsedMap.set(prNumber, new Set());
+    }
+    const s = this.prFileCollapsedMap.get(prNumber)!;
+    if (s.has(filename)) { s.delete(filename); } else { s.add(filename); }
+  }
+
   private buildLayout(nodes: NewNodeDto[]): ViewNode[] {
     if (nodes.length === 0) {
       return [];
@@ -936,6 +1028,44 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
       next: status => { this.nlSolveMaskedKey = status.masked_key; this.nlSolveApiKeyInput = ''; this.nlSolveApiKeySaving = false; },
       error: err => { this.nlSolveApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.nlSolveApiKeySaving = false; },
     });
+  }
+
+  onNlSolveTextChange(): void {
+    if (this.nlSolveShowPreview) this.nlSolveRendered = this._renderTexHtml(this.nlSolveText);
+  }
+
+  toggleNlSolvePreview(): void {
+    this.nlSolveShowPreview = !this.nlSolveShowPreview;
+    if (this.nlSolveShowPreview) this.nlSolveRendered = this._renderTexHtml(this.nlSolveText);
+  }
+
+  onNlSplitModelChange(): void {
+    this.nlSplitMaskedKey = null;
+    this.nlSplitApiKeyError = '';
+    if (!this.nlSplitModelId) return;
+    this.taskService.getApiKeyStatus(this.nlSplitModelId).subscribe({
+      next: s => { this.nlSplitMaskedKey = s.has_key ? s.masked_key : null; },
+      error: () => { this.nlSplitMaskedKey = null; },
+    });
+  }
+
+  saveNlSplitApiKey(): void {
+    if (!this.nlSplitApiKeyInput.trim() || !this.nlSplitModelId) return;
+    this.nlSplitApiKeySaving = true;
+    this.nlSplitApiKeyError = '';
+    this.taskService.saveApiKey(this.nlSplitModelId, this.nlSplitApiKeyInput).subscribe({
+      next: status => { this.nlSplitMaskedKey = status.masked_key; this.nlSplitApiKeyInput = ''; this.nlSplitApiKeySaving = false; },
+      error: err => { this.nlSplitApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.nlSplitApiKeySaving = false; },
+    });
+  }
+
+  onNlSplitTextChange(): void {
+    if (this.nlSplitShowPreview) this.nlSplitRendered = this._renderTexHtml(this.nlSplitText);
+  }
+
+  toggleNlSplitPreview(): void {
+    this.nlSplitShowPreview = !this.nlSplitShowPreview;
+    if (this.nlSplitShowPreview) this.nlSplitRendered = this._renderTexHtml(this.nlSplitText);
   }
 
   onAiAutoModelChange(): void {
@@ -1262,6 +1392,135 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.status = this.getBackendErrorMessage(error) || fallback;
   }
 
+  // ── NL Split pipeline (Dividir / Lenguaje Natural) ──────────────────────
+
+  submitNlSplit(): void {
+    if (!this.selectedNode || this.isComputationNode || this.isBlocked) return;
+    if (!this.nlSplitModelId) {
+      this.status = 'Debes seleccionar un modelo para la traducción NL→FL.';
+      return;
+    }
+    const text = this.nlSplitText.trim();
+    if (!text) {
+      this.status = 'Describe cómo quieres dividir el teorema en lenguaje natural.';
+      return;
+    }
+
+    const apiKey = !this.nlSplitMaskedKey ? (this.nlSplitApiKeyInput.trim() || undefined) : undefined;
+    this.isActionRunning = true;
+    this.lastResultSource = 'Dividir (NL)';
+    this.nlSplitPhase = 'Cargando contexto del nodo…';
+    this.status = 'Dividir NL: cargando contexto del nodo…';
+
+    const nodeId = this.selectedNode.id;
+    forkJoin({
+      tex: this.taskService.getNodeTexFile(this.projectId, nodeId).pipe(
+        catchError(() => of({ content: '', path: '' }))
+      ),
+      defs: this.taskService.getProjectDefinitions(this.projectId).pipe(
+        catchError(() => of({ content: '', path: '' }))
+      ),
+    }).subscribe(({ tex, defs }) => {
+      const texContent = tex.content?.trim() || '';
+      const leanContent = this.leanCode?.trim() || '';
+      const defsContent = defs.content?.trim() || '';
+
+      const contextParts: string[] = [];
+      if (texContent) contextParts.push(`=== Current .tex (LaTeX theorem statement) ===\n${texContent}`);
+      if (leanContent) contextParts.push(`=== Current .lean (root theorem skeleton — use the same theorem name and imports) ===\n${leanContent}`);
+      const context = contextParts.join('\n\n');
+
+      const nl2flSystemPrompt =
+        'You are an expert in Lean 4 formal mathematics. ' +
+        'Given a description of how to split a theorem into sub-goals, produce a single Lean 4 file that: ' +
+        '1. Keeps the root theorem with exactly the same name and statement as in the current .lean skeleton. ' +
+        '2. Introduces one or more helper lemmas (each proved by `sorry`). ' +
+        '3. CRITICAL: the root theorem proof body MUST call every defined lemma by name directly — ' +
+        'no intermediate helper chains (e.g. lemmaA calls lemmaB which root calls lemmaA is NOT allowed); ' +
+        'root must reference each lemma itself. Do NOT use `sorry` in the root proof body. ' +
+        'Always write `import Definitions` (never `import Mathlib` directly) when the skeleton uses it. ' +
+        'Use the exact same theorem name from the skeleton. ' +
+        'Make it fast and precise, you only have 3 minutes to answer. Reply ONLY with a single ' +
+        '```lean code block and nothing else.';
+
+      this.nlSplitPhase = 'Traduciendo plan a Lean (NL→FL)…';
+      this.status = 'Dividir NL: traduciendo plan a Lean…';
+
+      const fullPrompt = context ? `${text}\n\n${context}` : text;
+
+      const payload: TranslatePayload = {
+        natural_text: fullPrompt,
+        model_id: this.nlSplitModelId,
+        ...(apiKey ? { api_key: apiKey } : {}),
+        max_retries: 3,
+        system_prompt: nl2flSystemPrompt,
+        ...(defsContent ? { definitions_content: defsContent } : {}),
+      };
+      this.taskService.submitTranslation(payload).subscribe({
+        next: ({ task_id }) => this._pollNlSplitFl(task_id, apiKey),
+        error: err => this._nlSplitError(err, 'Error al enviar al traductor NL→FL.'),
+      });
+    });
+  }
+
+  private _pollNlSplitFl(taskId: string, apiKey: string | undefined): void {
+    this._pollResult<TranslationResult>(
+      taskId,
+      id => this.taskService.getTranslationResult(id),
+      result => {
+        if (!result.valid || !result.final_lean?.trim()) {
+          this._nlSplitError(null,
+            `NL→FL no pudo generar Lean válido tras ${result.attempts} intento(s).`);
+          return;
+        }
+        this.nlSplitPhase = 'Dividiendo y generando .tex…';
+        this.status = 'Dividir NL: dividiendo y generando .tex…';
+        this._nlRunSplit(result.final_lean.trim(), apiKey);
+      },
+      err => this._nlSplitError(err, 'Error en la traducción NL→FL.'),
+    );
+  }
+
+  private _nlRunSplit(leanCode: string, apiKey: string | undefined): void {
+    if (!this.selectedNode) { this._nlSplitError(null, 'Nodo no seleccionado.'); return; }
+
+    const texPhaseTimer = setTimeout(() => {
+      if (this.isActionRunning) {
+        this.nlSplitPhase = 'Compilación Lean correcta. Generando .tex para padre e hijos…';
+        this.status = 'Dividir NL: generando .tex…';
+      }
+    }, 20000);
+
+    this.taskService.splitNode(
+      this.projectId, this.selectedNode.id, leanCode, this.nlSplitModelId, apiKey
+    ).subscribe({
+      next: response => {
+        clearTimeout(texPhaseTimer);
+        this.isActionRunning = false;
+        this.nlSplitPhase = '';
+        this.lastResponse = response;
+        const created = (response as { created_lemmas?: string[] } | null)?.created_lemmas ?? [];
+        this.status = `Dividir NL completado. .tex generados (padre + ${created.length} hijo${created.length !== 1 ? 's' : ''}). Se creó un PR.`;
+        this.loadOpenPulls();
+      },
+      error: err => {
+        clearTimeout(texPhaseTimer);
+        this._nlSplitError(err, 'Error al dividir y crear PR.');
+      },
+    });
+  }
+
+  private _nlSplitError(error: any, fallback: string): void {
+    this.isActionRunning = false;
+    this.nlSplitPhase = '';
+    if (error && this.handleAuthError(error)) {
+      this.lastResponse = error?.error || error;
+      return;
+    }
+    if (error) this.lastResponse = error?.error || error;
+    this.status = this.getBackendErrorMessage(error) || fallback;
+  }
+
   // ── IA Auto (Dividir) pipeline ────────────────────────────────────────────
 
   submitAiSplit(): void {
@@ -1279,10 +1538,18 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.aiAutoPhase = 'Consultando IA…';
     this.status = 'IA Auto Dividir: consultando modelo…';
 
-    this.taskService.getNodeTexFile(this.projectId, nodeId).pipe(
-      catchError(() => of({ content: this.leanCode, path: '' }))
-    ).subscribe(texFile => {
-      const context = texFile.content?.trim() || this.leanCode;
+    forkJoin({
+      tex: this.taskService.getNodeTexFile(this.projectId, nodeId).pipe(
+        catchError(() => of({ content: '', path: '' }))
+      ),
+      defs: this.taskService.getProjectDefinitions(this.projectId).pipe(
+        catchError(() => of({ content: '', path: '' }))
+      ),
+    }).subscribe(({ tex, defs }) => {
+      const texContent = tex.content?.trim() || '';
+      const leanContent = this.leanCode?.trim() || '';
+      const defsContent = defs.content?.trim() || '';
+      const agentContext = texContent || leanContent;
 
       const systemPrompt =
         'You are a mathematical proof assistant. ' +
@@ -1290,49 +1557,71 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
         'simpler sub-goals or helper lemmas that together prove the theorem. ' +
         'Write only the mathematical argument — no Lean or Mathlib references, ' +
         'no alternative approaches, no historical background, no notation explanations. ' +
-        'State each sub-goal as a clear natural-language claim, then explain briefly how they combine.';
+        'State each sub-goal as a clear natural-language claim, then explain briefly how they combine. ' +
+        'Only state the claims of sub-goals, the only argument needed is the original goal one.';
 
       const suggestPayload: SuggestPayload = {
         prompt: this.aiAutoPrompt.trim() || 'Suggest how to split this theorem into simpler sub-goals or lemmas.',
         model_id: this.aiAutoModelId,
         ...(apiKey ? { api_key: apiKey } : {}),
         system_prompt: systemPrompt,
-        context,
+        context: agentContext,
       };
 
       this.taskService.submitSuggest(suggestPayload).subscribe({
-        next: ({ task_id }) => this._pollAiSplitSuggest(task_id, apiKey),
+        next: ({ task_id }) => this._pollAiSplitSuggest(task_id, apiKey, texContent, leanContent, defsContent),
         error: err => this._aiAutoError(err, 'Error al enviar solicitud a la IA.'),
       });
     });
   }
 
-  private _pollAiSplitSuggest(taskId: string, apiKey: string | undefined): void {
+  private _pollAiSplitSuggest(
+    taskId: string, apiKey: string | undefined,
+    texContent: string, leanContent: string, defsContent: string,
+  ): void {
     this._pollResult<SuggestResult>(
       taskId,
       id => this.taskService.getSuggestResult(id),
       result => {
         this.aiAutoPhase = 'Traduciendo plan a Lean (NL→FL)…';
         this.status = 'IA Auto Dividir: traduciendo plan a Lean…';
-        this._aiAutoSplitRunNl2fl(result.suggestion, apiKey);
+        this._aiAutoSplitRunNl2fl(result.suggestion, apiKey, texContent, leanContent, defsContent);
       },
       err => this._aiAutoError(err, 'Error en la consulta a la IA.'),
     );
   }
 
-  private _aiAutoSplitRunNl2fl(naturalText: string, apiKey: string | undefined): void {
+  private _aiAutoSplitRunNl2fl(
+    naturalText: string, apiKey: string | undefined,
+    texContent: string, leanContent: string, defsContent: string,
+  ): void {
+    const contextParts: string[] = [];
+    if (texContent) contextParts.push(`=== Current .tex (LaTeX theorem statement) ===\n${texContent}`);
+    if (leanContent) contextParts.push(`=== Current .lean (root theorem skeleton — use the same theorem name and imports) ===\n${leanContent}`);
+    const context = contextParts.join('\n\n');
+
     const nl2flSystemPrompt =
-      'You are an expert in Lean 4 formal mathematics. Transcribe the following natural language mathematical statement into a Lean 4 statement. ' +
-      'Break the input into goal and steps, make their equivalentes in Lean 4 and integrate them in the output. ' +
-      'Make it fast and precise, you only have 3 minutes to answer. Reply ONLY with a single' +
+      'You are an expert in Lean 4 formal mathematics. ' +
+      'Given a description of how to split a theorem into sub-goals, produce a single Lean 4 file that: ' +
+      '1. Keeps the root theorem with exactly the same name and statement as in the current .lean skeleton. ' +
+      '2. Introduces one or more helper lemmas (each proved by `sorry`). ' +
+      '3. CRITICAL: the root theorem proof body MUST call every defined lemma by name directly — ' +
+      'no intermediate helper chains (e.g. lemmaA calls lemmaB which root calls lemmaA is NOT allowed); ' +
+      'root must reference each lemma itself. Do NOT use `sorry` in the root proof body. ' +
+      'Always write `import Definitions` (never `import Mathlib` directly) when the skeleton uses it. ' +
+      'Use the exact same theorem name from the skeleton. ' +
+      'Make it fast and precise, you only have 3 minutes to answer. Reply ONLY with a single ' +
       '```lean code block and nothing else.';
 
+    const fullPrompt = context ? `${naturalText}\n\n${context}` : naturalText;
+
     const payload: TranslatePayload = {
-      natural_text: naturalText,
+      natural_text: fullPrompt,
       model_id: this.aiAutoModelId,
       ...(apiKey ? { api_key: apiKey } : {}),
       max_retries: 3,
       system_prompt: nl2flSystemPrompt,
+      ...(defsContent ? { definitions_content: defsContent } : {}),
     };
     this.taskService.submitTranslation(payload).subscribe({
       next: ({ task_id }) => this._pollAiSplitNl2fl(task_id, apiKey),

@@ -211,6 +211,47 @@ def merge_pull_request(project_id, pr_number):
     }), 200
 
 
+@projects_bp.route('/<uuid:project_id>/pulls/<int:pr_number>/close', methods=['POST'])
+@jwt_required()
+def close_pull_request(project_id, pr_number):
+    """Close (discard) a pull request and delete its head branch."""
+    user_id = get_jwt_identity()
+    user = User.query.get_or_404(user_id)
+    project = Project.query.get_or_404(project_id)
+
+    github_token = AuthService.refresh_github_token_if_needed(user)
+    if not github_token:
+        raise CoProofError("You must link your GitHub account.", code=400)
+
+    result = GitHubService.close_pull_request(project.remote_repo_url, github_token, pr_number)
+    return jsonify({
+        "status": "closed",
+        "project_id": str(project.id),
+        "pr_number": pr_number,
+        **result,
+    }), 200
+
+
+@projects_bp.route('/<uuid:project_id>/pulls/<int:pr_number>/files', methods=['GET'])
+@jwt_required()
+def get_pull_request_files(project_id, pr_number):
+    """Return the list of changed files in a PR with their raw contents."""
+    user_id = get_jwt_identity()
+    user = User.query.get_or_404(user_id)
+    project = Project.query.get_or_404(project_id)
+
+    github_token = AuthService.refresh_github_token_if_needed(user)
+    if not github_token:
+        raise CoProofError("You must link your GitHub account.", code=400)
+
+    files = GitHubService.get_pull_request_files(project.remote_repo_url, github_token, pr_number)
+    return jsonify({
+        "project_id": str(project.id),
+        "pr_number": pr_number,
+        "files": files,
+    }), 200
+
+
 def _apply_post_merge_db_updates(project, metadata):
     """Apply node state updates in DB after a merged solve/split PR."""
     action = metadata.get("action")
