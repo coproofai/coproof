@@ -13,6 +13,7 @@ class User(db.Model):
     is_verified = db.Column(db.Boolean, default=False, nullable=False)
     
     github_id = db.Column(db.Text, unique=True, nullable=True)
+    github_login = db.Column(db.Text, nullable=True)
     github_access_token = db.Column(db.Text, nullable=True) # Consider encrypting this in prod
     github_refresh_token = db.Column(db.Text, nullable=True)
     token_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)

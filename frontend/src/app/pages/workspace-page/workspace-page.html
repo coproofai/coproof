@@ -1,3 +1,4 @@
+<div class="wp-shell">
 <header class="top-header">
   <div>
     <h1>{{ projectName || 'Workspace' }}</h1>
@@ -7,9 +8,6 @@
     <button (click)="reloadAll()">Recargar</button>
   </div>
 </header>
-
-
-<p *ngIf="status" class="status-bar">{{ status }}</p>
 
 <div *ngIf="graphCollapsed && sidebarCollapsed" class="both-hidden-bar">
   <button class="ghost" (click)="graphCollapsed = false">▶ Mostrar Grafo</button>
@@ -72,7 +70,14 @@
   </section>
 
   <!-- ── SIDEBAR ── -->
-  <aside class="workspace-sidebar" *ngIf="!sidebarCollapsed">
+  <div class="resize-divider"
+    *ngIf="!graphCollapsed && !sidebarCollapsed"
+    [class.resizing]="isResizing"
+    (mousedown)="startResize($event)"
+    title="Arrastrar para redimensionar">
+  </div>
+
+  <aside class="workspace-sidebar" *ngIf="!sidebarCollapsed" [style.width.px]="sidebarWidth">
     <nav class="tab-nav">
       <button class="tab-btn graph-restore-btn" *ngIf="graphCollapsed"
         (click)="graphCollapsed = false" title="Mostrar grafo">▶ Grafo</button>
@@ -101,28 +106,6 @@
             <span class="meta-val small-mono">{{ nodePath || '…' }}</span>
           </div>
 
-          <div class="section-divider" *ngIf="!isComputationNode">
-            <button class="btn-secondary btn-sm" (click)="createComputationChildNode()">+ Nodo Computación</button>
-          </div>
-
-          <!-- Editor section -->
-          <div class="collapsible-section">
-            <button class="section-toggle" (click)="sectionEditor = !sectionEditor">
-              <span>Editor .lean</span>
-              <span class="toggle-arrow">{{ sectionEditor ? '▲' : '▼' }}</span>
-            </button>
-            <div *ngIf="sectionEditor">
-              <p *ngIf="isNodeFileLoading" class="hint-msg">Cargando archivo .lean…</p>
-              <textarea
-                *ngIf="!isNodeFileLoading"
-                [(ngModel)]="leanCode"
-                name="leanCode"
-                rows="12"
-                placeholder="Contenido .lean del nodo seleccionado"
-              ></textarea>
-            </div>
-          </div>
-
           <!-- Actions section -->
           <div class="collapsible-section">
             <button class="section-toggle" (click)="sectionActions = !sectionActions">
@@ -130,13 +113,327 @@
               <span class="toggle-arrow">{{ sectionActions ? '▲' : '▼' }}</span>
             </button>
             <div *ngIf="sectionActions">
-              <div class="actions" *ngIf="!isComputationNode">
-                <button (click)="verifySelectedNode()">Verify</button>
-                <button (click)="submitSolve()">Solve</button>
-                <button (click)="submitSplit()">Split</button>
+              <!-- ── Proof-node actions ── -->
+              <div class="actions-grid" *ngIf="!isComputationNode">
+                <!-- Row 1 -->
+                <button class="action-btn" [disabled]="isBlocked"
+                  (click)="verifySelectedNode(); activeAction = null">
+                  <span *ngIf="!isVerifying" class="action-icon">✓</span>
+                  <span *ngIf="isVerifying" class="action-spinner"></span>
+                  <span>{{ isVerifying ? 'Verificando…' : 'Verificar' }}</span>
+                </button>
+                <button class="action-btn" [class.action-active]="activeAction === 'solve'"
+                  [disabled]="isBlocked" (click)="setActiveAction('solve')">
+                  <span class="action-icon">→</span>
+                  <span>Resolver</span>
+                </button>
+                <!-- Row 2 -->
+                <button class="action-btn" [class.action-active]="activeAction === 'split'"
+                  [disabled]="isBlocked" (click)="setActiveAction('split')">
+                  <span class="action-icon">⑂</span>
+                  <span>Dividir</span>
+                </button>
+                <button class="action-btn" [class.action-active]="activeAction === 'create-computation'"
+                  [disabled]="isBlocked" (click)="setActiveAction('create-computation')">
+                  <span class="action-icon">+</span>
+                  <span>Nodo Computación</span>
+                </button>
+                <!-- Row 3: full-width -->
+                <button class="action-btn actions-full" [class.action-active]="activeAction === 'ai-auto'"
+                  [disabled]="isBlocked" (click)="setActiveAction('ai-auto')">
+                  <span class="action-icon">✦</span>
+                  <span>IA Auto</span>
+                </button>
               </div>
 
-              <div class="computation-box" *ngIf="isComputationNode">
+              <!-- ── Computation-node action ── -->
+              <div class="actions-grid" *ngIf="isComputationNode">
+                <button class="action-btn actions-full" [class.action-active]="activeAction === 'compute'"
+                  [disabled]="isBlocked" (click)="setActiveAction('compute')">
+                  <span class="action-icon">▶</span>
+                  <span>Ejecutar Computación</span>
+                </button>
+              </div>
+
+              <!-- ── Action submenu ── -->
+              <div class="action-submenu" *ngIf="activeAction">
+
+                <!-- Submenu tabs -->
+                <div class="submenu-tabs">
+                  <button class="submenu-tab" [class.submenu-tab-active]="actionMode === 'nl'" (click)="actionMode = 'nl'">Lenguaje Natural</button>
+                  <button class="submenu-tab" [class.submenu-tab-active]="actionMode === 'fl'" (click)="actionMode = 'fl'">Lenguaje Formal</button>
+                  <button class="submenu-tab" [class.submenu-tab-active]="actionMode === 'ai'" (click)="actionMode = 'ai'">IA Automático</button>
+                </div>
+
+                <!-- NL tab -->
+                <div *ngIf="actionMode === 'nl'" class="submenu-body">
+
+                  <!-- Resolver: NL → FL → solveNode pipeline -->
+                  <ng-container *ngIf="activeAction === 'solve'">
+                    <p class="submenu-hint">Describe el enunciado en lenguaje natural. La IA lo traducirá a Lean 4, verificará la prueba y creará un PR con el .tex generado.</p>
+
+                    <div class="nl-input-header">
+                      <label class="field-label">Enunciado en lenguaje natural <span class="field-required">*</span></label>
+                      <div class="view-mode-btns">
+                        <button type="button" class="ghost" [class.mode-active]="!nlSolveShowPreview" (click)="nlSolveShowPreview = false">Fuente</button>
+                        <button type="button" class="ghost" [class.mode-active]="nlSolveShowPreview" (click)="toggleNlSolvePreview()">Renderizado</button>
+                      </div>
+                    </div>
+                    <textarea *ngIf="!nlSolveShowPreview" class="submenu-input" rows="4"
+                      [(ngModel)]="nlSolveText" name="nlSolveText"
+                      (ngModelChange)="onNlSolveTextChange()"
+                      [disabled]="isBlocked"
+                      placeholder="Ej: Para todo número natural n, la suma de los primeros n naturales es $n(n+1)/2$…"></textarea>
+                    <div *ngIf="nlSolveShowPreview" class="tex-preview-wrap nl-preview-wrap">
+                      <div class="tex-preview-content" [innerHTML]="nlSolveRendered"></div>
+                    </div>
+
+                    <div class="solve-model-row">
+                      <div class="solve-model-field">
+                        <label class="field-label">Modelo <span class="field-required">*</span></label>
+                        <select [(ngModel)]="nlSolveModelId" name="nlSolveModelId"
+                          (ngModelChange)="onNlSolveModelChange()"
+                          class="solve-model-select" [disabled]="isBlocked">
+                          <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                          <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                        </select>
+                      </div>
+                      <div class="solve-model-field" *ngIf="nlSolveModelId">
+                        <label class="field-label">API Key</label>
+                        <div *ngIf="nlSolveMaskedKey" class="masked-key-sm">{{ nlSolveMaskedKey }} ✓</div>
+                        <div *ngIf="!nlSolveMaskedKey" class="api-key-row-sm">
+                          <input type="password" [(ngModel)]="nlSolveApiKeyInput" name="nlSolveApiKeyInput"
+                            placeholder="sk-…" autocomplete="off" [disabled]="isBlocked" />
+                          <button class="btn-save-sm"
+                            [disabled]="nlSolveApiKeySaving || !nlSolveApiKeyInput.trim() || isBlocked"
+                            (click)="saveNlSolveApiKey()">
+                            {{ nlSolveApiKeySaving ? '…' : 'Guardar' }}
+                          </button>
+                        </div>
+                        <p *ngIf="nlSolveApiKeyError" class="solve-key-error">{{ nlSolveApiKeyError }}</p>
+                      </div>
+                    </div>
+
+                    <p *ngIf="isActionRunning && nlSolvePhase" class="ai-auto-phase">⟳ {{ nlSolvePhase }}</p>
+
+                    <button class="submenu-confirm"
+                      [disabled]="isBlocked || !nlSolveModelId || !nlSolveText.trim()"
+                      (click)="submitNlSolve()">
+                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                      <span>{{ isActionRunning ? 'Ejecutando…' : 'Resolver desde NL' }}</span>
+                    </button>
+                  </ng-container>
+
+                  <!-- Dividir: NL → FL → splitNode pipeline -->
+                  <ng-container *ngIf="activeAction === 'split'">
+                    <p class="submenu-hint">Describe cómo quieres dividir el teorema. La IA generará las sub-metas en Lean 4, verificará la estructura y creará un PR con los .tex padre e hijos.</p>
+
+                    <div class="nl-input-header">
+                      <label class="field-label">Descripción de la división <span class="field-required">*</span></label>
+                      <div class="view-mode-btns">
+                        <button type="button" class="ghost" [class.mode-active]="!nlSplitShowPreview" (click)="nlSplitShowPreview = false">Fuente</button>
+                        <button type="button" class="ghost" [class.mode-active]="nlSplitShowPreview" (click)="toggleNlSplitPreview()">Renderizado</button>
+                      </div>
+                    </div>
+                    <textarea *ngIf="!nlSplitShowPreview" class="submenu-input" rows="4"
+                      [(ngModel)]="nlSplitText" name="nlSplitText"
+                      (ngModelChange)="onNlSplitTextChange()"
+                      [disabled]="isBlocked"
+                      placeholder="Ej: Divide usando un lema que acota el valor de n y otro que verifica todos los casos hasta ese límite…"></textarea>
+                    <div *ngIf="nlSplitShowPreview" class="tex-preview-wrap nl-preview-wrap">
+                      <div class="tex-preview-content" [innerHTML]="nlSplitRendered"></div>
+                    </div>
+
+                    <div class="solve-model-row">
+                      <div class="solve-model-field">
+                        <label class="field-label">Modelo <span class="field-required">*</span></label>
+                        <select [(ngModel)]="nlSplitModelId" name="nlSplitModelId"
+                          (ngModelChange)="onNlSplitModelChange()"
+                          class="solve-model-select" [disabled]="isBlocked">
+                          <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                          <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                        </select>
+                      </div>
+                      <div class="solve-model-field" *ngIf="nlSplitModelId">
+                        <label class="field-label">API Key</label>
+                        <div *ngIf="nlSplitMaskedKey" class="masked-key-sm">{{ nlSplitMaskedKey }} ✓</div>
+                        <div *ngIf="!nlSplitMaskedKey" class="api-key-row-sm">
+                          <input type="password" [(ngModel)]="nlSplitApiKeyInput" name="nlSplitApiKeyInput"
+                            placeholder="sk-…" autocomplete="off" [disabled]="isBlocked" />
+                          <button class="btn-save-sm"
+                            [disabled]="nlSplitApiKeySaving || !nlSplitApiKeyInput.trim() || isBlocked"
+                            (click)="saveNlSplitApiKey()">
+                            {{ nlSplitApiKeySaving ? '…' : 'Guardar' }}
+                          </button>
+                        </div>
+                        <p *ngIf="nlSplitApiKeyError" class="solve-key-error">{{ nlSplitApiKeyError }}</p>
+                      </div>
+                    </div>
+
+                    <p *ngIf="isActionRunning && nlSplitPhase" class="ai-auto-phase">⟳ {{ nlSplitPhase }}</p>
+
+                    <button class="submenu-confirm"
+                      [disabled]="isBlocked || !nlSplitModelId || !nlSplitText.trim()"
+                      (click)="submitNlSplit()">
+                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                      <span>{{ isActionRunning ? 'Ejecutando…' : 'Dividir desde NL' }}</span>
+                    </button>
+                  </ng-container>
+
+                  <!-- All other actions: not yet implemented -->
+                  <ng-container *ngIf="activeAction !== 'solve' && activeAction !== 'split'">
+                    <p class="submenu-hint">
+                      <ng-container *ngIf="activeAction === 'create-computation'">Describe en lenguaje natural la computación que quieres crear y la IA configurará el nodo.</ng-container>
+                      <ng-container *ngIf="activeAction !== 'create-computation'">Describe en lenguaje natural lo que quieres lograr y la IA generará el código Lean.</ng-container>
+                    </p>
+                    <textarea class="submenu-input" rows="3" placeholder="Ej: Verificar que el rango de valores es válido…" disabled></textarea>
+                    <button class="submenu-confirm" disabled>Próximamente</button>
+                  </ng-container>
+
+                </div>
+
+                <!-- FL tab -->
+                <div *ngIf="actionMode === 'fl'" class="submenu-body">
+                  <ng-container *ngIf="activeAction === 'create-computation'">
+                    <p class="submenu-hint">Confirma para crear el nodo de computación hijo. Podrás configurar el código una vez creado.</p>
+                    <button class="submenu-confirm"
+                      [disabled]="isBlocked"
+                      (click)="createComputationChildNode(); activeAction = null">
+                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                      <span>{{ isActionRunning ? 'Creando…' : 'Crear Nodo' }}</span>
+                    </button>
+                  </ng-container>
+                  <ng-container *ngIf="activeAction !== 'create-computation'">
+                    <p class="submenu-hint">Edita el código Lean y confirma para enviar la acción.</p>
+                    <textarea class="submenu-input" rows="8" [(ngModel)]="actionLeanCode" name="actionLeanCode" placeholder="theorem …"></textarea>
+
+                    <!-- Model selector — required for Resolver (solve) FL→NL tex generation -->
+                    <ng-container *ngIf="activeAction === 'solve'">
+                      <div class="solve-model-row">
+                        <div class="solve-model-field">
+                          <label class="field-label">Modelo para generar .tex <span class="field-required">*</span></label>
+                          <select [(ngModel)]="solveModelId" name="solveModelId" (ngModelChange)="onSolveModelChange()"
+                            class="solve-model-select">
+                            <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                            <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                          </select>
+                        </div>
+                        <div class="solve-model-field" *ngIf="solveModelId">
+                          <label class="field-label">API Key</label>
+                          <div *ngIf="solveMaskedKey" class="masked-key-sm">{{ solveMaskedKey }} ✓</div>
+                          <div *ngIf="!solveMaskedKey" class="api-key-row-sm">
+                            <input type="password" [(ngModel)]="solveApiKeyInput" name="solveApiKeyInput"
+                              placeholder="sk-…" autocomplete="off" />
+                            <button class="btn-save-sm" [disabled]="solveApiKeySaving || !solveApiKeyInput.trim()"
+                              (click)="saveSolveApiKey()">
+                              {{ solveApiKeySaving ? '…' : 'Guardar' }}
+                            </button>
+                          </div>
+                          <p *ngIf="solveApiKeyError" class="solve-key-error">{{ solveApiKeyError }}</p>
+                        </div>
+                      </div>
+                    </ng-container>
+
+                    <!-- Model selector — required for Dividir (split) FL→NL tex generation -->
+                    <ng-container *ngIf="activeAction === 'split'">
+                      <div class="solve-model-row">
+                        <div class="solve-model-field">
+                          <label class="field-label">Modelo para generar .tex <span class="field-required">*</span></label>
+                          <select [(ngModel)]="splitModelId" name="splitModelId" (ngModelChange)="onSplitModelChange()"
+                            class="solve-model-select">
+                            <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                            <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                          </select>
+                        </div>
+                        <div class="solve-model-field" *ngIf="splitModelId">
+                          <label class="field-label">API Key</label>
+                          <div *ngIf="splitMaskedKey" class="masked-key-sm">{{ splitMaskedKey }} ✓</div>
+                          <div *ngIf="!splitMaskedKey" class="api-key-row-sm">
+                            <input type="password" [(ngModel)]="splitApiKeyInput" name="splitApiKeyInput"
+                              placeholder="sk-…" autocomplete="off" />
+                            <button class="btn-save-sm" [disabled]="splitApiKeySaving || !splitApiKeyInput.trim()"
+                              (click)="saveSplitApiKey()">
+                              {{ splitApiKeySaving ? '…' : 'Guardar' }}
+                            </button>
+                          </div>
+                          <p *ngIf="splitApiKeyError" class="solve-key-error">{{ splitApiKeyError }}</p>
+                        </div>
+                      </div>
+                    </ng-container>
+
+                    <button class="submenu-confirm"
+                      [disabled]="isBlocked || !actionLeanCode.trim() || (activeAction === 'solve' && !solveModelId) || (activeAction === 'split' && !splitModelId)"
+                      (click)="activeAction === 'solve' ? submitSolve(actionLeanCode) : activeAction === 'split' ? submitSplit(actionLeanCode) : activeAction === 'compute' ? submitCompute() : null">
+                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                      <span>{{ isActionRunning ? 'Procesando…' : 'Confirmar' }}</span>
+                    </button>
+                  </ng-container>
+                </div>
+
+                <!-- AI tab -->
+                <div *ngIf="actionMode === 'ai'" class="submenu-body">
+
+                  <!-- Resolver + IA Automático: full pipeline -->
+                  <ng-container *ngIf="activeAction === 'solve' || activeAction === 'split'">
+                    <p class="submenu-hint">
+                      <ng-container *ngIf="activeAction === 'solve'">La IA consultará el .tex del nodo, generará una estrategia de prueba en lenguaje natural, la traducirá a Lean 4 y creará un PR automáticamente.</ng-container>
+                      <ng-container *ngIf="activeAction === 'split'">La IA propondrá cómo dividir el teorema en sub-metas, traducirá el plan a Lean 4 y generará los .tex del nodo padre e hijos en un PR.</ng-container>
+                    </p>
+
+                    <label class="field-label">Sugerencia inicial (opcional)</label>
+                    <textarea class="submenu-input" rows="2"
+                      [(ngModel)]="aiAutoPrompt" name="aiAutoPrompt"
+                      [disabled]="isBlocked"
+                      [placeholder]="activeAction === 'split' ? 'Ej: Divide usando un lema auxiliar sobre primos…' : 'Ej: Usa inducción sobre n, o aplica el lema de distribución…'"></textarea>
+
+                    <div class="solve-model-row">
+                      <div class="solve-model-field">
+                        <label class="field-label">Modelo <span class="field-required">*</span></label>
+                        <select [(ngModel)]="aiAutoModelId" name="aiAutoModelId"
+                          (ngModelChange)="onAiAutoModelChange()"
+                          class="solve-model-select" [disabled]="isBlocked">
+                          <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                          <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                        </select>
+                      </div>
+                      <div class="solve-model-field" *ngIf="aiAutoModelId">
+                        <label class="field-label">API Key</label>
+                        <div *ngIf="aiAutoMaskedKey" class="masked-key-sm">{{ aiAutoMaskedKey }} ✓</div>
+                        <div *ngIf="!aiAutoMaskedKey" class="api-key-row-sm">
+                          <input type="password" [(ngModel)]="aiAutoApiKeyInput" name="aiAutoApiKeyInput"
+                            placeholder="sk-…" autocomplete="off" [disabled]="isBlocked" />
+                          <button class="btn-save-sm"
+                            [disabled]="aiAutoApiKeySaving || !aiAutoApiKeyInput.trim() || isBlocked"
+                            (click)="saveAiAutoApiKey()">
+                            {{ aiAutoApiKeySaving ? '…' : 'Guardar' }}
+                          </button>
+                        </div>
+                        <p *ngIf="aiAutoApiKeyError" class="solve-key-error">{{ aiAutoApiKeyError }}</p>
+                      </div>
+                    </div>
+
+                    <p *ngIf="isActionRunning && aiAutoPhase" class="ai-auto-phase">⟳ {{ aiAutoPhase }}</p>
+
+                    <button class="submenu-confirm"
+                      [disabled]="isBlocked || !aiAutoModelId"
+                      (click)="activeAction === 'solve' ? submitAiAuto() : submitAiSplit()">
+                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                      <span>{{ isActionRunning ? 'Ejecutando…' : 'Ejecutar IA Auto' }}</span>
+                    </button>
+                  </ng-container>
+
+                  <!-- Other actions: not yet implemented -->
+                  <ng-container *ngIf="activeAction !== 'solve' && activeAction !== 'split'">
+                    <p class="submenu-hint">La IA analizará el nodo y aplicará la acción de forma automática sin intervención manual.</p>
+                    <button class="submenu-confirm" disabled>Próximamente</button>
+                  </ng-container>
+
+                </div>
+
+              </div><!-- /action-submenu -->
+
+              <!-- Computation form (shown only when compute + FL) -->
+              <div class="computation-box" *ngIf="isComputationNode && activeAction === 'compute' && actionMode === 'fl'">
             <p class="section-label">Payload Computation</p>
             <label class="field-label">Entrypoint</label>
             <input [(ngModel)]="computationEntrypoint" name="computationEntrypoint" type="text" placeholder="run" />
@@ -160,7 +457,9 @@
           <!-- Results section -->
           <div class="collapsible-section" *ngIf="verificationSummary || verificationErrors.length > 0 || sorryLocations.length > 0 || lastResponse">
             <button class="section-toggle" (click)="sectionResults = !sectionResults">
-              <span>Resultados</span>
+              <span>Resultados
+                <span *ngIf="lastResultSource" class="result-source-badge">{{ lastResultSource }}</span>
+              </span>
               <span class="toggle-arrow">{{ sectionResults ? '▲' : '▼' }}</span>
             </button>
             <div *ngIf="sectionResults">
@@ -186,27 +485,21 @@
             </div>
           </div><!-- /collapsible-section results -->
 
-          <!-- Preview section -->
+          <!-- Archivo .lean (read-only) -->
           <div class="collapsible-section" *ngIf="!isNodeFileLoading && leanCode">
             <button class="section-toggle" (click)="sectionPreview = !sectionPreview">
-              <span>Preview Lean</span>
+              <span>Archivo .lean <span class="preview-line-count">({{ leanCodeLineCount }} líneas)</span></span>
               <span class="toggle-arrow">{{ sectionPreview ? '▲' : '▼' }}</span>
             </button>
             <div *ngIf="sectionPreview">
-              <div class="preview-card">
-                <div class="preview-head">
-                  <strong>Preview Lean</strong>
-                  <span>{{ leanCodeLineCount }} líneas</span>
-                </div>
-                <div class="code-preview">
-                  <div class="code-line" *ngFor="let line of leanCodeLines; let i = index">
-                    <span class="line-no">{{ i + 1 }}</span>
-                    <span class="line-code" [innerHTML]="formatLeanLine(line)"></span>
-                  </div>
+              <div class="code-preview">
+                <div class="code-line" *ngFor="let line of leanCodeLines; let i = index">
+                  <span class="line-no">{{ i + 1 }}</span>
+                  <span class="line-code" [innerHTML]="formatLeanLine(line)"></span>
                 </div>
               </div>
             </div>
-          </div><!-- /collapsible-section preview -->
+          </div><!-- /collapsible-section archivo lean -->
 
         </ng-container>
         <ng-template #selectNodeHint>
@@ -220,41 +513,102 @@
           <span class="section-label">Visor TeX / LaTeX</span>
           <div class="view-mode-btns">
             <button class="ghost" [class.mode-active]="texViewMode === 'source'"  (click)="texViewMode = 'source'">Fuente</button>
-            <button class="ghost" [class.mode-active]="texViewMode === 'preview'" (click)="switchToTexPreview()">Renderizado</button>
+            <button class="ghost" [class.mode-active]="texViewMode === 'preview'" (click)="texViewMode = 'preview'">Renderizado</button>
           </div>
         </div>
 
-        <p *ngIf="texPath" class="meta small-mono">{{ texPath }}</p>
-        <p *ngIf="texLoading" class="hint-msg">Cargando archivo .tex…</p>
-        <p *ngIf="texError" class="error-msg">{{ texError }}</p>
-        <p *ngIf="!selectedNode && !texLoading" class="hint-msg">Selecciona un nodo para cargar su archivo .tex.</p>
-        <p *ngIf="selectedNode && !texLoading && !texSource && !texError" class="hint-msg">Sin archivo .tex para este nodo.</p>
+        <ng-container *ngIf="texVm$ | async as texVm">
 
-        <textarea
-          *ngIf="texViewMode === 'source' && !texLoading"
-          [(ngModel)]="texSource"
-          name="texSource"
-          rows="22"
-          class="tex-source"
-          placeholder="% .tex del nodo se cargará aquí automáticamente"
-        ></textarea>
+          <p *ngIf="texVm.path" class="meta small-mono">{{ texVm.path }}</p>
 
-        <div *ngIf="texViewMode === 'preview' && !texLoading" class="tex-preview-wrap">
-          <div class="tex-preview-content" [innerHTML]="texRenderedHtml"></div>
-        </div>
+          <!-- loading -->
+          <div *ngIf="texVm.state === 'loading'" class="tex-loading-row">
+            <div class="tex-spinner"></div>
+            <span class="hint-msg">Cargando archivo .tex…</span>
+          </div>
+
+          <!-- error -->
+          <p *ngIf="texVm.state === 'error'" class="error-msg">{{ texVm.error }}</p>
+
+          <!-- idle: no node selected -->
+          <p *ngIf="texVm.state === 'idle'" class="hint-msg">Selecciona un nodo para cargar su archivo .tex.</p>
+
+          <!-- ready but empty -->
+          <p *ngIf="texVm.state === 'ready' && !texVm.source" class="hint-msg">Sin archivo .tex para este nodo.</p>
+
+          <!-- source view -->
+          <textarea
+            *ngIf="texVm.state === 'ready' && texVm.source && texViewMode === 'source'"
+            [value]="texVm.source"
+            name="texSource"
+            rows="22"
+            class="tex-source"
+            readonly
+            placeholder="% .tex del nodo se cargará aquí automáticamente"
+          ></textarea>
+
+          <!-- preview view -->
+          <div *ngIf="texVm.state === 'ready' && texVm.source && texViewMode === 'preview'" class="tex-preview-wrap">
+            <div class="tex-preview-content" [innerHTML]="texVm.renderedHtml"></div>
+          </div>
+
+        </ng-container>
       </div>
 
       <!-- ── PRs TAB ── -->
       <div *ngIf="activeTab === 'prs'" class="tab-pane">
         <div class="pr-list" *ngIf="openPulls.length > 0; else emptyPrs">
           <div class="pr-item" *ngFor="let pr of openPulls">
-            <div class="pr-info">
-              <p class="pr-title">#{{ pr.number }} – {{ pr.title }}</p>
-              <p class="pr-meta">{{ pr.head }} → {{ pr.base }} · {{ pr.author }}</p>
+            <div class="pr-header">
+              <div class="pr-info">
+                <p class="pr-title">#{{ pr.number }} – {{ pr.title }}</p>
+                <p class="pr-meta">{{ pr.head }} → {{ pr.base }} · {{ pr.author }}</p>
+              </div>
+              <div class="pr-actions">
+                <button class="pr-expand-btn" (click)="togglePrExpand(pr)" [title]="prExpandedMap.get(pr.number) ? 'Ocultar archivos' : 'Ver archivos'">
+                  {{ prExpandedMap.get(pr.number) ? '▲' : '▼' }}
+                </button>
+                <a [href]="pr.url" target="_blank" rel="noopener">Abrir</a>
+                <button *ngIf="isProjectOwner" (click)="mergePullRequest(pr)">Merge</button>
+                <button *ngIf="isProjectOwner" class="pr-discard-btn" (click)="discardPullRequest(pr)">Descartar</button>
+              </div>
             </div>
-            <div class="pr-actions">
-              <a [href]="pr.url" target="_blank" rel="noopener">Abrir</a>
-              <button (click)="mergePullRequest(pr)">Merge</button>
+
+            <div class="pr-files-panel" *ngIf="prExpandedMap.get(pr.number)">
+              <p class="hint-msg" *ngIf="prFilesLoadingMap.get(pr.number)">Cargando archivos…</p>
+              <ng-container *ngIf="!prFilesLoadingMap.get(pr.number)">
+                <p class="hint-msg" *ngIf="(prFilesMap.get(pr.number) || []).length === 0">No se encontraron archivos.</p>
+                <div class="pr-file-entry" *ngFor="let file of (prFilesMap.get(pr.number) || [])">
+                  <div class="pr-file-header">
+                    <button class="pr-file-collapse-btn" (click)="togglePrFileCollapse(pr.number, file.filename)"
+                      [title]="isPrFileCollapsed(pr.number, file.filename) ? 'Expandir' : 'Colapsar'">
+                      {{ isPrFileCollapsed(pr.number, file.filename) ? '▶' : '▼' }}
+                    </button>
+                    <span class="pr-file-name">{{ file.filename }}</span>
+                    <span class="pr-file-badge" [ngClass]="'badge-' + file.status">{{ file.status }}</span>
+                    <span class="pr-file-diff">+{{ file.additions }} / -{{ file.deletions }}</span>
+                    <button
+                      *ngIf="file.filename.endsWith('.tex') && !isPrFileCollapsed(pr.number, file.filename)"
+                      class="pr-tex-toggle"
+                      (click)="togglePrFileTexView(pr.number, file.filename)">
+                      {{ getTexViewMode(pr.number, file.filename) === 'rendered' ? 'Fuente' : 'Renderizado' }}
+                    </button>
+                  </div>
+                  <div class="pr-file-content" *ngIf="!isPrFileCollapsed(pr.number, file.filename)">
+                    <ng-container *ngIf="file.content != null; else prFileNoContent">
+                      <ng-container *ngIf="file.filename.endsWith('.tex') && getTexViewMode(pr.number, file.filename) === 'rendered'; else prFileSource">
+                        <div class="tex-rendered-preview" [innerHTML]="renderPrFileContent(file.content!)"></div>
+                      </ng-container>
+                      <ng-template #prFileSource>
+                        <pre class="pr-file-source">{{ file.content }}</pre>
+                      </ng-template>
+                    </ng-container>
+                    <ng-template #prFileNoContent>
+                      <p class="pr-file-no-content">Contenido no disponible.</p>
+                    </ng-template>
+                  </div>
+                </div>
+              </ng-container>
             </div>
           </div>
         </div>
@@ -291,3 +645,13 @@
     <p>Falta projectId en la URL. Ve a "Open Workspace" y selecciona un proyecto.</p>
   </div>
 </ng-template>
+
+</div><!-- /wp-shell -->
+
+<!-- Toast overlay -->
+<div class="toast-container" aria-live="polite">
+  <div *ngFor="let t of toasts" class="toast" [ngClass]="'toast-' + t.type">
+    <span class="toast-msg">{{ t.message }}</span>
+    <button class="toast-close" (click)="dismissToast(t.id)" aria-label="Cerrar">×</button>
+  </div>
+</div>

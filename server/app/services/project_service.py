@@ -79,8 +79,8 @@ class ProjectService:
             goal_imports=goal_imports,
             goal_definitions=goal_definitions,
         )
-        main_lean = ProjectService._generate_root_main_lean()
-        main_tex = ProjectService._generate_root_main_tex(goal)
+        main_lean = ProjectService._generate_root_main_lean(goal)
+        main_tex = data.get('goal_tex') or ProjectService._generate_root_main_tex(goal)
 
         ProjectService._create_or_update_repo_file(
             github_token, full_name, 'Definitions.lean', def_content,
@@ -317,7 +317,6 @@ class ProjectService:
 
     @staticmethod
     def _generate_def_lean_from_prompt(goal, goal_imports=None, goal_definitions=None):
-        goal_expr = ProjectService._normalize_goal_expression(goal)
         imports = goal_imports or []
         definitions = (goal_definitions or '').strip()
 
@@ -332,14 +331,14 @@ class ProjectService:
             sections.append(definitions.rstrip())
             sections.append("")
 
-        sections.append(f"def GoalDef : Prop := {goal_expr}")
         return "\n".join(sections).rstrip() + "\n"
 
     @staticmethod
-    def _generate_root_main_lean():
+    def _generate_root_main_lean(goal):
+        goal_expr = ProjectService._normalize_goal_expression(goal)
         return (
             "import Definitions\n\n"
-            "theorem root : GoalDef := by\n"
+            f"theorem root : {goal_expr} := by\n"
             "  sorry\n"
         )
 
@@ -350,9 +349,10 @@ class ProjectService:
             goal_imports=goal_imports,
             goal_definitions=goal_definitions,
         )
+        goal_expr = ProjectService._normalize_goal_expression(goal)
         snippet = (
             f"{def_content}\n"
-            "theorem root : GoalDef := by\n"
+            f"theorem root : {goal_expr} := by\n"
             "  sorry\n"
         )
 

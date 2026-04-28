@@ -65,6 +65,8 @@ export type NewNodeDto = NodeDto;
 export interface SimpleGraphResponse {
   project_id: string;
   project_name: string;
+  author_id: string;
+  is_owner: boolean;
   count: number;
   nodes: NodeDto[];
 }
@@ -148,6 +150,43 @@ export interface PullRequestItem {
   updated_at: string;
 }
 
+export interface PrFileEntry {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  content: string | null;
+}
+
+export interface PullRequestFilesResponse {
+  project_id: string;
+  pr_number: number;
+  files: PrFileEntry[];
+}
+
+export interface ContributorDto {
+  id: string;
+  email: string;
+  full_name: string;
+}
+
+export interface GitHubInvitationDto {
+  id: number;
+  repo: string;
+  inviter: string | null;
+  html_url: string | null;
+}
+
+export interface UserProfileDto {
+  id: string;
+  full_name: string;
+  email: string;
+  github_id?: string | null;
+  github_login?: string | null;
+  is_verified?: boolean;
+  created_at?: string;
+}
+
 export interface OpenPullsResponse {
   project_id: string;
   count: number;
@@ -159,6 +198,7 @@ export interface CreateProjectPayload {
   goal: string;
   goal_imports?: string[];
   goal_definitions?: string;
+  goal_tex?: string;
   description?: string;
   visibility?: 'public' | 'private';
   tags?: string[];
@@ -217,4 +257,33 @@ export interface TranslatePayload {
   api_key?: string;
   max_retries?: number;
   system_prompt?: string;
+  definitions_content?: string;
+}
+
+export interface Fl2NlPayload {
+  lean_code: string;
+  model_id: string;
+  api_key?: string;
+  system_prompt?: string;
+}
+
+export interface Fl2NlResult {
+  natural_text: string;
+  processing_time_seconds: number;
+}
+
+// --- Agents / Suggest ---
+
+export interface SuggestPayload {
+  prompt: string;
+  model_id: string;
+  api_key?: string;
+  system_prompt?: string;
+  context?: string;
+}
+
+export interface SuggestResult {
+  suggestion: string;
+  model_id: string;
+  processing_time_seconds: number;
 }

@@ -97,9 +97,12 @@ class AuthService:
                 full_name=github_user.get('name') or github_user['login'],
                 email=email,
                 password_hash="oauth_user", # Placeholder
-                github_id=github_id
+                github_id=github_id,
+                github_login=github_user.get('login'),
             )
             db.session.add(user)
+        else:
+            user.github_login = github_user.get('login') or user.github_login
         
         # 4. Update Tokens
         user.set_github_token(access_token, refresh_token, expires_in)
@@ -133,7 +136,7 @@ class AuthService:
         base_url = "https://github.com/login/oauth/authorize"
         params = {
             "client_id": os.environ.get('GITHUB_CLIENT_ID'),
-            "scope": os.environ.get('GITHUB_OAUTH_SCOPES', "repo,read:user,user:email"),
+            "scope": os.environ.get('GITHUB_OAUTH_SCOPES', "repo,delete_repo,read:user,user:email"),
             "state": secrets.token_urlsafe(16)
         }
 
@@ -214,12 +217,14 @@ class AuthService:
                 email=email,
                 password_hash="oauth_provider", # Flag that this is an OAuth user
                 github_id=gh_id,
+                github_login=gh_user.get('login'),
                 is_verified=True
             )
             db.session.add(user)
         else:
             # Link existing user to GitHub
             user.github_id = gh_id
+            user.github_login = gh_user.get('login') or user.github_login
             
         # 5. CRITICAL: Store the Token. This allows us to git push later.
         user.github_access_token = access_token

@@ -1,15 +1,28 @@
     <div class="wrap">
+
+      <!-- ── Toast ── -->
+      <div class="toast" *ngIf="toast" [ngClass]="'toast-' + toast.type">
+        <span class="toast-msg">{{ toast.message }}</span>
+        <button class="toast-close" (click)="dismissToast()">✕</button>
+      </div>
+
       <div class="card">
         <h3>Ajustes de Cuenta</h3>
+        <p class="load-msg" *ngIf="profileLoading">Cargando perfil…</p>
 
         <div class="field">
-          <label>Nombre de Usuario</label>
-          <input [(ngModel)]="username" name="username" />
+          <label>Nombre Completo</label>
+          <input [(ngModel)]="fullName" name="fullName" placeholder="Tu nombre" />
         </div>
 
         <div class="field">
-          <label>Contraseña (Cambiar)</label>
-          <input type="password" [(ngModel)]="password" name="password" placeholder="Dejar vacío para no cambiar" />
+          <label>Email</label>
+          <input [value]="email" disabled class="disabled-input" />
+        </div>
+
+        <div class="field" *ngIf="githubLogin">
+          <label>GitHub</label>
+          <input [value]="githubLogin" disabled class="disabled-input" />
         </div>
 
         <div class="field">
@@ -34,5 +47,79 @@
 
         <p *ngIf="message" class="message" [class.error]="error">{{ message }}</p>
       </div>
+
+      <!-- ── GitHub Invitations ── -->
+      <div class="card invitations-card" *ngIf="githubLogin">
+        <h3>Invitaciones de GitHub</h3>
+        <p class="invitations-notice">Estas son todas las invitaciones pendientes en tu cuenta de GitHub, no exclusivamente de CoProof. Verifica el nombre del repositorio antes de aceptar.</p>
+        <p class="load-msg" *ngIf="invitationsLoading">Cargando invitaciones…</p>
+        <p *ngIf="invitationMsg" class="message">{{ invitationMsg }}</p>
+        <p class="hint" *ngIf="!invitationsLoading && invitations.length === 0">
+          No tienes invitaciones pendientes.
+        </p>
+        <div class="invitation-row" *ngFor="let inv of invitations">
+          <div class="invitation-info">
+            <span class="invitation-repo">{{ inv.repo }}</span>
+            <span class="invitation-inviter" *ngIf="inv.inviter">de {{ inv.inviter }}</span>
+          </div>
+          <div class="invitation-actions">
+            <button class="btn-accept" (click)="acceptInvitation(inv)">Aceptar</button>
+            <button class="btn-decline" (click)="declineInvitation(inv)">Rechazar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Project Management ── -->
+      <div class="card projects-card">
+        <h3>Mis Proyectos</h3>
+        <p class="load-msg" *ngIf="projectsLoading">Cargando proyectos…</p>
+        <p class="hint" *ngIf="!projectsLoading && ownedProjects.length === 0 && !projectsError">
+          No tienes proyectos propios aún.
+        </p>
+        <p class="message error" *ngIf="projectsError">{{ projectsError }}</p>
+
+        <div class="project-row" *ngFor="let vm of ownedProjects">
+          <div class="project-header">
+            <div class="project-header-info">
+              <span class="project-name">{{ vm.project.name }}</span>
+              <span class="vis-badge" [ngClass]="'vis-' + vm.project.visibility">
+                {{ vm.project.visibility === 'public' ? 'Público' : 'Privado' }}
+              </span>
+            </div>
+            <div class="project-header-actions">
+              <button class="btn-manage" (click)="toggleProject(vm)">
+                {{ vm.expanded ? 'Cerrar' : 'Gestionar' }}
+              </button>
+              <button class="btn-delete" (click)="deleteProject(vm)">Eliminar</button>
+            </div>
+          </div>
+
+          <div class="project-panel" *ngIf="vm.expanded">
+            <p class="panel-msg" *ngIf="vm.msg" [ngClass]="{'panel-msg-err': vm.msgError}">{{ vm.msg }}</p>
+
+            <div class="contributors-section">
+              <p class="section-label">Colaboradores con acceso</p>
+              <p class="hint" *ngIf="vm.contributors.length === 0">Sin colaboradores adicionales.</p>
+              <div class="contributor-row" *ngFor="let c of vm.contributors">
+                <span class="contributor-email">{{ c.email }}</span>
+                <span class="contributor-name" *ngIf="c.full_name">{{ c.full_name }}</span>
+                <button class="btn-remove" (click)="removeContributor(vm, c)" title="Eliminar acceso">✕</button>
+              </div>
+            </div>
+
+            <div class="add-contributor">
+              <label class="section-label">Añadir colaborador por email</label>
+              <div class="add-row">
+                <input
+                  [(ngModel)]="vm.newEmail"
+                  [name]="'email-' + vm.project.id"
+                  placeholder="correo@ejemplo.com"
+                  (keydown.enter)="addContributor(vm)"
+                />
+                <button class="btn-add" (click)="addContributor(vm)">Añadir</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-  

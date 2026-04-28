@@ -303,6 +303,7 @@ def translate_and_verify(
     api_key: str,
     max_retries: int = 3,
     system_prompt: str | None = None,
+    definitions_content: str | None = None,
 ) -> dict:
     """
     Full NL→Lean translation + verification pipeline.
@@ -381,11 +382,24 @@ def translate_and_verify(
             break  # fatal — stop retrying on LLM errors
 
         lean_code = _extract_lean_code(llm_reply)
-        final_lean = lean_code
+        # For the standalone Lean verifier, `import Definitions` cannot be
+        # resolved (it's a project-local file).  If the caller supplied the
+        # actual content of Definitions.lean, inline it in place of the import
+        # so verification works.  The `final_lean` output always keeps the
+        # original `import Definitions` so downstream code is not affected.
+        lean_code_for_verify = lean_code
+        if definitions_content:
+            lean_code_for_verify = re.sub(
+                r'^\s*import\s+Definitions\s*$',
+                definitions_content.strip(),
+                lean_code,
+                flags=re.MULTILINE,
+            )
+        final_lean = lean_code  # preserve original import statement
 
         # --- Step 2: Verify ---
         try:
-            verification = _verify_with_lean(lean_code)
+            verification = _verify_with_lean(lean_code_for_verify)
         except Exception as exc:
             logger.error('[nl2fl] Lean verification error on attempt %d: %s', attempt, exc)
             verification = {
@@ -420,5 +434,79 @@ def translate_and_verify(
         'attempts': len(history),
         'final_lean': final_lean,
         'history': history,
+        'processing_time_seconds': round(time.perf_counter() - start_time, 3),
+    }
+
+
+# ---------------------------------------------------------------------------
+# FL → NL  (converse translation)
+# ---------------------------------------------------------------------------
+
+FL2NL_SYSTEM_PROMPT = (
+    'You are a mathematician and Lean 4 expert. '
+    'Given a Lean 4 formal mathematical statement (theorem, lemma, or definition), '
+    'produce a clear and precise natural-language description suitable for a math paper. '
+    'Requirements:\n'
+    '- Write in LaTeX-compatible prose (use $...$ for inline math and $$...$$ for display math).\n'
+    '- State the mathematical meaning directly; do NOT describe the Lean syntax.\n'
+    '- Include all relevant hypotheses and conclusions.\n'
+    '- Be concise but complete: one to three paragraphs maximum.\n'
+    '- Do NOT include any Lean code in the output.'
+)
+
+
+def fl_to_nl(
+    lean_code: str,
+    model_id: str,
+    api_key: str,
+    system_prompt: str | None = None,
+) -> dict:
+    """
+    Translate a Lean 4 formal statement into natural-language prose (with LaTeX).
+
+    Parameters
+    ----------
+    lean_code : str
+        The Lean 4 source to describe.
+    model_id : str
+        Provider/model identifier (e.g. ``"openai/gpt-4o"``).
+    api_key : str
+        Decrypted API key for the provider.
+    system_prompt : str | None
+        Override the default FL2NL system prompt.
+
+    Returns
+    -------
+    dict::
+
+        {
+            "natural_text": str,          # LaTeX-ready prose
+            "processing_time_seconds": float
+        }
+    """
+    if not lean_code or not lean_code.strip():
+        raise ValueError('lean_code must not be empty.')
+    if not model_id:
+        raise ValueError('model_id must not be empty.')
+    if not api_key:
+        raise ValueError('api_key must not be empty.')
+
+    effective_system = system_prompt if system_prompt else FL2NL_SYSTEM_PROMPT
+
+    start_time = time.perf_counter()
+
+    messages: list[dict] = [
+        {'role': 'system', 'content': effective_system},
+        {'role': 'user',   'content': lean_code.strip()},
+    ]
+
+    try:
+        reply = _call_llm(messages, model_id, api_key)
+    except Exception as exc:
+        logger.error('[fl2nl] LLM error: %s', exc)
+        raise
+
+    return {
+        'natural_text': reply.strip(),
         'processing_time_seconds': round(time.perf_counter() - start_time, 3),
     }

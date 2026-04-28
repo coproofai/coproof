@@ -1,62 +1,62 @@
 <div class="page-wrap">
-  @if (vm$ | async; as vm) {
 
-    <!-- ── Settings panel ───────────────────────────────────────────── -->
-    <div class="settings-panel">
-      <button class="settings-toggle" (click)="settingsOpen = !settingsOpen">
-        <span>⚙ Configuración</span>
-        <span class="toggle-chevron">{{ settingsOpen ? '▲' : '▼' }}</span>
-      </button>
+  <!-- ── Settings panel (shared) ──────────────────────────────────────── -->
+  <div class="settings-panel">
+    <button class="settings-toggle" (click)="settingsOpen = !settingsOpen">
+      <span>⚙ Configuración</span>
+      <span class="toggle-chevron">{{ settingsOpen ? '▲' : '▼' }}</span>
+    </button>
 
-      @if (settingsOpen) {
-        <div class="settings-body">
+    @if (settingsOpen) {
+      <div class="settings-body">
 
-          <!-- Model selector -->
+        <!-- Model selector -->
+        <div class="setting-group">
+          <label for="model-select">Modelo LLM</label>
+          <select id="model-select"
+            [(ngModel)]="selectedModelId"
+            (ngModelChange)="onModelChange()">
+            <option value="">— Selecciona un modelo —</option>
+            @for (m of (models$ | async) ?? []; track m.id) {
+              <option [value]="m.id">{{ m.provider }} · {{ m.name }}</option>
+            }
+          </select>
+        </div>
+
+        <!-- API key (only when logged in) -->
+        @if (isLoggedIn) {
           <div class="setting-group">
-            <label for="model-select">Modelo LLM</label>
-            <select id="model-select"
-              [(ngModel)]="selectedModelId"
-              (ngModelChange)="onModelChange()">
-              <option value="">— Selecciona un modelo —</option>
-              @for (m of (models$ | async) ?? []; track m.id) {
-                <option [value]="m.id">{{ m.provider }} · {{ m.name }}</option>
-              }
-            </select>
-          </div>
-
-          <!-- API key (only when logged in) -->
-          @if (isLoggedIn) {
-            <div class="setting-group">
-              <label>API Key (OpenRouter)</label>
-              @if (maskedKey) {
-                <span class="masked-key">{{ maskedKey }}</span>
-              }
-              <div class="api-key-row">
-                <input type="password"
-                  [(ngModel)]="apiKeyInput"
-                  placeholder="sk-or-…"
-                  autocomplete="new-password" />
-                <button class="btn-save"
-                  (click)="saveApiKey()"
-                  [disabled]="apiKeySaving || !apiKeyInput.trim()">
-                  {{ apiKeySaving ? 'Guardando…' : 'Guardar' }}
-                </button>
-              </div>
-              @if (apiKeyError) {
-                <p class="error-text">{{ apiKeyError }}</p>
-              }
+            <label>API Key (OpenRouter)</label>
+            @if (maskedKey) {
+              <span class="masked-key">{{ maskedKey }}</span>
+            }
+            <div class="api-key-row">
+              <input type="password"
+                [(ngModel)]="apiKeyInput"
+                placeholder="sk-or-…"
+                autocomplete="new-password" />
+              <button class="btn-save"
+                (click)="saveApiKey()"
+                [disabled]="apiKeySaving || !apiKeyInput.trim()">
+                {{ apiKeySaving ? 'Guardando…' : 'Guardar' }}
+              </button>
             </div>
-          }
-
-          <!-- System prompt -->
-          <div class="setting-group wide">
-            <label for="system-prompt">System Prompt</label>
-            <textarea id="system-prompt"
-              [(ngModel)]="systemPrompt"
-              rows="4"></textarea>
+            @if (apiKeyError) {
+              <p class="error-text">{{ apiKeyError }}</p>
+            }
           </div>
+        }
 
-          <!-- Max retries -->
+        <!-- System prompt -->
+        <div class="setting-group wide">
+          <label for="system-prompt">System Prompt</label>
+          <textarea id="system-prompt"
+            [(ngModel)]="systemPrompt"
+            rows="4"></textarea>
+        </div>
+
+        <!-- Max retries — only relevant for NL→FL -->
+        @if (direction === 'nl2fl') {
           <div class="setting-group narrow">
             <label for="max-retries">Reintentos máx.</label>
             <input id="max-retries"
@@ -65,102 +65,216 @@
               min="1"
               max="10" />
           </div>
+        }
 
-        </div>
-      }
-    </div>
+      </div>
+    }
+  </div>
 
-    <!-- ── Status bar ────────────────────────────────────────────────── -->
-    <div class="status-bar" [class]="'status-bar status-' + vm.state">
-      <span class="status-dot"></span>
-      <span class="status-label">{{ getStatusLabel(vm.state) }}</span>
-      @if (vm.result) {
-        <span class="status-meta">
-          {{ vm.result.attempts }} intento(s) · {{ vm.result.processing_time_seconds | number:'1.1-1' }}s
-        </span>
-      }
-    </div>
+  <!-- ── Direction toggle ──────────────────────────────────────────────── -->
+  <div class="direction-toggle">
+    <span class="dir-pill" [class.dir-pill-active]="direction === 'nl2fl'">
+      Lenguaje Natural
+    </span>
+    <button class="btn-swap" (click)="toggleDirection()" title="Cambiar dirección">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 16V4m0 0L3 8m4-4 4 4"/>
+        <path d="M17 8v12m0 0 4-4m-4 4-4-4"/>
+      </svg>
+    </button>
+    <span class="dir-pill" [class.dir-pill-active]="direction === 'fl2nl'">
+      Lean 4
+    </span>
+  </div>
 
-    <!-- ── Three-column layout ───────────────────────────────────────── -->
-    <div class="columns">
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- NL → FL mode                                                       -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  @if (direction === 'nl2fl') {
+    @if (vm$ | async; as vm) {
 
-      <!-- Col 1 · Natural language input -->
-      <div class="col">
-        <h3>Lenguaje Natural</h3>
-        <textarea class="text-area"
-          [(ngModel)]="naturalText"
-          placeholder="Escribe aquí el teorema o proposición en lenguaje natural…"
-          [disabled]="vm.state === 'translating'"></textarea>
-        <div class="col-actions">
-          <button class="btn-primary"
-            (click)="submit()"
-            [disabled]="vm.state === 'translating' || !naturalText.trim() || !selectedModelId">
-            @if (vm.state === 'translating') { Traduciendo… } @else { Traducir a Lean }
-          </button>
-          @if (vm.state !== 'idle') {
-            <button class="btn-ghost" (click)="reset()">Limpiar</button>
+      <!-- Status bar -->
+      <div class="status-bar" [class]="'status-bar status-' + vm.state">
+        <span class="status-dot"></span>
+        <span class="status-label">{{ getStatusLabel(vm.state) }}</span>
+        @if (vm.result) {
+          <span class="status-meta">
+            {{ vm.result.attempts }} intento(s) · {{ vm.result.processing_time_seconds | number:'1.1-1' }}s
+          </span>
+        }
+      </div>
+
+      <!-- Three-column layout -->
+      <div class="columns">
+
+        <!-- Col 1 · Natural language input -->
+        <div class="col">
+          <div class="col-tabs">
+            <button class="col-tab" [class.col-tab-active]="nlTab === 'input'" (click)="switchNlTab('input')">Entrada</button>
+            <button class="col-tab" [class.col-tab-active]="nlTab === 'preview'" (click)="switchNlTab('preview')">Vista LaTeX</button>
+          </div>
+
+          @if (nlTab === 'input') {
+            <textarea class="text-area"
+              [(ngModel)]="naturalText"
+              placeholder="Escribe aquí el teorema o proposición en lenguaje natural…"
+              [disabled]="vm.state === 'translating'"></textarea>
+          } @else {
+            <div class="tex-preview-pane" [innerHTML]="nlRenderedHtml"></div>
+          }
+
+          <div class="col-actions">
+            <button class="btn-primary"
+              (click)="submit()"
+              [disabled]="vm.state === 'translating' || !naturalText.trim() || !selectedModelId">
+              @if (vm.state === 'translating') { Traduciendo… } @else { Traducir a Lean }
+            </button>
+            @if (vm.state !== 'idle') {
+              <button class="btn-ghost" (click)="reset()">Limpiar</button>
+            }
+          </div>
+          @if (vm.state === 'error') {
+            <p class="error-text server-error">{{ vm.serverError }}</p>
           }
         </div>
-        @if (vm.state === 'error') {
-          <p class="error-text server-error">{{ vm.serverError }}</p>
-        }
-      </div>
 
-      <!-- Col 2 · Generated Lean code -->
-      <div class="col">
-        <h3>Código Lean Generado</h3>
-        @if (vm.result) {
-          <pre class="code-block"
-            [class.code-valid]="vm.result.valid"
-            [class.code-invalid]="!vm.result.valid">{{ vm.result.final_lean }}</pre>
-        } @else if (vm.state === 'translating') {
-          <div class="placeholder">
-            <div class="spinner"></div>
-            <p>Llamando al LLM y verificando en Lean…</p>
-          </div>
-        } @else {
-          <div class="placeholder muted-placeholder">
-            <p>El código Lean aparecerá aquí tras la traducción.</p>
-          </div>
-        }
-      </div>
-
-      <!-- Col 3 · Attempt history -->
-      <div class="col">
-        <h3>Historial de Intentos</h3>
-        @if (vm.result && vm.result.history.length > 0) {
-          @for (attempt of vm.result.history; track attempt.attempt) {
-            <div class="attempt-row">
-              <button class="attempt-header" (click)="toggleAttempt(attempt.attempt)">
-                <span class="attempt-num">Intento #{{ attempt.attempt }}</span>
-                <span class="attempt-badge"
-                  [class.badge-ok]="attempt.errors.length === 0"
-                  [class.badge-err]="attempt.errors.length > 0">
-                  {{ attempt.errors.length === 0 ? '✓ OK' : attempt.errors.length + ' error(es)' }}
-                </span>
-                <span class="expand-chevron">
-                  {{ expandedAttempts.has(attempt.attempt) ? '▲' : '▼' }}
-                </span>
-              </button>
-              @if (expandedAttempts.has(attempt.attempt)) {
-                <pre class="attempt-code">{{ attempt.lean_code }}</pre>
-                @if (attempt.errors.length > 0) {
-                  <ul class="error-list">
-                    @for (err of attempt.errors; track $index) {
-                      <li>L{{ err.line }}:{{ err.column }} — {{ err.message }}</li>
-                    }
-                  </ul>
-                }
-              }
+        <!-- Col 2 · Generated Lean code -->
+        <div class="col">
+          <h3>Código Lean Generado</h3>
+          @if (vm.result) {
+            <pre class="code-block"
+              [class.code-valid]="vm.result.valid"
+              [class.code-invalid]="!vm.result.valid">{{ vm.result.final_lean }}</pre>
+          } @else if (vm.state === 'translating') {
+            <div class="placeholder">
+              <div class="spinner"></div>
+              <p>Llamando al LLM y verificando en Lean…</p>
+            </div>
+          } @else {
+            <div class="placeholder muted-placeholder">
+              <p>El código Lean aparecerá aquí tras la traducción.</p>
             </div>
           }
-        } @else if (vm.state === 'translating') {
-          <p class="muted">Los intentos aparecerán al finalizar.</p>
-        } @else {
-          <p class="muted">Sin historial aún.</p>
+        </div>
+
+        <!-- Col 3 · Attempt history -->
+        <div class="col">
+          <h3>Historial de Intentos</h3>
+          @if (vm.result && vm.result.history.length > 0) {
+            @for (attempt of vm.result.history; track attempt.attempt) {
+              <div class="attempt-row">
+                <button class="attempt-header" (click)="toggleAttempt(attempt.attempt)">
+                  <span class="attempt-num">Intento #{{ attempt.attempt }}</span>
+                  <span class="attempt-badge"
+                    [class.badge-ok]="attempt.errors.length === 0"
+                    [class.badge-err]="attempt.errors.length > 0">
+                    {{ attempt.errors.length === 0 ? '✓ OK' : attempt.errors.length + ' error(es)' }}
+                  </span>
+                  <span class="expand-chevron">
+                    {{ expandedAttempts.has(attempt.attempt) ? '▲' : '▼' }}
+                  </span>
+                </button>
+                @if (expandedAttempts.has(attempt.attempt)) {
+                  <pre class="attempt-code">{{ attempt.lean_code }}</pre>
+                  @if (attempt.errors.length > 0) {
+                    <ul class="error-list">
+                      @for (err of attempt.errors; track $index) {
+                        <li>L{{ err.line }}:{{ err.column }} — {{ err.message }}</li>
+                      }
+                    </ul>
+                  }
+                }
+              </div>
+            }
+          } @else if (vm.state === 'translating') {
+            <p class="muted">Los intentos aparecerán al finalizar.</p>
+          } @else {
+            <p class="muted">Sin historial aún.</p>
+          }
+        </div>
+
+      </div>
+    }
+  }
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- FL → NL mode                                                       -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  @if (direction === 'fl2nl') {
+    @if (fl2nlVm$ | async; as fl2nlVm) {
+
+      <!-- Status bar -->
+      <div class="status-bar" [class]="'status-bar status-' + fl2nlVm.state">
+        <span class="status-dot"></span>
+        <span class="status-label">{{ getFl2NlStatusLabel(fl2nlVm.state) }}</span>
+        @if (fl2nlVm.state === 'done') {
+          <span class="status-meta">{{ fl2nlVm.processingTime | number:'1.1-1' }}s</span>
         }
       </div>
 
-    </div>
+      <!-- Three-column layout -->
+      <div class="columns">
+
+        <!-- Col 1 · Lean code input -->
+        <div class="col">
+          <h3>Código Lean</h3>
+          <textarea class="text-area code-input"
+            [(ngModel)]="leanCodeInput"
+            placeholder="Pega aquí el teorema o demostración en Lean 4…"
+            [disabled]="fl2nlVm.state === 'translating'"></textarea>
+
+          <div class="col-actions">
+            <button class="btn-primary"
+              (click)="submitFl2nl()"
+              [disabled]="fl2nlVm.state === 'translating' || !leanCodeInput.trim() || !selectedModelId">
+              @if (fl2nlVm.state === 'translating') { Interpretando… } @else { Interpretar a lenguaje natural }
+            </button>
+            @if (fl2nlVm.state !== 'idle') {
+              <button class="btn-ghost" (click)="resetFl2nl()">Limpiar</button>
+            }
+          </div>
+          @if (fl2nlVm.state === 'error') {
+            <p class="error-text server-error">{{ fl2nlVm.error }}</p>
+          }
+        </div>
+
+        <!-- Col 2 · Generated natural language text (raw) -->
+        <div class="col">
+          <h3>Texto Natural Generado</h3>
+          @if (fl2nlVm.state === 'done') {
+            <div class="nl-text-block">{{ fl2nlVm.naturalText }}</div>
+          } @else if (fl2nlVm.state === 'translating') {
+            <div class="placeholder">
+              <div class="spinner"></div>
+              <p>Consultando al LLM…</p>
+            </div>
+          } @else {
+            <div class="placeholder muted-placeholder">
+              <p>La descripción natural aparecerá aquí.</p>
+            </div>
+          }
+        </div>
+
+        <!-- Col 3 · LaTeX render of the generated text -->
+        <div class="col">
+          <h3>Vista LaTeX</h3>
+          @if (fl2nlVm.state === 'done') {
+            <div class="tex-preview-pane" [innerHTML]="fl2nlVm.renderedHtml"></div>
+          } @else if (fl2nlVm.state === 'translating') {
+            <div class="placeholder">
+              <div class="spinner"></div>
+              <p>El render aparecerá al finalizar.</p>
+            </div>
+          } @else {
+            <div class="placeholder muted-placeholder">
+              <p>El render LaTeX aparecerá aquí.</p>
+            </div>
+          }
+        </div>
+
+      </div>
+    }
   }
+
 </div>

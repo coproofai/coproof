@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 from urllib.parse import quote
 
 import requests
+from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout
 
 from app.exceptions import CoProofError
 
@@ -267,11 +268,14 @@ class GitHubService:
     def get_pull_request(remote_repo_url, token, pr_number):
         """Fetch one pull request from GitHub."""
         full_name = GitHubService.extract_github_full_name(remote_repo_url)
-        response = requests.get(
-            f"https://api.github.com/repos/{full_name}/pulls/{pr_number}",
-            headers=GitHubService.github_headers(token),
-            timeout=20,
-        )
+        try:
+            response = requests.get(
+                f"https://api.github.com/repos/{full_name}/pulls/{pr_number}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
 
         if response.status_code == 200:
             return response.json()
@@ -286,12 +290,15 @@ class GitHubService:
     def list_open_pull_requests(remote_repo_url, token, base_branch):
         """List open pull requests that target the provided base branch."""
         full_name = GitHubService.extract_github_full_name(remote_repo_url)
-        response = requests.get(
-            f"https://api.github.com/repos/{full_name}/pulls",
-            headers=GitHubService.github_headers(token),
-            params={"state": "open", "base": base_branch, "per_page": 100},
-            timeout=20,
-        )
+        try:
+            response = requests.get(
+                f"https://api.github.com/repos/{full_name}/pulls",
+                headers=GitHubService.github_headers(token),
+                params={"state": "open", "base": base_branch, "per_page": 100},
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
 
         if response.status_code == 200:
             pulls = response.json()
@@ -314,15 +321,265 @@ class GitHubService:
         raise CoProofError(f"GitHub PR list failed: {response.text}", code=502)
 
     @staticmethod
+    def close_pull_request(remote_repo_url, token, pr_number):
+        """Close (discard) a pull request without merging, then delete its head branch."""
+        full_name = GitHubService.extract_github_full_name(remote_repo_url)
+        # 1. Close the PR
+        try:
+            response = requests.patch(
+                f"https://api.github.com/repos/{full_name}/pulls/{pr_number}",
+                headers=GitHubService.github_headers(token),
+                json={"state": "closed"},
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code not in (200,):
+            if response.status_code in (401, 403):
+                raise CoProofError("GitHub authentication failed while closing PR.", code=401)
+            raise CoProofError(f"GitHub PR close failed: {response.text}", code=502)
+
+        pr_data = response.json()
+        head_branch = pr_data.get("head", {}).get("ref")
+
+        # 2. Delete the head branch (best-effort — ignore 422/404 if already gone)
+        if head_branch:
+            try:
+                requests.delete(
+                    f"https://api.github.com/repos/{full_name}/git/refs/heads/{head_branch}",
+                    headers=GitHubService.github_headers(token),
+                    timeout=20,
+                )
+            except Exception:
+                pass
+
+        return {"closed": True, "pr_number": pr_number, "branch": head_branch}
+
+    @staticmethod
+    def get_pull_request_files(remote_repo_url, token, pr_number):
+        """Return the list of files changed in a pull request with their contents."""
+        import logging
+        _log = logging.getLogger(__name__)
+
+        full_name = GitHubService.extract_github_full_name(remote_repo_url)
+        try:
+            response = requests.get(
+                f"https://api.github.com/repos/{full_name}/pulls/{pr_number}/files",
+                headers=GitHubService.github_headers(token),
+                params={"per_page": 100},
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code != 200:
+            if response.status_code in (401, 403):
+                raise CoProofError("GitHub authentication failed while listing PR files.", code=401)
+            raise CoProofError(f"GitHub PR files failed: {response.text}", code=502)
+
+        _log.debug("[pr_files] PR #%s files API returned %d entries", pr_number, len(response.json()))
+
+        files = []
+        for f in response.json():
+            filename = f.get("filename", "")
+            raw_url = f.get("raw_url") or f.get("blob_url")
+            content = None
+
+            # GitHub PR files API sometimes returns github.com/.../raw/... instead of
+            # raw.githubusercontent.com/... — the former requires a browser session and
+            # returns an HTML 404 when fetched programmatically.  Normalise it.
+            if raw_url:
+                import re as _re
+                from urllib.parse import unquote as _unquote
+                m = _re.match(r'^https://github\.com/(.+?)/raw/(.+)$', raw_url)
+                if m:
+                    raw_url = _unquote(f"https://raw.githubusercontent.com/{m.group(1)}/{m.group(2)}")
+
+            print(f"[pr_files] file={filename!r}  raw_url={raw_url!r}", flush=True)
+            if raw_url:
+                try:
+                    raw_resp = requests.get(
+                        raw_url,
+                        headers={"Authorization": f"token {token}"},
+                        timeout=20,
+                    )
+                    print(f"[pr_files]   raw fetch status={raw_resp.status_code}  len={len(raw_resp.text)}", flush=True)
+                    if raw_resp.status_code == 200:
+                        content = raw_resp.text
+                    else:
+                        print(f"[pr_files]   raw fetch FAILED for {filename!r}: {raw_resp.status_code} {raw_resp.text[:300]}", flush=True)
+                except Exception as exc:
+                    print(f"[pr_files]   raw fetch EXCEPTION for {filename!r}: {exc}", flush=True)
+            files.append({
+                "filename": filename,
+                "status": f.get("status"),
+                "additions": f.get("additions", 0),
+                "deletions": f.get("deletions", 0),
+                "content": content,
+            })
+        return files
+
+    @staticmethod
+    def delete_repo(remote_repo_url, token):
+        """Delete the GitHub repository. Requires the owner's token with delete_repo scope."""
+        full_name = GitHubService.extract_github_full_name(remote_repo_url)
+        try:
+            response = requests.delete(
+                f"https://api.github.com/repos/{full_name}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code == 204:
+            return {"deleted": True, "repo": full_name}
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed or missing delete_repo permission.", code=401)
+        if response.status_code == 404:
+            raise CoProofError("Repository not found on GitHub.", code=404)
+        raise CoProofError(
+            f"GitHub repo deletion failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
+    def delete_fork(fork_full_name, token):
+        """Delete a forked repository by its full_name (owner/repo). Best-effort, caller should catch."""
+        try:
+            response = requests.delete(
+                f"https://api.github.com/repos/{fork_full_name}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except Exception:
+            return {"deleted": False, "reason": "network_error"}
+
+        if response.status_code == 204:
+            return {"deleted": True, "repo": fork_full_name}
+        return {"deleted": False, "reason": f"http_{response.status_code}"}
+
+    @staticmethod
+    def get_repo_invitations(token):
+        """List pending repository invitations for the authenticated user."""
+        try:
+            response = requests.get(
+                "https://api.github.com/user/repository_invitations",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code == 200:
+            return response.json()
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed while fetching invitations.", code=401)
+        raise CoProofError(
+            f"GitHub invitations fetch failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
+    def accept_repo_invitation(token, invitation_id):
+        """Accept a pending repository invitation."""
+        try:
+            response = requests.patch(
+                f"https://api.github.com/user/repository_invitations/{invitation_id}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code == 204:
+            return {"accepted": True}
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed while accepting invitation.", code=401)
+        if response.status_code == 404:
+            raise CoProofError("Invitation not found or already handled.", code=404)
+        raise CoProofError(
+            f"GitHub invitation accept failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
+    def decline_repo_invitation(token, invitation_id):
+        """Decline a pending repository invitation."""
+        try:
+            response = requests.delete(
+                f"https://api.github.com/user/repository_invitations/{invitation_id}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code == 204:
+            return {"declined": True}
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed while declining invitation.", code=401)
+        if response.status_code == 404:
+            raise CoProofError("Invitation not found or already handled.", code=404)
+        raise CoProofError(
+            f"GitHub invitation decline failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
+    def add_repo_collaborator(remote_repo_url, token, github_username):
+        """Invite a GitHub user as a collaborator on the repository (push permission)."""
+        full_name = GitHubService.extract_github_full_name(remote_repo_url)
+        try:
+            response = requests.put(
+                f"https://api.github.com/repos/{full_name}/collaborators/{github_username}",
+                headers=GitHubService.github_headers(token),
+                json={"permission": "push"},
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        # 201 = invited, 204 = already a collaborator
+        if response.status_code in (201, 204):
+            return {"invited": True, "username": github_username}
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed while inviting collaborator.", code=401)
+        raise CoProofError(
+            f"GitHub collaborator invite failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
+    def remove_repo_collaborator(remote_repo_url, token, github_username):
+        """Remove a GitHub user from repository collaborators."""
+        full_name = GitHubService.extract_github_full_name(remote_repo_url)
+        try:
+            response = requests.delete(
+                f"https://api.github.com/repos/{full_name}/collaborators/{github_username}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code in (204,):
+            return {"removed": True, "username": github_username}
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed while removing collaborator.", code=401)
+        raise CoProofError(
+            f"GitHub collaborator removal failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
     def merge_pull_request(remote_repo_url, token, pr_number):
         """Merge a pull request through the GitHub API using merge strategy."""
         full_name = GitHubService.extract_github_full_name(remote_repo_url)
-        response = requests.put(
-            f"https://api.github.com/repos/{full_name}/pulls/{pr_number}/merge",
-            headers=GitHubService.github_headers(token),
-            json={"merge_method": "merge"},
-            timeout=20,
-        )
+        try:
+            response = requests.put(
+                f"https://api.github.com/repos/{full_name}/pulls/{pr_number}/merge",
+                headers=GitHubService.github_headers(token),
+                json={"merge_method": "merge"},
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
 
         if response.status_code == 200:
             payload = response.json()
@@ -376,6 +633,67 @@ class GitHubService:
         return metadata
 
     @staticmethod
+    def fork_or_get_fork(remote_repo_url, token):
+        """
+        Fork the upstream repo into the token owner's account (if not already forked).
+        Returns the full_name of the fork (e.g. "accountB/repo-name").
+        GitHub returns the fork immediately but actual readiness may take a few seconds;
+        we poll until the default branch ref is available.
+        """
+        import time
+        upstream_full_name = GitHubService.extract_github_full_name(remote_repo_url)
+
+        # Attempt to create fork (idempotent — returns existing fork if already forked)
+        try:
+            resp = requests.post(
+                f"https://api.github.com/repos/{upstream_full_name}/forks",
+                headers=GitHubService.github_headers(token),
+                json={},
+                timeout=30,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if resp.status_code not in (200, 202):
+            if resp.status_code in (401, 403):
+                raise CoProofError("GitHub authentication failed while forking repository.", code=401)
+            raise CoProofError(f"GitHub fork failed ({resp.status_code}): {resp.text}", code=502)
+
+        fork_data = resp.json()
+        fork_full_name = fork_data.get('full_name')
+        fork_clone_url = fork_data.get('clone_url') or f"https://github.com/{fork_full_name}"
+
+        # Poll until the fork's default branch is ready (up to ~15 s)
+        default_branch = fork_data.get('default_branch', 'main')
+        for _ in range(6):
+            check = requests.get(
+                f"https://api.github.com/repos/{fork_full_name}/git/ref/heads/{default_branch}",
+                headers=GitHubService.github_headers(token),
+                timeout=10,
+            )
+            if check.status_code == 200:
+                break
+            time.sleep(3)
+
+        return fork_clone_url, fork_full_name
+
+    @staticmethod
+    def sync_fork_branch(fork_full_name, token, branch):
+        """
+        Sync a fork's branch with the upstream via GitHub's merge-upstream API.
+        Best-effort — silently ignores errors (e.g. if already in sync).
+        """
+        try:
+            requests.post(
+                f"https://api.github.com/repos/{fork_full_name}/merge-upstream",
+                headers=GitHubService.github_headers(token),
+                json={"branch": branch},
+                timeout=20,
+            )
+        except Exception:
+            pass
+
+    @staticmethod
     def open_pull_request(remote_repo_url, token, title, body, head_branch, base_branch):
         """Create a pull request on GitHub."""
         full_name = GitHubService.extract_github_full_name(remote_repo_url)
@@ -386,12 +704,15 @@ class GitHubService:
             "base": base_branch,
         }
 
-        response = requests.post(
-            f"https://api.github.com/repos/{full_name}/pulls",
-            json=payload,
-            headers=GitHubService.github_headers(token),
-            timeout=20,
-        )
+        try:
+            response = requests.post(
+                f"https://api.github.com/repos/{full_name}/pulls",
+                json=payload,
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
 
         if response.status_code in (200, 201):
             return response.json()

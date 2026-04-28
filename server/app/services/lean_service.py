@@ -358,7 +358,7 @@ class LeanService:
 
     @staticmethod
     def build_goaldef_from_project_goal(project_goal, goal_imports=None, goal_definitions=None):
-        """Create a self-contained GoalDef block from project goal metadata."""
+        """Create a self-contained context block from project goal metadata."""
         goal_expr = LeanService.normalize_goal_expression((project_goal or '').strip())
         if not goal_expr:
             return ""
@@ -377,7 +377,6 @@ class LeanService:
             sections.append(definitions.rstrip())
             sections.append("")
 
-        sections.append("abbrev GoalDef : Prop := " + goal_expr)
         return "\n".join(sections).rstrip() + "\n"
 
     @staticmethod
@@ -385,7 +384,7 @@ class LeanService:
         """Normalize GoalDef declaration syntax from existing definitions file content."""
         text = content.strip()
         goaldef_pattern = re.compile(
-            r"(?m)^(def|abbrev)\s+GoalDef\s*:\s*Prop\s*:=\s*(.*)$",
+            r"(?m)^(def|abbrev)\s+GoalDef\s*(?::\s*Prop\s*)?:=\s*(.*)$",
             re.DOTALL,
         )
 
@@ -400,7 +399,7 @@ class LeanService:
 
         normalized_goal_expr = LeanService.normalize_goal_expression(goal_expr)
         prefix = text[:match.start()].rstrip()
-        goaldef_line = f"{decl_keyword} GoalDef : Prop := {normalized_goal_expr}"
+        goaldef_line = f"{decl_keyword} GoalDef := {normalized_goal_expr}"
 
         if prefix:
             return f"{prefix}\n\n{goaldef_line}\n"
@@ -412,7 +411,7 @@ class LeanService:
         expr = goal_expr.strip()
 
         full_decl_match = re.search(
-            r"def\s+GoalDef\s*:\s*Prop\s*:=\s*(.*)",
+            r"(?:def|abbrev)\s+GoalDef\s*(?::\s*Prop\s*)?:=\s*(.*)",
             expr,
             re.DOTALL,
         )

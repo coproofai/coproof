@@ -17,8 +17,14 @@ import {
   TexFileResponse,
   TranslatePayload,
   TranslationResult,
+  SuggestPayload,
+  SuggestResult,
   VerifyCompilerResult,
-  VerifyNodeResponse
+  VerifyNodeResponse,
+  PullRequestFilesResponse,
+  ContributorDto,
+  UserProfileDto,
+  GitHubInvitationDto
 } from './task.models';
 
 @Injectable({
@@ -171,6 +177,12 @@ export class TaskService {
       : {};
   }
 
+  getCurrentUser(): Observable<UserProfileDto> {
+    return this.http.get<UserProfileDto>(`${this.apiBaseUrl}/auth/me`, {
+      headers: this.authHeaders()
+    });
+  }
+
   /**
    * Command: Dispatches the code to the cluster.
    * Returns a Task ID immediately.
@@ -263,18 +275,20 @@ export class TaskService {
     });
   }
 
-  solveNode(projectId: string, nodeId: string, leanCode: string): Observable<unknown> {
-    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/solve`, {
-      lean_code: leanCode
-    }, {
+  solveNode(projectId: string, nodeId: string, leanCode: string, modelId?: string, apiKey?: string): Observable<unknown> {
+    const body: Record<string, unknown> = { lean_code: leanCode };
+    if (modelId) body['model_id'] = modelId;
+    if (apiKey) body['api_key'] = apiKey;
+    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/solve`, body, {
       headers: this.authHeaders()
     });
   }
 
-  splitNode(projectId: string, nodeId: string, leanCode: string): Observable<unknown> {
-    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/split`, {
-      lean_code: leanCode
-    }, {
+  splitNode(projectId: string, nodeId: string, leanCode: string, modelId?: string, apiKey?: string): Observable<unknown> {
+    const body: Record<string, unknown> = { lean_code: leanCode };
+    if (modelId) body['model_id'] = modelId;
+    if (apiKey) body['api_key'] = apiKey;
+    return this.http.post(`${this.apiBaseUrl}/nodes/${projectId}/${nodeId}/split`, body, {
       headers: this.authHeaders()
     });
   }
@@ -301,6 +315,69 @@ export class TaskService {
     return this.http.post(`${this.apiBaseUrl}/projects/${projectId}/pulls/${pullNumber}/merge`, {}, {
       headers: this.authHeaders()
     });
+  }
+
+  closePullRequest(projectId: string, pullNumber: number): Observable<unknown> {
+    return this.http.post(`${this.apiBaseUrl}/projects/${projectId}/pulls/${pullNumber}/close`, {}, {
+      headers: this.authHeaders()
+    });
+  }
+
+  getPullRequestFiles(projectId: string, pullNumber: number): Observable<PullRequestFilesResponse> {
+    return this.http.get<PullRequestFilesResponse>(
+      `${this.apiBaseUrl}/projects/${projectId}/pulls/${pullNumber}/files`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  deleteProject(projectId: string): Observable<unknown> {
+    return this.http.delete(`${this.apiBaseUrl}/projects/${projectId}`, {
+      headers: this.authHeaders()
+    });
+  }
+
+  getContributors(projectId: string): Observable<{ contributors: ContributorDto[] }> {
+    return this.http.get<{ contributors: ContributorDto[] }>(
+      `${this.apiBaseUrl}/projects/${projectId}/contributors`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  addContributor(projectId: string, email: string): Observable<{ status: string; contributor: ContributorDto }> {
+    return this.http.post<{ status: string; contributor: ContributorDto }>(
+      `${this.apiBaseUrl}/projects/${projectId}/contributors`,
+      { email },
+      { headers: this.authHeaders() }
+    );
+  }
+
+  removeContributor(projectId: string, contributorId: string): Observable<unknown> {
+    return this.http.delete(
+      `${this.apiBaseUrl}/projects/${projectId}/contributors/${contributorId}`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  getGitHubInvitations(): Observable<{ invitations: GitHubInvitationDto[] }> {
+    return this.http.get<{ invitations: GitHubInvitationDto[] }>(
+      `${this.apiBaseUrl}/auth/github/invitations`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  acceptGitHubInvitation(invitationId: number): Observable<unknown> {
+    return this.http.post(
+      `${this.apiBaseUrl}/auth/github/invitations/${invitationId}/accept`,
+      {},
+      { headers: this.authHeaders() }
+    );
+  }
+
+  declineGitHubInvitation(invitationId: number): Observable<unknown> {
+    return this.http.delete(
+      `${this.apiBaseUrl}/auth/github/invitations/${invitationId}`,
+      { headers: this.authHeaders() }
+    );
   }
 
   // --- NL2FL / Translation ---
@@ -335,6 +412,38 @@ export class TaskService {
     return this.http.get<ApiKeyStatus>(
       `${this.apiBaseUrl}/translate/api-key/${modelId}`,
       { headers: this.authHeaders() }
+    );
+  }
+
+  // --- FL → NL (converse translation) ---
+
+  submitFl2nl(payload: import('./task.models').Fl2NlPayload): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${this.apiBaseUrl}/translate/fl2nl/submit`,
+      payload,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  getFl2nlResult(taskId: string): Observable<import('./task.models').Fl2NlResult | { status: 'pending' }> {
+    return this.http.get<import('./task.models').Fl2NlResult | { status: 'pending' }>(
+      `${this.apiBaseUrl}/translate/fl2nl/${taskId}/result`
+    );
+  }
+
+  // --- Agents / Suggest ---
+
+  submitSuggest(payload: SuggestPayload): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${this.apiBaseUrl}/agents/suggest/submit`,
+      payload,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  getSuggestResult(taskId: string): Observable<SuggestResult | { status: 'pending' }> {
+    return this.http.get<SuggestResult | { status: 'pending' }>(
+      `${this.apiBaseUrl}/agents/suggest/${taskId}/result`
     );
   }
 }
