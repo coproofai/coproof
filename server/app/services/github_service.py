@@ -421,6 +421,114 @@ class GitHubService:
         return files
 
     @staticmethod
+    def get_repo_invitations(token):
+        """List pending repository invitations for the authenticated user."""
+        try:
+            response = requests.get(
+                "https://api.github.com/user/repository_invitations",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code == 200:
+            return response.json()
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed while fetching invitations.", code=401)
+        raise CoProofError(
+            f"GitHub invitations fetch failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
+    def accept_repo_invitation(token, invitation_id):
+        """Accept a pending repository invitation."""
+        try:
+            response = requests.patch(
+                f"https://api.github.com/user/repository_invitations/{invitation_id}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code == 204:
+            return {"accepted": True}
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed while accepting invitation.", code=401)
+        if response.status_code == 404:
+            raise CoProofError("Invitation not found or already handled.", code=404)
+        raise CoProofError(
+            f"GitHub invitation accept failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
+    def decline_repo_invitation(token, invitation_id):
+        """Decline a pending repository invitation."""
+        try:
+            response = requests.delete(
+                f"https://api.github.com/user/repository_invitations/{invitation_id}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code == 204:
+            return {"declined": True}
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed while declining invitation.", code=401)
+        if response.status_code == 404:
+            raise CoProofError("Invitation not found or already handled.", code=404)
+        raise CoProofError(
+            f"GitHub invitation decline failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
+    def add_repo_collaborator(remote_repo_url, token, github_username):
+        """Invite a GitHub user as a collaborator on the repository (push permission)."""
+        full_name = GitHubService.extract_github_full_name(remote_repo_url)
+        try:
+            response = requests.put(
+                f"https://api.github.com/repos/{full_name}/collaborators/{github_username}",
+                headers=GitHubService.github_headers(token),
+                json={"permission": "push"},
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        # 201 = invited, 204 = already a collaborator
+        if response.status_code in (201, 204):
+            return {"invited": True, "username": github_username}
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed while inviting collaborator.", code=401)
+        raise CoProofError(
+            f"GitHub collaborator invite failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
+    def remove_repo_collaborator(remote_repo_url, token, github_username):
+        """Remove a GitHub user from repository collaborators."""
+        full_name = GitHubService.extract_github_full_name(remote_repo_url)
+        try:
+            response = requests.delete(
+                f"https://api.github.com/repos/{full_name}/collaborators/{github_username}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code in (204,):
+            return {"removed": True, "username": github_username}
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed while removing collaborator.", code=401)
+        raise CoProofError(
+            f"GitHub collaborator removal failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
     def merge_pull_request(remote_repo_url, token, pr_number):
         """Merge a pull request through the GitHub API using merge strategy."""
         full_name = GitHubService.extract_github_full_name(remote_repo_url)

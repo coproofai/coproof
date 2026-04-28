@@ -162,6 +162,29 @@ export interface PullRequestFilesResponse {
   files: PrFileEntry[];
 }
 
+export interface ContributorDto {
+  id: string;
+  email: string;
+  full_name: string;
+}
+
+export interface GitHubInvitationDto {
+  id: number;
+  repo: string;
+  inviter: string | null;
+  html_url: string | null;
+}
+
+export interface UserProfileDto {
+  id: string;
+  full_name: string;
+  email: string;
+  github_id?: string | null;
+  github_login?: string | null;
+  is_verified?: boolean;
+  created_at?: string;
+}
+
 export interface OpenPullsResponse {
   project_id: string;
   count: number;

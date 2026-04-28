@@ -252,6 +252,116 @@ def get_pull_request_files(project_id, pr_number):
     }), 200
 
 
+@projects_bp.route('/<uuid:project_id>', methods=['DELETE'])
+@jwt_required()
+def delete_project(project_id):
+    """Delete a project. Only the project owner (author) may do this."""
+    user_id = get_jwt_identity()
+    import uuid as _uuid
+    project = Project.query.get_or_404(project_id)
+
+    if str(project.author_id) != str(user_id):
+        raise CoProofError("Only the project owner can delete a project.", code=403)
+
+    db.session.delete(project)
+    db.session.commit()
+    return jsonify({"status": "deleted", "project_id": str(project_id)}), 200
+
+
+@projects_bp.route('/<uuid:project_id>/contributors', methods=['POST'])
+@jwt_required()
+def add_contributor(project_id):
+    """Add a contributor to a project by email. Only the owner may do this."""
+    user_id = get_jwt_identity()
+    import uuid as _uuid
+    project = Project.query.get_or_404(project_id)
+
+    if str(project.author_id) != str(user_id):
+        raise CoProofError("Only the project owner can manage contributors.", code=403)
+
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        raise CoProofError("email is required.", code=400)
+
+    target = User.query.filter(db.func.lower(User.email) == email).first()
+    if not target:
+        raise CoProofError(f"No user found with email '{email}'.", code=404)
+
+    target_uuid = target.id
+    if str(target_uuid) == str(project.author_id):
+        raise CoProofError("The project owner is already the author.", code=400)
+
+    ids = list(project.contributor_ids or [])
+    if any(str(cid) == str(target_uuid) for cid in ids):
+        raise CoProofError("User is already a contributor.", code=409)
+
+    ids.append(target_uuid)
+    project.contributor_ids = ids
+    db.session.commit()
+
+    # Best-effort: invite the user as a GitHub repo collaborator so they can
+    # read the private repository.  We use the *owner's* GitHub token.
+    owner = User.query.get(project.author_id)
+    owner_token = AuthService.refresh_github_token_if_needed(owner) if owner else None
+    github_invite_warning = None
+    if owner_token and target.github_login:
+        try:
+            GitHubService.add_repo_collaborator(
+                project.remote_repo_url, owner_token, target.github_login
+            )
+        except Exception as gh_exc:
+            github_invite_warning = str(gh_exc)
+    elif not target.github_login:
+        github_invite_warning = "User has no linked GitHub account; cannot invite to repository."
+
+    resp = {
+        "status": "added",
+        "project_id": str(project.id),
+        "contributor": {"id": str(target.id), "email": target.email, "full_name": target.full_name},
+    }
+    if github_invite_warning:
+        resp["github_warning"] = github_invite_warning
+    return jsonify(resp), 200
+
+
+@projects_bp.route('/<uuid:project_id>/contributors/<uuid:contributor_id>', methods=['DELETE'])
+@jwt_required()
+def remove_contributor(project_id, contributor_id):
+    """Remove a contributor from a project. Only the owner may do this."""
+    user_id = get_jwt_identity()
+    import uuid as _uuid
+    project = Project.query.get_or_404(project_id)
+
+    if str(project.author_id) != str(user_id):
+        raise CoProofError("Only the project owner can manage contributors.", code=403)
+
+    ids = [cid for cid in (project.contributor_ids or []) if str(cid) != str(contributor_id)]
+    if len(ids) == len(project.contributor_ids or []):
+        raise CoProofError("Contributor not found in this project.", code=404)
+
+    project.contributor_ids = ids
+    db.session.commit()
+
+    # Best-effort: remove the user from the GitHub repo collaborators.
+    owner = User.query.get(project.author_id)
+    owner_token = AuthService.refresh_github_token_if_needed(owner) if owner else None
+    removed_user = User.query.get(contributor_id)
+    github_warning = None
+    if owner_token and removed_user and removed_user.github_login:
+        try:
+            GitHubService.remove_repo_collaborator(
+                project.remote_repo_url, owner_token, removed_user.github_login
+            )
+        except Exception as gh_exc:
+            github_warning = str(gh_exc)
+
+    resp = {"status": "removed", "project_id": str(project.id), "contributor_id": str(contributor_id)}
+    if github_warning:
+        resp["github_warning"] = github_warning
+    return jsonify(resp), 200
+
+
 def _apply_post_merge_db_updates(project, metadata):
     """Apply node state updates in DB after a merged solve/split PR."""
     action = metadata.get("action")

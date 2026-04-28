@@ -21,7 +21,10 @@ import {
   SuggestResult,
   VerifyCompilerResult,
   VerifyNodeResponse,
-  PullRequestFilesResponse
+  PullRequestFilesResponse,
+  ContributorDto,
+  UserProfileDto,
+  GitHubInvitationDto
 } from './task.models';
 
 @Injectable({
@@ -174,6 +177,12 @@ export class TaskService {
       : {};
   }
 
+  getCurrentUser(): Observable<UserProfileDto> {
+    return this.http.get<UserProfileDto>(`${this.apiBaseUrl}/auth/me`, {
+      headers: this.authHeaders()
+    });
+  }
+
   /**
    * Command: Dispatches the code to the cluster.
    * Returns a Task ID immediately.
@@ -317,6 +326,49 @@ export class TaskService {
   getPullRequestFiles(projectId: string, pullNumber: number): Observable<PullRequestFilesResponse> {
     return this.http.get<PullRequestFilesResponse>(
       `${this.apiBaseUrl}/projects/${projectId}/pulls/${pullNumber}/files`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  deleteProject(projectId: string): Observable<unknown> {
+    return this.http.delete(`${this.apiBaseUrl}/projects/${projectId}`, {
+      headers: this.authHeaders()
+    });
+  }
+
+  addContributor(projectId: string, email: string): Observable<{ status: string; contributor: ContributorDto }> {
+    return this.http.post<{ status: string; contributor: ContributorDto }>(
+      `${this.apiBaseUrl}/projects/${projectId}/contributors`,
+      { email },
+      { headers: this.authHeaders() }
+    );
+  }
+
+  removeContributor(projectId: string, contributorId: string): Observable<unknown> {
+    return this.http.delete(
+      `${this.apiBaseUrl}/projects/${projectId}/contributors/${contributorId}`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  getGitHubInvitations(): Observable<{ invitations: GitHubInvitationDto[] }> {
+    return this.http.get<{ invitations: GitHubInvitationDto[] }>(
+      `${this.apiBaseUrl}/auth/github/invitations`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  acceptGitHubInvitation(invitationId: number): Observable<unknown> {
+    return this.http.post(
+      `${this.apiBaseUrl}/auth/github/invitations/${invitationId}/accept`,
+      {},
+      { headers: this.authHeaders() }
+    );
+  }
+
+  declineGitHubInvitation(invitationId: number): Observable<unknown> {
+    return this.http.delete(
+      `${this.apiBaseUrl}/auth/github/invitations/${invitationId}`,
       { headers: this.authHeaders() }
     );
   }
