@@ -569,8 +569,8 @@
                   {{ prExpandedMap.get(pr.number) ? '▲' : '▼' }}
                 </button>
                 <a [href]="pr.url" target="_blank" rel="noopener">Abrir</a>
-                <button (click)="mergePullRequest(pr)">Merge</button>
-                <button class="pr-discard-btn" (click)="discardPullRequest(pr)">Descartar</button>
+                <button *ngIf="isProjectOwner" (click)="mergePullRequest(pr)">Merge</button>
+                <button *ngIf="isProjectOwner" class="pr-discard-btn" (click)="discardPullRequest(pr)">Descartar</button>
               </div>
             </div>
 

@@ -32,7 +32,34 @@ def _compact_last_computation_result(payload):
 
 projects_bp = Blueprint('projects', __name__, url_prefix='/api/v1/projects')
 
-# In use
+
+def _try_delete_pr_fork(pr_info, upstream_full_name):
+    """
+    Best-effort: if the PR came from a fork, delete that fork using the fork owner's token.
+    Never raises — fork cleanup is non-critical.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+    try:
+        head_repo = (pr_info.get('head') or {}).get('repo') or {}
+        fork_full_name = head_repo.get('full_name')
+        if not fork_full_name or fork_full_name == upstream_full_name:
+            return  # not a cross-repo PR
+        fork_owner_login = (head_repo.get('owner') or {}).get('login')
+        if not fork_owner_login:
+            return
+        fork_owner = User.query.filter_by(github_login=fork_owner_login).first()
+        if not fork_owner:
+            return
+        fork_token = AuthService.refresh_github_token_if_needed(fork_owner)
+        if not fork_token:
+            return
+        result = GitHubService.delete_fork(fork_full_name, fork_token)
+        _log.info("Fork cleanup after PR: %s → %s", fork_full_name, result)
+    except Exception as exc:
+        _log.warning("Fork cleanup failed (non-critical): %s", exc)
+
+
 @projects_bp.route('', methods=['POST'])
 @jwt_required()
 def create_project():
@@ -91,6 +118,7 @@ def get_project_graph(project_id):
 @jwt_required()
 def get_project_graph_simple(project_id):
     """Return a simplified graph payload for frontend DAG rendering."""
+    user_id = get_jwt_identity()
     project = Project.query.get_or_404(project_id)
     nodes = Node.query.filter_by(project_id=project.id).order_by(Node.created_at.asc()).all()
 
@@ -114,6 +142,8 @@ def get_project_graph_simple(project_id):
     return jsonify({
         "project_id": str(project.id),
         "project_name": project.name,
+        "author_id": str(project.author_id),
+        "is_owner": str(project.author_id) == str(user_id),
         "count": len(payload),
         "nodes": payload,
     }), 200
@@ -178,6 +208,9 @@ def merge_pull_request(project_id, pr_number):
     user = User.query.get_or_404(user_id)
     project = Project.query.get_or_404(project_id)
 
+    if str(project.author_id) != str(user_id):
+        raise CoProofError("Only the project owner can merge pull requests.", code=403)
+
     github_token = AuthService.refresh_github_token_if_needed(user)
     if not github_token:
         raise CoProofError("You must link your GitHub account.", code=400)
@@ -202,6 +235,9 @@ def merge_pull_request(project_id, pr_number):
     updates = _apply_post_merge_db_updates(project, metadata)
     db.session.commit()
 
+    upstream_full_name = GitHubService.extract_github_full_name(project.remote_repo_url)
+    _try_delete_pr_fork(pr_info, upstream_full_name)
+
     return jsonify({
         "status": "merged",
         "project_id": str(project.id),
@@ -219,11 +255,19 @@ def close_pull_request(project_id, pr_number):
     user = User.query.get_or_404(user_id)
     project = Project.query.get_or_404(project_id)
 
+    if str(project.author_id) != str(user_id):
+        raise CoProofError("Only the project owner can close pull requests.", code=403)
+
     github_token = AuthService.refresh_github_token_if_needed(user)
     if not github_token:
         raise CoProofError("You must link your GitHub account.", code=400)
 
+    pr_info = GitHubService.get_pull_request(project.remote_repo_url, github_token, pr_number)
     result = GitHubService.close_pull_request(project.remote_repo_url, github_token, pr_number)
+
+    upstream_full_name = GitHubService.extract_github_full_name(project.remote_repo_url)
+    _try_delete_pr_fork(pr_info, upstream_full_name)
+
     return jsonify({
         "status": "closed",
         "project_id": str(project.id),
@@ -263,9 +307,42 @@ def delete_project(project_id):
     if str(project.author_id) != str(user_id):
         raise CoProofError("Only the project owner can delete a project.", code=403)
 
+    # Best-effort: delete the GitHub remote repository before removing the DB record.
+    owner = User.query.get(project.author_id)
+    owner_token = AuthService.refresh_github_token_if_needed(owner) if owner else None
+    github_delete_warning = None
+    if owner_token and project.remote_repo_url:
+        try:
+            GitHubService.delete_repo(project.remote_repo_url, owner_token)
+        except Exception as gh_exc:
+            github_delete_warning = str(gh_exc)
+
     db.session.delete(project)
     db.session.commit()
-    return jsonify({"status": "deleted", "project_id": str(project_id)}), 200
+    resp = {"status": "deleted", "project_id": str(project_id)}
+    if github_delete_warning:
+        resp["github_warning"] = github_delete_warning
+    return jsonify(resp), 200
+
+
+@projects_bp.route('/<uuid:project_id>/contributors', methods=['GET'])
+@jwt_required()
+def list_contributors(project_id):
+    """Return the contributor list for a project."""
+    user_id = get_jwt_identity()
+    project = Project.query.get_or_404(project_id)
+
+    # Only owner or existing contributors may view this
+    ids = list(project.contributor_ids or [])
+    if str(project.author_id) != str(user_id) and not any(str(cid) == str(user_id) for cid in ids):
+        raise CoProofError("Access denied.", code=403)
+
+    contributors = []
+    for cid in ids:
+        u = User.query.get(cid)
+        if u:
+            contributors.append({"id": str(u.id), "email": u.email, "full_name": u.full_name or ""})
+    return jsonify({"contributors": contributors}), 200
 
 
 @projects_bp.route('/<uuid:project_id>/contributors', methods=['POST'])

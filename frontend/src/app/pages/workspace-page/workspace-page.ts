@@ -58,6 +58,7 @@ interface Toast {
 export class WorkspacePageComponent implements OnInit, OnDestroy {
   projectId = '';
   projectName = '';
+  isProjectOwner = false;
   sessionLabel = 'Sesión Individual';
 
   private _status = '';
@@ -411,6 +412,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.taskService.getSimpleGraph(this.projectId).subscribe({
       next: (response) => {
         this.projectName = response.project_name || this.projectName;
+        this.isProjectOwner = response.is_owner === true;
         this.nodes = response.nodes || [];
         this.viewNodes = this.buildLayout(this.nodes);
         this.updateGraphViewBox(this.viewNodes);

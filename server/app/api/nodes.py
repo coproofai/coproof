@@ -19,6 +19,62 @@ from app.extensions import db
 
 nodes_bp = Blueprint('nodes', __name__, url_prefix='/api/v1/nodes')
 
+
+def _prepare_pr_context(project, user):
+    """
+    Determine the correct repo URL, token, and head-branch prefix to use
+    for branch/commit/PR operations based on whether the user owns the project.
+
+    For the project owner (private or public): operate directly on the upstream repo.
+    For contributors/public contributors on a PUBLIC repo: fork the upstream repo
+    into the user's GitHub account, sync the default branch, then operate on the fork.
+    The PR `head` must be `"fork_owner:branch"` so GitHub links it cross-repo.
+
+    Returns a dict:
+        {
+          "token": str,                # GitHub token to use for API calls
+          "repo_url": str,             # URL of the repo to create branch/commit on
+          "pr_repo_url": str,          # URL of the repo to open the PR against (always upstream)
+          "pr_head_prefix": str|None,  # If forked: "fork_owner", else None (use branch name as-is)
+        }
+    """
+    token = AuthService.refresh_github_token_if_needed(user)
+    if not token:
+        raise CoProofError("You must link your GitHub account to submit changes.", code=400)
+
+    is_owner = str(project.author_id) == str(user.id)
+    is_private = project.visibility == 'private'
+
+    # Owners always push directly; contributors on private repos also push directly
+    # (they were given push access via collaborator invite).
+    # Contributors on PUBLIC repos use a fork-based flow.
+    if is_owner or is_private:
+        return {
+            "token": token,
+            "repo_url": project.remote_repo_url,
+            "pr_repo_url": project.remote_repo_url,
+            "pr_head_prefix": None,
+        }
+
+    # Fork-based flow for public repo contributors
+    fork_url, fork_full_name = GitHubService.fork_or_get_fork(project.remote_repo_url, token)
+    GitHubService.sync_fork_branch(fork_full_name, token, project.default_branch)
+    fork_owner = fork_full_name.split('/')[0]
+
+    return {
+        "token": token,
+        "repo_url": fork_url,
+        "pr_repo_url": project.remote_repo_url,
+        "pr_head_prefix": fork_owner,
+    }
+
+
+def _build_pr_head(pr_context, branch_name):
+    """Return the correct `head` value for open_pull_request."""
+    prefix = pr_context.get("pr_head_prefix")
+    return f"{prefix}:{branch_name}" if prefix else branch_name
+
+
 # System prompt used when generating a .tex from a solved Lean theorem.
 # Uses the same **Theorem.** / *Proof.* Markdown bold/italic format as the
 # create-project FL2NL preview, so the workspace TeX renderer renders them
@@ -369,15 +425,16 @@ def solve_node(project_id, node_id):
     files_to_commit[tex_path] = generated_tex
     logger.info('solve_node: included generated .tex at %s', tex_path)
 
+    pr_ctx = _prepare_pr_context(project, user)
     GitHubService.create_branch(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["repo_url"],
+        token=pr_ctx["token"],
         new_branch=branch_name,
         from_branch=project.default_branch,
     )
     GitHubService.commit_files(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["repo_url"],
+        token=pr_ctx["token"],
         branch=branch_name,
         files=files_to_commit,
         commit_message=f"Solve node {node.name} ({str(node.id)[:8]}) via CoProof",
@@ -393,11 +450,11 @@ def solve_node(project_id, node_id):
     )
 
     pr_data = GitHubService.open_pull_request(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["pr_repo_url"],
+        token=pr_ctx["token"],
         title=pr_title,
         body=pr_body,
-        head_branch=branch_name,
+        head_branch=_build_pr_head(pr_ctx, branch_name),
         base_branch=project.default_branch,
     )
 
@@ -528,15 +585,16 @@ def create_computation_child_node(project_id, node_id):
         files_to_commit[definitions_path] = file_map[definitions_path]
 
     branch_name = f"create-compute-node-{str(parent_node.id)[:8]}-{uuid.uuid4().hex[:6]}"
+    pr_ctx = _prepare_pr_context(project, user)
     GitHubService.create_branch(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["repo_url"],
+        token=pr_ctx["token"],
         new_branch=branch_name,
         from_branch=project.default_branch,
     )
     GitHubService.commit_files(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["repo_url"],
+        token=pr_ctx["token"],
         branch=branch_name,
         files=files_to_commit,
         commit_message=f"Create computation node {child_name} under {parent_node.name} ({str(parent_node.id)[:8]}) via CoProof",
@@ -552,11 +610,11 @@ def create_computation_child_node(project_id, node_id):
         f"Child folder: {folder_segment}\n"
     )
     pr_data = GitHubService.open_pull_request(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["pr_repo_url"],
+        token=pr_ctx["token"],
         title=pr_title,
         body=pr_body,
-        head_branch=branch_name,
+        head_branch=_build_pr_head(pr_ctx, branch_name),
         base_branch=project.default_branch,
     )
 
@@ -695,15 +753,16 @@ def compute_node(project_id, node_id):
         }), 200
 
     branch_name = f"compute-node-{str(node.id)[:8]}-{uuid.uuid4().hex[:6]}"
+    pr_ctx = _prepare_pr_context(project, user)
     GitHubService.create_branch(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["repo_url"],
+        token=pr_ctx["token"],
         new_branch=branch_name,
         from_branch=project.default_branch,
     )
     GitHubService.commit_files(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["repo_url"],
+        token=pr_ctx["token"],
         branch=branch_name,
         files=artifact_bundle,
         commit_message=f"Compute node {node.name} ({str(node.id)[:8]}) via CoProof",
@@ -718,11 +777,11 @@ def compute_node(project_id, node_id):
     )
 
     pr_data = GitHubService.open_pull_request(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["pr_repo_url"],
+        token=pr_ctx["token"],
         title=pr_title,
         body=pr_body,
-        head_branch=branch_name,
+        head_branch=_build_pr_head(pr_ctx, branch_name),
         base_branch=project.default_branch,
     )
     db.session.commit()
@@ -907,15 +966,16 @@ def split_node(project_id, node_id):
 
     files_to_commit.update(tex_files)
 
+    pr_ctx = _prepare_pr_context(project, user)
     GitHubService.create_branch(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["repo_url"],
+        token=pr_ctx["token"],
         new_branch=branch_name,
         from_branch=project.default_branch,
     )
     GitHubService.commit_files(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["repo_url"],
+        token=pr_ctx["token"],
         branch=branch_name,
         files=files_to_commit,
         commit_message=f"Split node {node.name} ({str(node.id)[:8]}) via CoProof",
@@ -931,11 +991,11 @@ def split_node(project_id, node_id):
     )
 
     pr_data = GitHubService.open_pull_request(
-        remote_repo_url=project.remote_repo_url,
-        token=github_token,
+        remote_repo_url=pr_ctx["pr_repo_url"],
+        token=pr_ctx["token"],
         title=pr_title,
         body=pr_body,
-        head_branch=branch_name,
+        head_branch=_build_pr_head(pr_ctx, branch_name),
         base_branch=project.default_branch,
     )
 

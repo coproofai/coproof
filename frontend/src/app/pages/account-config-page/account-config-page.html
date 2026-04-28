@@ -1,4 +1,11 @@
     <div class="wrap">
+
+      <!-- ── Toast ── -->
+      <div class="toast" *ngIf="toast" [ngClass]="'toast-' + toast.type">
+        <span class="toast-msg">{{ toast.message }}</span>
+        <button class="toast-close" (click)="dismissToast()">✕</button>
+      </div>
+
       <div class="card">
         <h3>Ajustes de Cuenta</h3>
         <p class="load-msg" *ngIf="profileLoading">Cargando perfil…</p>
@@ -16,11 +23,6 @@
         <div class="field" *ngIf="githubLogin">
           <label>GitHub</label>
           <input [value]="githubLogin" disabled class="disabled-input" />
-        </div>
-
-        <div class="field">
-          <label>Contraseña (Cambiar)</label>
-          <input type="password" [(ngModel)]="password" name="password" placeholder="Dejar vacío para no cambiar" />
         </div>
 
         <div class="field">
@@ -49,6 +51,7 @@
       <!-- ── GitHub Invitations ── -->
       <div class="card invitations-card" *ngIf="githubLogin">
         <h3>Invitaciones de GitHub</h3>
+        <p class="invitations-notice">Estas son todas las invitaciones pendientes en tu cuenta de GitHub, no exclusivamente de CoProof. Verifica el nombre del repositorio antes de aceptar.</p>
         <p class="load-msg" *ngIf="invitationsLoading">Cargando invitaciones…</p>
         <p *ngIf="invitationMsg" class="message">{{ invitationMsg }}</p>
         <p class="hint" *ngIf="!invitationsLoading && invitations.length === 0">

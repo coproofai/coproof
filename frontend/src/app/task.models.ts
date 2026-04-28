@@ -65,6 +65,8 @@ export type NewNodeDto = NodeDto;
 export interface SimpleGraphResponse {
   project_id: string;
   project_name: string;
+  author_id: string;
+  is_owner: boolean;
   count: number;
   nodes: NodeDto[];
 }

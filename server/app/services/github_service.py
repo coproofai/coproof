@@ -421,6 +421,45 @@ class GitHubService:
         return files
 
     @staticmethod
+    def delete_repo(remote_repo_url, token):
+        """Delete the GitHub repository. Requires the owner's token with delete_repo scope."""
+        full_name = GitHubService.extract_github_full_name(remote_repo_url)
+        try:
+            response = requests.delete(
+                f"https://api.github.com/repos/{full_name}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if response.status_code == 204:
+            return {"deleted": True, "repo": full_name}
+        if response.status_code in (401, 403):
+            raise CoProofError("GitHub authentication failed or missing delete_repo permission.", code=401)
+        if response.status_code == 404:
+            raise CoProofError("Repository not found on GitHub.", code=404)
+        raise CoProofError(
+            f"GitHub repo deletion failed ({response.status_code}): {response.text}", code=502
+        )
+
+    @staticmethod
+    def delete_fork(fork_full_name, token):
+        """Delete a forked repository by its full_name (owner/repo). Best-effort, caller should catch."""
+        try:
+            response = requests.delete(
+                f"https://api.github.com/repos/{fork_full_name}",
+                headers=GitHubService.github_headers(token),
+                timeout=20,
+            )
+        except Exception:
+            return {"deleted": False, "reason": "network_error"}
+
+        if response.status_code == 204:
+            return {"deleted": True, "repo": fork_full_name}
+        return {"deleted": False, "reason": f"http_{response.status_code}"}
+
+    @staticmethod
     def get_repo_invitations(token):
         """List pending repository invitations for the authenticated user."""
         try:
@@ -592,6 +631,67 @@ class GitHubService:
             metadata["child_folder"] = child_folder_match.group(1).strip()
 
         return metadata
+
+    @staticmethod
+    def fork_or_get_fork(remote_repo_url, token):
+        """
+        Fork the upstream repo into the token owner's account (if not already forked).
+        Returns the full_name of the fork (e.g. "accountB/repo-name").
+        GitHub returns the fork immediately but actual readiness may take a few seconds;
+        we poll until the default branch ref is available.
+        """
+        import time
+        upstream_full_name = GitHubService.extract_github_full_name(remote_repo_url)
+
+        # Attempt to create fork (idempotent — returns existing fork if already forked)
+        try:
+            resp = requests.post(
+                f"https://api.github.com/repos/{upstream_full_name}/forks",
+                headers=GitHubService.github_headers(token),
+                json={},
+                timeout=30,
+            )
+        except (RequestsConnectionError, Timeout) as exc:
+            raise CoProofError("Could not reach GitHub API (network error).", code=502) from exc
+
+        if resp.status_code not in (200, 202):
+            if resp.status_code in (401, 403):
+                raise CoProofError("GitHub authentication failed while forking repository.", code=401)
+            raise CoProofError(f"GitHub fork failed ({resp.status_code}): {resp.text}", code=502)
+
+        fork_data = resp.json()
+        fork_full_name = fork_data.get('full_name')
+        fork_clone_url = fork_data.get('clone_url') or f"https://github.com/{fork_full_name}"
+
+        # Poll until the fork's default branch is ready (up to ~15 s)
+        default_branch = fork_data.get('default_branch', 'main')
+        for _ in range(6):
+            check = requests.get(
+                f"https://api.github.com/repos/{fork_full_name}/git/ref/heads/{default_branch}",
+                headers=GitHubService.github_headers(token),
+                timeout=10,
+            )
+            if check.status_code == 200:
+                break
+            time.sleep(3)
+
+        return fork_clone_url, fork_full_name
+
+    @staticmethod
+    def sync_fork_branch(fork_full_name, token, branch):
+        """
+        Sync a fork's branch with the upstream via GitHub's merge-upstream API.
+        Best-effort — silently ignores errors (e.g. if already in sync).
+        """
+        try:
+            requests.post(
+                f"https://api.github.com/repos/{fork_full_name}/merge-upstream",
+                headers=GitHubService.github_headers(token),
+                json={"branch": branch},
+                timeout=20,
+            )
+        except Exception:
+            pass
 
     @staticmethod
     def open_pull_request(remote_repo_url, token, title, body, head_branch, base_branch):

@@ -25,7 +25,6 @@ export class AccountConfigPageComponent implements OnInit {
   fullName = '';
   email = '';
   githubLogin = '';
-  password = '';
   language: 'es' | 'en' | 'pt' = 'es';
   theme: 'light' | 'dark' | 'system' = 'light';
   message = '';
@@ -41,6 +40,9 @@ export class AccountConfigPageComponent implements OnInit {
   invitationsLoading = false;
   invitationsError = '';
   invitationMsg = '';
+
+  toast: { message: string; type: 'success' | 'warning' } | null = null;
+  private _toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly taskService: TaskService,
@@ -121,7 +123,6 @@ export class AccountConfigPageComponent implements OnInit {
     }
     this.error = false;
     this.message = `Configuración guardada para ${this.fullName}.`;
-    this.password = '';
   }
 
   private loadOwnedProjects(): void {
@@ -151,12 +152,25 @@ export class AccountConfigPageComponent implements OnInit {
     });
   }
 
-  private _buildContributorList(p: ProjectDto): ContributorDto[] {
-    return (p.contributor_ids || []).map(id => ({ id, email: '…', full_name: '' }));
+  private _buildContributorList(_p: ProjectDto): ContributorDto[] {
+    return [];
   }
 
   toggleProject(vm: ProjectManageVm): void {
     vm.expanded = !vm.expanded;
+    if (vm.expanded && !vm.contributorsLoaded) {
+      this.taskService.getContributors(vm.project.id).subscribe({
+        next: (res) => {
+          vm.contributors = res.contributors || [];
+          vm.contributorsLoaded = true;
+          this.cdr.detectChanges();
+        },
+        error: () => {
+          vm.contributorsLoaded = true;
+          this.cdr.detectChanges();
+        }
+      });
+    }
     this.cdr.detectChanges();
   }
 
@@ -201,8 +215,14 @@ export class AccountConfigPageComponent implements OnInit {
   deleteProject(vm: ProjectManageVm): void {
     if (!confirm(`¿Seguro que quieres eliminar el proyecto "${vm.project.name}"? Esta acción no se puede deshacer.`)) return;
     this.taskService.deleteProject(vm.project.id).subscribe({
-      next: () => {
+      next: (res: any) => {
         this.ownedProjects = this.ownedProjects.filter(v => v.project.id !== vm.project.id);
+        const ghWarning: string | undefined = res?.github_warning;
+        if (ghWarning) {
+          this.showToast(`Proyecto "${vm.project.name}" eliminado del sistema. Aviso GitHub: ${ghWarning}`, 'warning');
+        } else {
+          this.showToast(`Proyecto "${vm.project.name}" eliminado del sistema y del repositorio de GitHub.`, 'success');
+        }
         this.cdr.detectChanges();
       },
       error: (err) => {
@@ -212,5 +232,21 @@ export class AccountConfigPageComponent implements OnInit {
         this.cdr.detectChanges();
       }
     });
+  }
+
+  showToast(message: string, type: 'success' | 'warning' = 'success'): void {
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+    this.toast = { message, type };
+    this.cdr.detectChanges();
+    this._toastTimer = setTimeout(() => {
+      this.toast = null;
+      this.cdr.detectChanges();
+    }, 5000);
+  }
+
+  dismissToast(): void {
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+    this.toast = null;
+    this.cdr.detectChanges();
   }
 }

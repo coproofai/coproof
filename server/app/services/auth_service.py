@@ -136,7 +136,7 @@ class AuthService:
         base_url = "https://github.com/login/oauth/authorize"
         params = {
             "client_id": os.environ.get('GITHUB_CLIENT_ID'),
-            "scope": os.environ.get('GITHUB_OAUTH_SCOPES', "repo,read:user,user:email"),
+            "scope": os.environ.get('GITHUB_OAUTH_SCOPES', "repo,delete_repo,read:user,user:email"),
             "state": secrets.token_urlsafe(16)
         }
 

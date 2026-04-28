@@ -336,6 +336,13 @@ export class TaskService {
     });
   }
 
+  getContributors(projectId: string): Observable<{ contributors: ContributorDto[] }> {
+    return this.http.get<{ contributors: ContributorDto[] }>(
+      `${this.apiBaseUrl}/projects/${projectId}/contributors`,
+      { headers: this.authHeaders() }
+    );
+  }
+
   addContributor(projectId: string, email: string): Observable<{ status: string; contributor: ContributorDto }> {
     return this.http.post<{ status: string; contributor: ContributorDto }>(
       `${this.apiBaseUrl}/projects/${projectId}/contributors`,
