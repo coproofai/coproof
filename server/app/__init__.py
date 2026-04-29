@@ -32,6 +32,7 @@ def create_app(config_class=None):
 
     lean_queue = app.config['CELERY_LEAN_QUEUE']
     computation_queue = app.config['CELERY_COMPUTATION_QUEUE']
+    cluster_computation_queue = app.config['CELERY_CLUSTER_COMPUTATION_QUEUE']
     git_engine_queue = app.config['CELERY_GIT_ENGINE_QUEUE']
     nl2fl_queue = app.config['CELERY_NL2FL_QUEUE']
     agents_queue = app.config['CELERY_AGENTS_QUEUE']
@@ -42,6 +43,7 @@ def create_app(config_class=None):
         'task_queues': (
             Queue(lean_queue, Exchange(lean_queue, type='direct'), routing_key=lean_queue),
             Queue(computation_queue, Exchange(computation_queue, type='direct'), routing_key=computation_queue),
+            Queue(cluster_computation_queue, Exchange(cluster_computation_queue, type='direct'), routing_key=cluster_computation_queue),
             Queue(git_engine_queue, Exchange(git_engine_queue, type='direct'), routing_key=git_engine_queue),
             Queue(nl2fl_queue, Exchange(nl2fl_queue, type='direct'), routing_key=nl2fl_queue),
             Queue(agents_queue, Exchange(agents_queue, type='direct'), routing_key=agents_queue),

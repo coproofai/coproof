@@ -158,6 +158,49 @@
               <!-- ── Action submenu ── -->
               <div class="action-submenu" *ngIf="activeAction">
 
+                <!-- create-computation: model selection + confirmation (tex generated via FL→NL) -->
+                <div *ngIf="activeAction === 'create-computation'" class="submenu-body">
+                  <p class="submenu-hint">Selecciona un modelo para generar el archivo <code>.tex</code> del nodo hijo a partir del esqueleto Lean (igual que en los flujos Resolver y Dividir).</p>
+
+                  <div class="solve-model-row">
+                    <div class="solve-model-field">
+                      <label class="field-label">Modelo para generar .tex <span class="field-required">*</span></label>
+                      <select [(ngModel)]="createComputeModelId" name="createComputeModelId"
+                        (ngModelChange)="onCreateComputeModelChange()"
+                        class="solve-model-select" [disabled]="isBlocked">
+                        <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                        <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                      </select>
+                    </div>
+                    <div class="solve-model-field" *ngIf="createComputeModelId">
+                      <label class="field-label">API Key</label>
+                      <div *ngIf="createComputeMaskedKey" class="masked-key-sm">{{ createComputeMaskedKey }} ✓</div>
+                      <div *ngIf="!createComputeMaskedKey" class="api-key-row-sm">
+                        <input type="password" [(ngModel)]="createComputeApiKeyInput" name="createComputeApiKeyInput"
+                          placeholder="sk-…" autocomplete="off" [disabled]="isBlocked" />
+                        <button class="btn-save-sm"
+                          [disabled]="createComputeApiKeySaving || !createComputeApiKeyInput.trim() || isBlocked"
+                          (click)="saveCreateComputeApiKey()">
+                          {{ createComputeApiKeySaving ? '…' : 'Guardar' }}
+                        </button>
+                      </div>
+                      <p *ngIf="createComputeApiKeyError" class="solve-key-error">{{ createComputeApiKeyError }}</p>
+                    </div>
+                  </div>
+
+                  <p *ngIf="isActionRunning && createComputePhase" class="ai-auto-phase">⟳ {{ createComputePhase }}</p>
+
+                  <button class="submenu-confirm"
+                    [disabled]="isBlocked || !createComputeModelId"
+                    (click)="createComputationChildNode()">
+                    <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                    <span>{{ isActionRunning ? 'Creando…' : 'Crear Nodo de Computación' }}</span>
+                  </button>
+                </div>
+
+                <!-- Submenu tabs — only for actions that need them -->
+                <ng-container *ngIf="activeAction !== 'create-computation'">
+
                 <!-- Submenu tabs -->
                 <div class="submenu-tabs">
                   <button class="submenu-tab" [class.submenu-tab-active]="actionMode === 'nl'" (click)="actionMode = 'nl'">Lenguaje Natural</button>
@@ -282,10 +325,7 @@
 
                   <!-- All other actions: not yet implemented -->
                   <ng-container *ngIf="activeAction !== 'solve' && activeAction !== 'split'">
-                    <p class="submenu-hint">
-                      <ng-container *ngIf="activeAction === 'create-computation'">Describe en lenguaje natural la computación que quieres crear y la IA configurará el nodo.</ng-container>
-                      <ng-container *ngIf="activeAction !== 'create-computation'">Describe en lenguaje natural lo que quieres lograr y la IA generará el código Lean.</ng-container>
-                    </p>
+                    <p class="submenu-hint">Describe en lenguaje natural lo que quieres lograr y la IA generará el código Lean.</p>
                     <textarea class="submenu-input" rows="3" placeholder="Ej: Verificar que el rango de valores es válido…" disabled></textarea>
                     <button class="submenu-confirm" disabled>Próximamente</button>
                   </ng-container>
@@ -294,16 +334,6 @@
 
                 <!-- FL tab -->
                 <div *ngIf="actionMode === 'fl'" class="submenu-body">
-                  <ng-container *ngIf="activeAction === 'create-computation'">
-                    <p class="submenu-hint">Confirma para crear el nodo de computación hijo. Podrás configurar el código una vez creado.</p>
-                    <button class="submenu-confirm"
-                      [disabled]="isBlocked"
-                      (click)="createComputationChildNode(); activeAction = null">
-                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
-                      <span>{{ isActionRunning ? 'Creando…' : 'Crear Nodo' }}</span>
-                    </button>
-                  </ng-container>
-                  <ng-container *ngIf="activeAction !== 'create-computation'">
                     <p class="submenu-hint">Edita el código Lean y confirma para enviar la acción.</p>
                     <textarea class="submenu-input" rows="8" [(ngModel)]="actionLeanCode" name="actionLeanCode" placeholder="theorem …"></textarea>
 
@@ -367,7 +397,6 @@
                       <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
                       <span>{{ isActionRunning ? 'Procesando…' : 'Confirmar' }}</span>
                     </button>
-                  </ng-container>
                 </div>
 
                 <!-- AI tab -->
@@ -430,27 +459,83 @@
 
                 </div>
 
+                </ng-container><!-- /ng-container actions with tabs -->
+
               </div><!-- /action-submenu -->
 
               <!-- Computation form (shown only when compute + FL) -->
               <div class="computation-box" *ngIf="isComputationNode && activeAction === 'compute' && actionMode === 'fl'">
-            <p class="section-label">Payload Computation</p>
-            <label class="field-label">Entrypoint</label>
-            <input [(ngModel)]="computationEntrypoint" name="computationEntrypoint" type="text" placeholder="run" />
-            <label class="field-label">Lean Statement</label>
-            <input [(ngModel)]="computationLeanStatement" name="computationLeanStatement" type="text" placeholder="GoalDef" />
-            <label class="field-label">Target JSON</label>
-            <textarea [(ngModel)]="computationTargetJson" name="computationTargetJson" rows="3" placeholder='{ "kind": "range_check" }'></textarea>
-            <label class="field-label">Input Data JSON</label>
-            <textarea [(ngModel)]="computationInputJson" name="computationInputJson" rows="3" placeholder='{ "samples": 1000 }'></textarea>
-            <label class="field-label">Código Python</label>
-            <textarea [(ngModel)]="computationCode" name="computationCode" rows="7" placeholder="def run(input_data, target): ..."></textarea>
-            <div class="inline-fields">
-              <label class="field-label timeout-label">Timeout (s)</label>
-              <input [(ngModel)]="computationTimeoutSeconds" name="computationTimeoutSeconds" type="number" min="1" max="900" />
-              <button (click)="submitCompute()">Submit Compute</button>
-            </div>
-            </div><!-- /computation-box -->
+                <p class="section-label">Payload Computation</p>
+
+                <!-- Backend + Entrypoint side by side -->
+                <div class="comp-row-2">
+                  <div class="comp-field">
+                    <label class="field-label">Backend</label>
+                    <select [(ngModel)]="computationLanguage" name="computationLanguage" class="solve-model-select">
+                      <option value="python">Python (worker local)</option>
+                      <option value="mpi">MPI (clúster RPI)</option>
+                    </select>
+                  </div>
+                  <div class="comp-field">
+                    <label class="field-label">Entrypoint</label>
+                    <input [(ngModel)]="computationEntrypoint" name="computationEntrypoint" type="text" placeholder="run" />
+                  </div>
+                </div>
+
+                <!-- MPI hint -->
+                <p *ngIf="computationLanguage === 'mpi'" class="comp-hint">
+                  MPI: <code>input_data</code> debe ser una lista; el runner la distribuye entre los rangos automáticamente. Tu función recibe la porción local con la misma firma: <code>run(input_data, target)</code>.
+                </p>
+
+                <label class="field-label">Lean Statement</label>
+                <input [(ngModel)]="computationLeanStatement" name="computationLeanStatement" type="text" placeholder="GoalDef" />
+
+                <label class="field-label">Target JSON</label>
+                <textarea [(ngModel)]="computationTargetJson" name="computationTargetJson" rows="3"
+                  [placeholder]="compTargetPlaceholder"></textarea>
+
+                <label class="field-label">Input Data JSON</label>
+                <textarea [(ngModel)]="computationInputJson" name="computationInputJson" rows="3"
+                  [placeholder]="compInputPlaceholder"></textarea>
+
+                <label class="field-label">{{ compCodeLabel }}</label>
+                <textarea [(ngModel)]="computationCode" name="computationCode" rows="8"
+                  [placeholder]="compCodePlaceholder"></textarea>
+
+                <div class="inline-fields">
+                  <label class="field-label timeout-label">Timeout (s)</label>
+                  <input [(ngModel)]="computationTimeoutSeconds" name="computationTimeoutSeconds" type="number" min="1" max="900" />
+                </div>
+
+                <!-- Model selector for .tex generation (same pattern as Resolver / Dividir) -->
+                <div class="model-selector-row">
+                  <label class="field-label">Modelo para generar .tex (opcional)</label>
+                  <select [(ngModel)]="computeModelId" name="computeModelId" class="solve-model-select"
+                    (ngModelChange)="onComputeModelChange()">
+                    <option value="">— Sin generación de .tex —</option>
+                    <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }}</option>
+                  </select>
+                </div>
+                <ng-container *ngIf="computeModelId">
+                  <div *ngIf="computeMaskedKey" class="api-key-saved">
+                    Clave guardada: <code>{{ computeMaskedKey }}</code>
+                  </div>
+                  <div *ngIf="!computeMaskedKey" class="api-key-row">
+                    <input [(ngModel)]="computeApiKeyInput" name="computeApiKeyInput" type="password"
+                      placeholder="API key para este modelo" class="api-key-input" />
+                    <button class="api-key-save-btn" [disabled]="computeApiKeySaving || !computeApiKeyInput.trim()"
+                      (click)="saveComputeApiKey()">
+                      {{ computeApiKeySaving ? 'Guardando…' : 'Guardar' }}
+                    </button>
+                  </div>
+                  <p *ngIf="computeApiKeyError" class="api-key-error">{{ computeApiKeyError }}</p>
+                </ng-container>
+
+                <button class="comp-submit-btn" [disabled]="isBlocked" (click)="submitCompute()">
+                  <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                  <span>{{ isActionRunning ? 'Ejecutando…' : 'Submit Compute' }}</span>
+                </button>
+              </div><!-- /computation-box -->
             </div><!-- /sectionActions body -->
           </div><!-- /collapsible-section actions -->
 

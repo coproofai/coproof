@@ -578,28 +578,50 @@
     .computation-box {
       border: 1px solid #e5e7eb;
       border-radius: 8px;
-      padding: 10px;
+      padding: 12px;
       background: #f8fafc;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
     }
+    .comp-row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .comp-field { display: flex; flex-direction: column; gap: 4px; }
+    .comp-hint {
+      font-size: 0.78rem;
+      color: #6b7280;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 6px 9px;
+      margin: 0;
+      line-height: 1.5;
+    }
+    .comp-hint code { font-family: 'Fira Code', monospace; font-size: 0.78rem; color: #1d4ed8; }
+    .comp-submit-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      border-radius: 8px;
+      background: #1f2937;
+      color: #fff;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .comp-submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .comp-submit-btn:not(:disabled):hover { background: #374151; }
     .inline-fields {
       display: grid;
       grid-template-columns: auto 1fr auto;
       gap: 6px;
       align-items: center;
-    }
-    .inline-fields button {
-      border: none;
-      border-radius: 8px;
-      background: #1f2937;
-      color: #fff;
-      padding: 8px 10px;
-      cursor: pointer;
-      font-size: 0.82rem;
-      font-weight: 700;
-      white-space: nowrap;
     }
     .timeout-label { margin: 0; white-space: nowrap; font-size: 0.78rem; color: #6b7280; font-weight: 600; }
 

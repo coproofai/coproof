@@ -3,6 +3,7 @@
 .pytest_cache/
 __pycache__/
 
+.env
 
 server/.env
 server/.env.*

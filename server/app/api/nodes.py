@@ -94,6 +94,26 @@ _SOLVE_FL2NL_SYSTEM_PROMPT = (
 )
 
 
+_COMPUTE_FL2NL_SYSTEM_PROMPT = (
+    "You are an expert in formal verification and mathematical writing. "
+    "Given a Lean 4 computation certificate (an axiom declaration backed by empirical evidence) "
+    "and a plain-text evidence summary, produce a structured LaTeX section that documents the result.\n\n"
+    "Output exactly the following four blocks, in this order, with no additional text outside them:\n\n"
+    "1. An unnumbered section heading titled 'Computation Evidence'.\n"
+    "2. A bold label 'Statement.' followed by one sentence describing what property was verified, "
+    "using inline math notation where appropriate.\n"
+    "3. A bold label 'Method.' followed by one or two sentences describing how the computation was "
+    "carried out (e.g. MPI-distributed sampling across cluster nodes, number of samples, range checked).\n"
+    "4. A bold label 'Evidence Summary.' followed by a concise description of the empirical results, "
+    "using inline math notation for any formulae or ranges.\n\n"
+    "Rules:\n"
+    "- Use only standard LaTeX commands. Do NOT use theorem, proof, or equation environments.\n"
+    "- Do NOT reproduce any Lean 4 syntax in your output.\n"
+    "- Do NOT add text outside the four blocks above.\n"
+    "- Keep each block to at most three sentences."
+)
+
+
 def _try_generate_tex(user_id: str, lean_code: str) -> str | None:
     """
     Attempt FL→NL tex generation using the user's first available saved API key.
@@ -479,6 +499,11 @@ def create_computation_child_node(project_id, node_id):
     """Create a computation child node through a feature-branch PR, mirroring split/solve workflow."""
     user_id = get_jwt_identity()
     data = request.get_json() or {}
+    model_id = (data.get('model_id') or '').strip()
+    api_key_body = (data.get('api_key') or '').strip()
+
+    if not model_id:
+        return jsonify({"error": "Missing payload: model_id (required to generate .tex via FL→NL)"}), 400
 
     user = User.query.get_or_404(user_id)
     project = Project.query.get_or_404(project_id)
@@ -544,6 +569,31 @@ def create_computation_child_node(project_id, node_id):
         parent_theorem_signature=parent_signature_data['signature'],
     )
 
+    # Resolve API key: prefer request body, fall back to user's saved key for this model.
+    api_key = _resolve_api_key(user_id, model_id, api_key_body)
+    if not api_key:
+        return jsonify({
+            "error": "api_key is required (provide in body or save one for this model via /api/v1/translate/api-key)"
+        }), 400
+
+    # Generate .tex from the child's Lean skeleton via FL→NL, same as split child nodes.
+    generated_tex = TranslateClient.fl2nl_synchronous(
+        payload={
+            'lean_code': child_files['child_main_content'],
+            'model_id': model_id,
+            'api_key': api_key,
+            'system_prompt': _SPLIT_CHILD_FL2NL_SYSTEM_PROMPT,
+        },
+        timeout=120,
+    )
+    if not generated_tex:
+        return jsonify({
+            "error": "FL→NL generation failed or timed out. The .tex could not be produced. "
+                     "Check that the model and API key are correct and the NL2FL worker is running."
+        }), 502
+    child_tex_content = generated_tex
+    logger.info('create_computation_child_node: generated .tex via FL→NL for %s', child_name)
+
     parent_main_with_injection = ComputationService.inject_child_import_and_usage(
         parent_main_content,
         child_files['child_main_path'],
@@ -578,7 +628,7 @@ def create_computation_child_node(project_id, node_id):
     files_to_commit = {
         parent_main_path: parent_main_with_injection,
         child_files['child_main_path']: child_files['child_main_content'],
-        child_files['child_tex_path']: child_files['child_tex_content'],
+        child_files['child_tex_path']: child_tex_content,
         child_files['child_program_path']: child_files['child_program_template'],
     }
     for definitions_path in LeanService.definition_file_paths(file_map):
@@ -608,6 +658,7 @@ def create_computation_child_node(project_id, node_id):
         f"Affected nodes: {affected_nodes_text}\n"
         f"Base node ID: {parent_node.id}\n"
         f"Child folder: {folder_segment}\n"
+        f"Includes: generated main.tex (via FL→NL, model: {model_id})\n"
     )
     pr_data = GitHubService.open_pull_request(
         remote_repo_url=pr_ctx["pr_repo_url"],
@@ -658,6 +709,9 @@ def compute_node(project_id, node_id):
     node_main_path = GitHubService.extract_repo_path_from_node_url(node.url)
     if not node_main_path or not node_main_path.endswith('.lean'):
         raise CoProofError("Node URL does not map to a valid .lean file path.", code=400)
+
+    model_id = (data.get('model_id') or '').strip()
+    api_key_body = (data.get('api_key') or '').strip()
 
     request_data = ComputationService.normalize_execution_request(data)
     computation_result = ComputationClient.run_computation(request_data)
@@ -721,6 +775,38 @@ def compute_node(project_id, node_id):
             "computation": computation_summary,
             "lean_wrapper_verification": lean_verification,
         }), 400
+
+    # Lean verification passed — enhance .tex via FL→NL before opening the PR.
+    if model_id:
+        api_key = _resolve_api_key(user_id, model_id, api_key_body)
+        if api_key:
+            tex_path = node_main_path.rsplit('/', 1)[0] + '/main.tex' if '/' in node_main_path else 'main.tex'
+            # Build a context string: Lean certificate + evidence summary for the model.
+            lean_artifact_content = artifact_bundle.get(node_main_path, '')
+            evidence_summary = computation_summary.get('summary') or ''
+            records_count = computation_summary.get('records_count', 0)
+            rank_hosts = computation_result.get('rank_hosts') or {}
+            context_for_model = (
+                f"{lean_artifact_content}\n\n"
+                f"-- Evidence summary: {evidence_summary}\n"
+                f"-- Total records: {records_count}\n"
+                f"-- Cluster nodes used: {', '.join(rank_hosts.values()) if rank_hosts else 'unknown'}\n"
+                f"-- Verdict: {'sufficient' if computation_result.get('sufficient') else 'insufficient'}\n"
+            )
+            generated_tex = TranslateClient.fl2nl_synchronous(
+                payload={
+                    'lean_code': context_for_model,
+                    'model_id': model_id,
+                    'api_key': api_key,
+                    'system_prompt': _COMPUTE_FL2NL_SYSTEM_PROMPT,
+                },
+                timeout=120,
+            )
+            if generated_tex:
+                artifact_bundle[tex_path] = generated_tex
+                logger.info('compute_node: enhanced .tex generated at %s', tex_path)
+            else:
+                logger.warning('compute_node: FL→NL tex generation failed or timed out; keeping static tex')
 
     repository_files = GitHubService.get_repository_files_map(
         remote_repo_url=project.remote_repo_url,

@@ -211,6 +211,8 @@ export interface CreateComputationChildPayload {
   entrypoint?: string;
   target?: Record<string, unknown>;
   lean_statement?: string;
+  model_id?: string;
+  api_key?: string;
 }
 
 export interface ComputeNodePayload {

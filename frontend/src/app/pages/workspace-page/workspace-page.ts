@@ -97,10 +97,11 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   prFileCollapsedMap: Map<number, Set<string>> = new Map();
   computationCode = 'def run(input_data, target):\n    return {"evidence": {"input": input_data, "target": target}, "sufficient": True, "summary": "Demo computation succeeded"}\n';
   computationTargetJson = '{\n  "kind": "range_check",\n  "description": "f(x) in [0, 2] for x in [0,1]"\n}';
-  computationInputJson = '{\n  "samples": 1000\n}';
+  computationInputJson = '[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]';
   computationLeanStatement = 'GoalDef';
   computationEntrypoint = 'run';
   computationTimeoutSeconds = 120;
+  computationLanguage: 'python' | 'mpi' = 'python';
 
   activeTab: 'node' | 'tex' | 'prs' | 'defs' = 'node';
   sidebarCollapsed = false;
@@ -160,6 +161,19 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   aiAutoApiKeyError = '';
   aiAutoPrompt = '';
   aiAutoPhase = '';          // current phase label shown inside the submenu
+  // Model selector for create-computation (used to generate .tex via FL→NL, same as split child nodes)
+  createComputeModelId = '';
+  createComputeMaskedKey: string | null = null;
+  createComputeApiKeyInput = '';
+  createComputeApiKeySaving = false;
+  createComputeApiKeyError = '';
+  createComputePhase = '';
+  // Model selector for execute-computation (used to generate enhanced .tex after Lean verification)
+  computeModelId = '';
+  computeMaskedKey: string | null = null;
+  computeApiKeyInput = '';
+  computeApiKeySaving = false;
+  computeApiKeyError = '';
   get isBlocked(): boolean { return this.isVerifying || this.isActionRunning; }
 
   sidebarWidth = 420;
@@ -267,6 +281,28 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
 
   get isComputationNode(): boolean {
     return this.selectedNode?.node_kind === 'computation';
+  }
+
+  get compTargetPlaceholder(): string {
+    return this.computationLanguage === 'mpi'
+      ? '{\n  "kind": "range_check",\n  "lo": 0,\n  "hi": 1\n}'
+      : '{\n  "kind": "range_check",\n  "description": "f(x) in [0,1] for x in [0,1]"\n}';
+  }
+
+  get compInputPlaceholder(): string {
+    return this.computationLanguage === 'mpi'
+      ? '[0, 0.25, 0.5, 0.75, 1.0]'
+      : '{\n  "samples": 1000\n}';
+  }
+
+  get compCodePlaceholder(): string {
+    return this.computationLanguage === 'mpi'
+      ? 'def run(input_data, target):\n    lo, hi = target["lo"], target["hi"]\n    records = [{"x": x, "fx": x**2, "ok": lo <= x**2 <= hi} for x in (input_data or [])]\n    sufficient = bool(records) and all(r["ok"] for r in records)\n    return {"evidence": records, "sufficient": sufficient, "summary": f"{len(records)} samples ok={sufficient}", "records": records}'
+      : 'def run(input_data, target):\n    return {"evidence": {"input": input_data, "target": target}, "sufficient": True, "summary": "ok", "records": []}';
+  }
+
+  get compCodeLabel(): string {
+    return this.computationLanguage === 'mpi' ? 'Código MPI (Python + mpi4py)' : 'Código Python';
   }
 
   @HostListener('window:mouseup')
@@ -635,15 +671,24 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   }
 
   createComputationChildNode() {
-    if (!this.selectedNode || this.isComputationNode || this.isBlocked) {
+    if (!this.selectedNode || this.isComputationNode || this.isBlocked) return;
+    if (!this.createComputeModelId) {
+      this.status = 'Debes seleccionar un modelo para generar el archivo .tex del nodo.';
       return;
     }
     this.isActionRunning = true;
-
+    this.createComputePhase = 'Creando nodo de computación…';
     this.status = 'Creando nodo de computacion...';
-    this.taskService.createComputationChildNode(this.projectId, this.selectedNode.id, {}).subscribe({
+
+    const apiKey = !this.createComputeMaskedKey ? (this.createComputeApiKeyInput.trim() || undefined) : undefined;
+
+    this.taskService.createComputationChildNode(this.projectId, this.selectedNode.id, {
+      model_id: this.createComputeModelId,
+      ...(apiKey ? { api_key: apiKey } : {}),
+    }).subscribe({
       next: (response) => {
         this.isActionRunning = false;
+        this.createComputePhase = '';
         this.lastResponse = response;
         this.status = 'Solicitud de creación enviada. Se creó un PR para el nuevo nodo de computación.';
         this.loadGraph(false);
@@ -651,6 +696,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
       },
       error: (error) => {
         this.isActionRunning = false;
+        this.createComputePhase = '';
         if (this.handleAuthError(error)) {
           this.lastResponse = error?.error || error;
           return;
@@ -677,14 +723,17 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.isActionRunning = true;
     this.lastResultSource = 'Ejecutar Computación';
     this.status = 'Enviando computacion...';
+    const computeApiKey = !this.computeMaskedKey ? (this.computeApiKeyInput.trim() || undefined) : undefined;
     this.taskService.computeNode(this.projectId, this.selectedNode.id, {
-      language: 'python',
+      language: this.computationLanguage,
       code: this.computationCode,
       entrypoint: this.computationEntrypoint.trim() || 'run',
       input_data: parsedInput,
       target: parsedTarget as Record<string, unknown>,
       lean_statement: this.computationLeanStatement.trim(),
       timeout_seconds: this.computationTimeoutSeconds,
+      ...(this.computeModelId ? { model_id: this.computeModelId } : {}),
+      ...(this.computeModelId && computeApiKey ? { api_key: computeApiKey } : {}),
     }).subscribe({
       next: (response) => {
         this.isActionRunning = false;
@@ -1087,6 +1136,46 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.taskService.saveApiKey(this.aiAutoModelId, this.aiAutoApiKeyInput).subscribe({
       next: status => { this.aiAutoMaskedKey = status.masked_key; this.aiAutoApiKeyInput = ''; this.aiAutoApiKeySaving = false; },
       error: err => { this.aiAutoApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.aiAutoApiKeySaving = false; },
+    });
+  }
+
+  onCreateComputeModelChange(): void {
+    this.createComputeMaskedKey = null;
+    this.createComputeApiKeyError = '';
+    if (!this.createComputeModelId) return;
+    this.taskService.getApiKeyStatus(this.createComputeModelId).subscribe({
+      next: s => { this.createComputeMaskedKey = s.has_key ? s.masked_key : null; },
+      error: () => { this.createComputeMaskedKey = null; },
+    });
+  }
+
+  saveCreateComputeApiKey(): void {
+    if (!this.createComputeApiKeyInput.trim() || !this.createComputeModelId) return;
+    this.createComputeApiKeySaving = true;
+    this.createComputeApiKeyError = '';
+    this.taskService.saveApiKey(this.createComputeModelId, this.createComputeApiKeyInput).subscribe({
+      next: status => { this.createComputeMaskedKey = status.masked_key; this.createComputeApiKeyInput = ''; this.createComputeApiKeySaving = false; },
+      error: err => { this.createComputeApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.createComputeApiKeySaving = false; },
+    });
+  }
+
+  onComputeModelChange(): void {
+    this.computeMaskedKey = null;
+    this.computeApiKeyError = '';
+    if (!this.computeModelId) return;
+    this.taskService.getApiKeyStatus(this.computeModelId).subscribe({
+      next: s => { this.computeMaskedKey = s.has_key ? s.masked_key : null; },
+      error: () => { this.computeMaskedKey = null; },
+    });
+  }
+
+  saveComputeApiKey(): void {
+    if (!this.computeApiKeyInput.trim() || !this.computeModelId) return;
+    this.computeApiKeySaving = true;
+    this.computeApiKeyError = '';
+    this.taskService.saveApiKey(this.computeModelId, this.computeApiKeyInput).subscribe({
+      next: status => { this.computeMaskedKey = status.masked_key; this.computeApiKeyInput = ''; this.computeApiKeySaving = false; },
+      error: err => { this.computeApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.computeApiKeySaving = false; },
     });
   }
 

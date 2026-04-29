@@ -1,0 +1,42 @@
+[Unit]
+Description=Coproof Cluster REST API
+Documentation=https://github.com/your-org/Project_II
+After=network.target slurmctld.service
+Wants=slurmctld.service
+
+[Service]
+Type=simple
+# Rocky Linux: service runs as mpiuser who has permission to call sbatch/mpirun
+User=__RUN_USER__
+WorkingDirectory=__SCRIPT_DIR__
+
+# Credentials and tuning — injected by setup.sh
+Environment=CLUSTER_API_KEY=__API_KEY__
+Environment=CLUSTER_API_PORT=8765
+Environment=SLURM_PARTITION=debug
+Environment=MPI_NP=3
+Environment=CLUSTER_JOBS_DIR=/srv/nfs/shared/cluster_jobs
+Environment=OPENMPI_BIN=/usr/lib64/openmpi/bin
+Environment=POLL_INTERVAL_SECONDS=3
+# Rocky Linux: OpenMPI binaries may not be on PATH in non-interactive sessions.
+# Adjust this path if mpirun lives elsewhere (e.g. /usr/lib64/openmpi/bin).
+Environment=PATH=/usr/lib64/openmpi/bin:/usr/local/bin:/usr/bin:/bin
+
+ExecStart=__VENV_DIR__/bin/python __SCRIPT_DIR__/app.py
+
+# Restart on non-zero exit, but not on clean stop
+Restart=on-failure
+RestartSec=5
+
+# Harden execution environment
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectSystem=full
+
+# Logging goes to journald; view with: journalctl -u cluster_api -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cluster_api
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,197 @@
+"""
+MPI runner — rendered by job_manager.py for each submitted job.
+
+Execution model:
+  - Each MPI rank loads the user entrypoint.
+  - If input_data is a list, it is sliced evenly across all ranks.
+  - If input_data is not a list (or there is only one rank), rank 0 runs the
+    full input; other ranks are idle.
+  - Rank 0 gathers every partial result, merges them, and writes result.json.
+    sufficient = True only when ALL ranks return sufficient=True.
+    evidence   = list of per-rank evidence values (or single value if 1 rank).
+    records    = concatenation of all per-rank records lists.
+    stdout/stderr are annotated with "[rank N]" prefixes and merged.
+"""
+
+import contextlib
+import io
+import json
+import socket
+import sys
+import traceback
+from pathlib import Path
+
+from mpi4py import MPI
+
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
+hostname = socket.gethostname()
+
+WORKDIR = Path("{{ workdir }}")
+
+
+# ---------------------------------------------------------------------------
+# Result normalisation (mirrors computation/computation_service.py)
+# ---------------------------------------------------------------------------
+
+def normalize_result(value):
+    if isinstance(value, dict):
+        sufficient = value.get("sufficient")
+        if not isinstance(sufficient, bool):
+            raise ValueError(
+                "Computation result dict must contain a boolean 'sufficient' field."
+            )
+        return {
+            "evidence": value.get("evidence"),
+            "sufficient": sufficient,
+            "summary": value.get("summary"),
+            "records": value.get("records") or [],
+        }
+    if (
+        isinstance(value, (list, tuple))
+        and len(value) == 2
+        and isinstance(value[1], bool)
+    ):
+        return {
+            "evidence": value[0],
+            "sufficient": value[1],
+            "summary": None,
+            "records": [],
+        }
+    raise ValueError(
+        "Entrypoint must return {'evidence': ..., 'sufficient': bool} or "
+        "(evidence, bool)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    payload = json.loads((WORKDIR / "payload.json").read_text(encoding="utf-8"))
+    source_code = (WORKDIR / "user_code.py").read_text(encoding="utf-8")
+
+    input_data = payload.get("input_data")
+    target = payload.get("target")
+    entrypoint_name = payload["entrypoint"]
+
+    # --- distribute input_data slices to ranks ---
+    if isinstance(input_data, list) and size > 1:
+        total = len(input_data)
+        chunk = max(1, (total + size - 1) // size)
+        local_data = input_data[rank * chunk : (rank + 1) * chunk]
+        # Ranks beyond the data length get an empty slice and stay idle
+        if not local_data:
+            local_data = None
+    else:
+        # Scalar / dict / None input: only rank 0 runs, others are idle
+        local_data = input_data if rank == 0 else None
+
+    # --- execute user code locally ---
+    local_result = None
+    local_stdout = ""
+    local_stderr = ""
+    local_error = None
+    local_traceback_text = ""
+
+    if local_data is not None or rank == 0:
+        global_scope = {"__name__": "__main__"}
+        stdout_buf = io.StringIO()
+        stderr_buf = io.StringIO()
+
+        try:
+            with (
+                contextlib.redirect_stdout(stdout_buf),
+                contextlib.redirect_stderr(stderr_buf),
+            ):
+                exec(compile(source_code, "user_code.py", "exec"), global_scope)
+                fn = global_scope.get(entrypoint_name)
+                if not callable(fn):
+                    raise ValueError(
+                        f"Entrypoint '{entrypoint_name}' not found or not callable."
+                    )
+                raw = fn(local_data, target)
+                local_result = normalize_result(raw)
+        except Exception as exc:
+            local_error = str(exc)
+            local_traceback_text = traceback.format_exc()
+        finally:
+            local_stdout = stdout_buf.getvalue()
+            local_stderr = stderr_buf.getvalue()
+
+    # --- gather all partial results to rank 0 ---
+    partial = comm.gather(
+        {
+            "result": local_result,
+            "stdout": local_stdout,
+            "stderr": local_stderr,
+            "error": local_error,
+            "traceback": local_traceback_text,
+            "hostname": hostname,
+        },
+        root=0,
+    )
+
+    if rank != 0:
+        return
+
+    # --- rank 0: merge and write result.json ---
+    rank_hosts = {str(i): p["hostname"] for i, p in enumerate(partial)}
+    errors = [p["error"] for p in partial if p["error"]]
+    merged_stdout = "\n".join(
+        f"[rank {i}] {p['stdout']}" for i, p in enumerate(partial) if p["stdout"]
+    )
+    merged_stderr = "\n".join(
+        f"[rank {i}] {p['stderr']}" for i, p in enumerate(partial) if p["stderr"]
+    )
+    merged_tb = "\n".join(
+        f"[rank {i}] {p['traceback']}"
+        for i, p in enumerate(partial)
+        if p["traceback"]
+    )
+
+    if errors:
+        final = {
+            "completed": False,
+            "sufficient": False,
+            "evidence": None,
+            "summary": None,
+            "records": [],
+            "stdout": merged_stdout,
+            "stderr": merged_stderr,
+            "error": "; ".join(errors),
+            "traceback": merged_tb,
+            "rank_hosts": rank_hosts,
+            "exit_code": 1,
+        }
+    else:
+        results = [p["result"] for p in partial if p["result"] is not None]
+        all_sufficient = all(r["sufficient"] for r in results) if results else False
+        all_evidence = [r["evidence"] for r in results]
+        merged_records: list = []
+        for r in results:
+            merged_records.extend(r.get("records") or [])
+        summary_parts = [r["summary"] for r in results if r.get("summary")]
+
+        final = {
+            "completed": True,
+            "sufficient": all_sufficient,
+            "evidence": all_evidence if len(all_evidence) > 1 else (all_evidence[0] if all_evidence else None),
+            "summary": "; ".join(summary_parts) if summary_parts else None,
+            "records": merged_records,
+            "stdout": merged_stdout,
+            "stderr": merged_stderr,
+            "error": None,
+            "rank_hosts": rank_hosts,
+            "exit_code": 0,
+        }
+
+    (WORKDIR / "result.json").write_text(
+        json.dumps(final, ensure_ascii=True), encoding="utf-8"
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -14,7 +14,7 @@ from app.services.lean_service import LeanService
 class ComputationService:
     """Helpers for computation node request validation and artifact generation."""
 
-    SUPPORTED_LANGUAGES = {'python'}
+    SUPPORTED_LANGUAGES = {'python', 'mpi'}
     DEFAULT_TIMEOUT_SECONDS = 120
 
     @staticmethod
@@ -42,7 +42,9 @@ class ComputationService:
         if not normalized_signature:
             raise CoProofError('Lean declaration signature cannot be empty.', code=400)
 
-        if normalized_signature.startswith(('(', '{', '[')):
+        # Signatures extracted from source already include the leading ': type'
+        # so we only add ': ' ourselves when there is no leading colon or binder.
+        if normalized_signature.startswith(('(', '{', '[', ':')):
             return f'{keyword} {name} {normalized_signature}'
 
         return f'{keyword} {name} : {normalized_signature}'
@@ -186,6 +188,7 @@ class ComputationService:
             'timing_source': computation_result.get('timing_source'),
             'records_count': records_count,
             'evidence_preview': evidence_preview,
+            'rank_hosts': computation_result.get('rank_hosts'),
         }
 
     @staticmethod
