@@ -87,6 +87,7 @@
         PRs<span *ngIf="openPulls.length" class="tab-badge">{{ openPulls.length }}</span>
       </button>
       <button class="tab-btn" [class.active]="activeTab === 'defs'" (click)="activeTab = 'defs'">Defs</button>
+      <button class="tab-btn" [class.active]="activeTab === 'export'" (click)="activeTab = 'export'">Exportar</button>
     </nav>
 
     <div class="tab-content">
@@ -324,16 +325,66 @@
                   </ng-container>
 
                   <!-- All other actions: not yet implemented -->
-                  <ng-container *ngIf="activeAction !== 'solve' && activeAction !== 'split'">
+                  <ng-container *ngIf="activeAction !== 'solve' && activeAction !== 'split' && activeAction !== 'compute'">
                     <p class="submenu-hint">Describe en lenguaje natural lo que quieres lograr y la IA generará el código Lean.</p>
                     <textarea class="submenu-input" rows="3" placeholder="Ej: Verificar que el rango de valores es válido…" disabled></textarea>
                     <button class="submenu-confirm" disabled>Próximamente</button>
+                  </ng-container>
+
+                  <!-- Ejecutar Computación: NL → payload pipeline -->
+                  <ng-container *ngIf="activeAction === 'compute'">
+                    <p class="submenu-hint">Describe el experimento numérico que quieres ejecutar. La IA generará automáticamente el payload de computación y lo enviará al nodo.</p>
+
+                    <label class="field-label">Descripción del experimento <span class="field-required">*</span></label>
+                    <textarea class="submenu-input" rows="4"
+                      [(ngModel)]="nlComputeText" name="nlComputeText"
+                      [disabled]="isBlocked"
+                      placeholder="Ej: Verificar que f(x) = x² permanece en [0, 1] para x en [0, 1] usando 100 puntos de muestra uniformes…"></textarea>
+
+                    <div class="solve-model-row">
+                      <div class="solve-model-field">
+                        <label class="field-label">Modelo <span class="field-required">*</span></label>
+                        <select [(ngModel)]="nlComputeModelId" name="nlComputeModelId"
+                          (ngModelChange)="onNlComputeModelChange()"
+                          class="solve-model-select" [disabled]="isBlocked">
+                          <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                          <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                        </select>
+                      </div>
+                      <div class="solve-model-field" *ngIf="nlComputeModelId">
+                        <label class="field-label">API Key</label>
+                        <div *ngIf="nlComputeMaskedKey" class="masked-key-sm">{{ nlComputeMaskedKey }} ✓</div>
+                        <div *ngIf="!nlComputeMaskedKey" class="api-key-row-sm">
+                          <input type="password" [(ngModel)]="nlComputeApiKeyInput" name="nlComputeApiKeyInput"
+                            placeholder="sk-…" autocomplete="off" [disabled]="isBlocked" />
+                          <button class="btn-save-sm"
+                            [disabled]="nlComputeApiKeySaving || !nlComputeApiKeyInput.trim() || isBlocked"
+                            (click)="saveNlComputeApiKey()">
+                            {{ nlComputeApiKeySaving ? '…' : 'Guardar' }}
+                          </button>
+                        </div>
+                        <p *ngIf="nlComputeApiKeyError" class="solve-key-error">{{ nlComputeApiKeyError }}</p>
+                      </div>
+                    </div>
+
+                    <p *ngIf="isActionRunning && nlComputePhase" class="ai-auto-phase">⟳ {{ nlComputePhase }}</p>
+
+                    <button class="submenu-confirm"
+                      [disabled]="isBlocked || !nlComputeModelId || !nlComputeText.trim()"
+                      (click)="submitNlCompute()">
+                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                      <span>{{ isActionRunning ? 'Ejecutando…' : 'Ejecutar desde NL' }}</span>
+                    </button>
                   </ng-container>
 
                 </div>
 
                 <!-- FL tab -->
                 <div *ngIf="actionMode === 'fl'" class="submenu-body">
+                    <ng-container *ngIf="activeAction === 'compute'">
+                      <p class="submenu-hint">Configura el payload de computación manualmente en el formulario de abajo y haz clic en <strong>Submit Compute</strong>.</p>
+                    </ng-container>
+                    <ng-container *ngIf="activeAction !== 'compute'">
                     <p class="submenu-hint">Edita el código Lean y confirma para enviar la acción.</p>
                     <textarea class="submenu-input" rows="8" [(ngModel)]="actionLeanCode" name="actionLeanCode" placeholder="theorem …"></textarea>
 
@@ -393,10 +444,11 @@
 
                     <button class="submenu-confirm"
                       [disabled]="isBlocked || !actionLeanCode.trim() || (activeAction === 'solve' && !solveModelId) || (activeAction === 'split' && !splitModelId)"
-                      (click)="activeAction === 'solve' ? submitSolve(actionLeanCode) : activeAction === 'split' ? submitSplit(actionLeanCode) : activeAction === 'compute' ? submitCompute() : null">
+                      (click)="activeAction === 'solve' ? submitSolve(actionLeanCode) : activeAction === 'split' ? submitSplit(actionLeanCode) : null">
                       <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
                       <span>{{ isActionRunning ? 'Procesando…' : 'Confirmar' }}</span>
                     </button>
+                    </ng-container><!-- /ng-container activeAction !== 'compute' -->
                 </div>
 
                 <!-- AI tab -->
@@ -452,9 +504,55 @@
                   </ng-container>
 
                   <!-- Other actions: not yet implemented -->
-                  <ng-container *ngIf="activeAction !== 'solve' && activeAction !== 'split'">
+                  <ng-container *ngIf="activeAction !== 'solve' && activeAction !== 'split' && activeAction !== 'compute'">
                     <p class="submenu-hint">La IA analizará el nodo y aplicará la acción de forma automática sin intervención manual.</p>
                     <button class="submenu-confirm" disabled>Próximamente</button>
+                  </ng-container>
+
+                  <!-- Ejecutar Computación: IA Auto pipeline -->
+                  <ng-container *ngIf="activeAction === 'compute'">
+                    <p class="submenu-hint">La IA consultará el .tex del nodo, diseñará un experimento numérico apropiado, generará el payload de computación automáticamente y lo enviará.</p>
+
+                    <label class="field-label">Sugerencia inicial (opcional)</label>
+                    <textarea class="submenu-input" rows="2"
+                      [(ngModel)]="aiAutoPrompt" name="aiAutoPrompt"
+                      [disabled]="isBlocked"
+                      placeholder="Ej: Usa 50 puntos de muestra en el rango [0, 1]…"></textarea>
+
+                    <div class="solve-model-row">
+                      <div class="solve-model-field">
+                        <label class="field-label">Modelo <span class="field-required">*</span></label>
+                        <select [(ngModel)]="aiAutoModelId" name="aiAutoModelId"
+                          (ngModelChange)="onAiAutoModelChange()"
+                          class="solve-model-select" [disabled]="isBlocked">
+                          <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                          <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+                        </select>
+                      </div>
+                      <div class="solve-model-field" *ngIf="aiAutoModelId">
+                        <label class="field-label">API Key</label>
+                        <div *ngIf="aiAutoMaskedKey" class="masked-key-sm">{{ aiAutoMaskedKey }} ✓</div>
+                        <div *ngIf="!aiAutoMaskedKey" class="api-key-row-sm">
+                          <input type="password" [(ngModel)]="aiAutoApiKeyInput" name="aiAutoApiKeyInput"
+                            placeholder="sk-…" autocomplete="off" [disabled]="isBlocked" />
+                          <button class="btn-save-sm"
+                            [disabled]="aiAutoApiKeySaving || !aiAutoApiKeyInput.trim() || isBlocked"
+                            (click)="saveAiAutoApiKey()">
+                            {{ aiAutoApiKeySaving ? '…' : 'Guardar' }}
+                          </button>
+                        </div>
+                        <p *ngIf="aiAutoApiKeyError" class="solve-key-error">{{ aiAutoApiKeyError }}</p>
+                      </div>
+                    </div>
+
+                    <p *ngIf="isActionRunning && aiAutoPhase" class="ai-auto-phase">⟳ {{ aiAutoPhase }}</p>
+
+                    <button class="submenu-confirm"
+                      [disabled]="isBlocked || !aiAutoModelId"
+                      (click)="submitAiCompute()">
+                      <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
+                      <span>{{ isActionRunning ? 'Ejecutando…' : 'Ejecutar IA Auto' }}</span>
+                    </button>
                   </ng-container>
 
                 </div>
@@ -719,6 +817,127 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- ── EXPORT TAB ── -->
+      <div *ngIf="activeTab === 'export'" class="tab-pane">
+        <p class="hint-msg">Exporta todos los nodos del proyecto ensamblados (hojas primero, raíz al final).</p>
+
+        <!-- Model selector shared by .tex and PDF exports -->
+        <div class="export-model-card">
+          <p class="section-label">Modelo IA para formato .tex / PDF</p>
+          <div class="solve-model-row">
+            <div class="solve-model-field">
+              <label class="field-label">Modelo <span class="field-required">*</span></label>
+              <select [(ngModel)]="exportModelId" name="exportModelId"
+                (ngModelChange)="onExportModelChange()"
+                class="solve-model-select" [disabled]="isExporting">
+                <option value="">{{ solveModelsLoading ? 'Cargando…' : '— Selecciona un modelo —' }}</option>
+                <option *ngFor="let m of solveModels" [value]="m.id">{{ m.name }} ({{ m.provider }})</option>
+              </select>
+            </div>
+            <div class="solve-model-field" *ngIf="exportModelId">
+              <label class="field-label">API Key</label>
+              <div *ngIf="exportMaskedKey" class="masked-key-sm">{{ exportMaskedKey }} ✓</div>
+              <div *ngIf="!exportMaskedKey" class="api-key-row-sm">
+                <input type="password" [(ngModel)]="exportApiKeyInput" name="exportApiKeyInput"
+                  placeholder="sk-…" autocomplete="off" [disabled]="isExporting" />
+                <button class="btn-save-sm"
+                  [disabled]="exportApiKeySaving || !exportApiKeyInput.trim() || isExporting"
+                  (click)="saveExportApiKey()">
+                  {{ exportApiKeySaving ? '…' : 'Guardar' }}
+                </button>
+              </div>
+              <p *ngIf="exportApiKeyError" class="solve-key-error">{{ exportApiKeyError }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Export .lean -->
+        <div class="export-action-card">
+          <div class="export-action-header">
+            <div>
+              <strong class="export-action-title">📄 Exportar .lean completo</strong>
+              <p class="submenu-hint">Concatena todos los archivos .lean en orden hoja→raíz y verifica la compilación antes de descargar.</p>
+            </div>
+            <button class="export-btn"
+              [disabled]="isExporting || nodes.length === 0"
+              [class.export-btn-running]="exportLeanState === 'loading' || exportLeanState === 'verifying'"
+              (click)="exportFullLean()">
+              <span *ngIf="exportLeanState === 'loading' || exportLeanState === 'verifying'" class="action-spinner action-spinner-sm"></span>
+              <span>{{ exportLeanState === 'loading' ? 'Cargando…' : exportLeanState === 'verifying' ? 'Verificando…' : 'Descargar .lean' }}</span>
+            </button>
+          </div>
+          <p *ngIf="exportLeanPhase" class="ai-auto-phase">⟳ {{ exportLeanPhase }}</p>
+          <p *ngIf="exportLeanWarning" class="export-warning">⚠️ {{ exportLeanWarning }}</p>
+          <ul *ngIf="exportLeanErrors.length" class="export-error-list">
+            <li *ngFor="let e of exportLeanErrors">{{ e }}</li>
+          </ul>
+          <p *ngIf="exportLeanState === 'done' && !exportLeanWarning" class="export-ok">✓ Verificado y descargado correctamente.</p>
+          <p *ngIf="exportLeanState === 'error'" class="error-msg">✗ Error en la exportación .lean.</p>
+        </div>
+
+        <!-- Export .tex -->
+        <div class="export-action-card">
+          <div class="export-action-header">
+            <div>
+              <strong class="export-action-title">📄 Exportar .tex completo</strong>
+              <p class="submenu-hint">Ensambla todos los .tex en orden hoja→raíz. <em>Directo</em>: preamble básico sin IA. <em>Con IA</em>: formatea con nombrado correcto de teoremas en paréntesis.</p>
+            </div>
+            <div class="export-btn-group">
+              <button class="export-btn export-btn-secondary"
+                [disabled]="isExporting || nodes.length === 0"
+                [class.export-btn-running]="exportTexRawState === 'loading'"
+                (click)="exportRawTex()">
+                <span *ngIf="exportTexRawState === 'loading'" class="action-spinner action-spinner-sm"></span>
+                <span>{{ exportTexRawState === 'loading' ? 'Cargando…' : 'Directo' }}</span>
+              </button>
+              <button class="export-btn"
+                [disabled]="isExporting || nodes.length === 0 || !exportModelId"
+                [class.export-btn-running]="exportTexState === 'loading' || exportTexState === 'formatting'"
+                (click)="exportFullTex()">
+                <span *ngIf="exportTexState === 'loading' || exportTexState === 'formatting'" class="action-spinner action-spinner-sm"></span>
+                <span>{{ exportTexState === 'loading' ? 'Cargando…' : exportTexState === 'formatting' ? 'Formateando…' : 'Con IA' }}</span>
+              </button>
+            </div>
+          </div>
+          <p *ngIf="exportTexPhase" class="ai-auto-phase">⟳ {{ exportTexPhase }}</p>
+          <p *ngIf="exportTexRawState === 'done' && exportTexState !== 'done'" class="export-ok">✓ .tex directo descargado.</p>
+          <p *ngIf="exportTexState === 'done'" class="export-ok">✓ .tex con IA descargado correctamente.</p>
+          <p *ngIf="exportTexRawState === 'error' || exportTexState === 'error'" class="error-msg">✗ Error en la exportación .tex.</p>
+        </div>
+
+        <!-- Export PDF -->
+        <div class="export-action-card">
+          <div class="export-action-header">
+            <div>
+              <strong class="export-action-title">📄 Exportar PDF</strong>
+              <p class="submenu-hint">Abre el diálogo de impresión. <em>Directo</em>: renderiza el ensamblado sin IA. <em>Con IA</em>: formatea con el modelo seleccionado antes de imprimir.</p>
+            </div>
+            <div class="export-btn-group">
+              <button class="export-btn export-btn-secondary"
+                [disabled]="isExporting || nodes.length === 0"
+                [class.export-btn-running]="exportPdfRawState === 'loading'"
+                (click)="exportRawPdf()">
+                <span *ngIf="exportPdfRawState === 'loading'" class="action-spinner action-spinner-sm"></span>
+                <span>{{ exportPdfRawState === 'loading' ? 'Cargando…' : 'Directo' }}</span>
+              </button>
+              <button class="export-btn export-btn-pdf"
+                [disabled]="isExporting || nodes.length === 0 || !exportModelId"
+                [class.export-btn-running]="exportPdfState === 'loading' || exportPdfState === 'formatting' || exportPdfState === 'generating'"
+                (click)="exportFullPdf()">
+                <span *ngIf="exportPdfState === 'loading' || exportPdfState === 'formatting' || exportPdfState === 'generating'" class="action-spinner action-spinner-sm"></span>
+                <span>{{ exportPdfState === 'loading' ? 'Cargando…' : exportPdfState === 'formatting' ? 'Formateando…' : exportPdfState === 'generating' ? 'Abriendo…' : 'Con IA' }}</span>
+              </button>
+            </div>
+          </div>
+          <p *ngIf="exportPdfPhase" class="ai-auto-phase">⟳ {{ exportPdfPhase }}</p>
+          <p *ngIf="exportPdfRawState === 'done' && exportPdfState !== 'done'" class="export-ok">✓ Diálogo abierto (directo). Elige "Guardar como PDF".</p>
+          <p *ngIf="exportPdfState === 'done'" class="export-ok">✓ Diálogo de impresión abierto (con IA). Elige "Guardar como PDF".</p>
+          <p *ngIf="exportPdfRawState === 'error' || exportPdfState === 'error'" class="error-msg">✗ Error en la exportación PDF.</p>
+        </div>
+
+        <p *ngIf="nodes.length === 0" class="hint-msg">No hay nodos cargados en este proyecto.</p>
       </div>
 
     </div><!-- /tab-content -->

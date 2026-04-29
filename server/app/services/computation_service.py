@@ -44,7 +44,13 @@ class ComputationService:
 
         # Signatures extracted from source already include the leading ': type'
         # so we only add ': ' ourselves when there is no leading colon or binder.
-        if normalized_signature.startswith(('(', '{', '[', ':')):
+        # NOTE: '{' that starts a set-builder expression like {n : ℕ | ...} must NOT
+        # be treated as an implicit binder — only treat '{' as a binder prefix when
+        # it does NOT contain a pipe ('|'), which is the set-builder separator.
+        is_binder_prefix = normalized_signature.startswith(('(', '[', ':')) or (
+            normalized_signature.startswith('{') and ' | ' not in normalized_signature
+        )
+        if is_binder_prefix:
             return f'{keyword} {name} {normalized_signature}'
 
         return f'{keyword} {name} : {normalized_signature}'

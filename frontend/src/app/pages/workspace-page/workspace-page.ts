@@ -17,6 +17,7 @@ import {
   TranslatePayload,
   TranslationResult,
   VerificationErrorItem,
+  VerifyCompilerResult,
   VerifyNodeResponse
 } from '../../task.models';
 
@@ -103,7 +104,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   computationTimeoutSeconds = 120;
   computationLanguage: 'python' | 'mpi' = 'python';
 
-  activeTab: 'node' | 'tex' | 'prs' | 'defs' = 'node';
+  activeTab: 'node' | 'tex' | 'prs' | 'defs' | 'export' = 'node';
   sidebarCollapsed = false;
   graphCollapsed = false;
   sectionEditor = true;
@@ -174,6 +175,38 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   computeApiKeyInput = '';
   computeApiKeySaving = false;
   computeApiKeyError = '';
+  // Model + state for NL → Compute pipeline
+  nlComputeText = '';
+  nlComputePhase = '';
+  nlComputeModelId = '';
+  nlComputeMaskedKey: string | null = null;
+  nlComputeApiKeyInput = '';
+  nlComputeApiKeySaving = false;
+  nlComputeApiKeyError = '';
+  // ── Export ─────────────────────────────────────────────────────────────────
+  exportModelId = '';
+  exportMaskedKey: string | null = null;
+  exportApiKeyInput = '';
+  exportApiKeySaving = false;
+  exportApiKeyError = '';
+  exportLeanState: 'idle' | 'loading' | 'verifying' | 'done' | 'error' = 'idle';
+  exportLeanPhase = '';
+  exportLeanErrors: string[] = [];
+  exportLeanWarning = '';
+  exportTexState: 'idle' | 'loading' | 'formatting' | 'done' | 'error' = 'idle';
+  exportTexPhase = '';
+  exportPdfState: 'idle' | 'loading' | 'formatting' | 'generating' | 'done' | 'error' = 'idle';
+  exportPdfPhase = '';
+  exportTexRawState: 'idle' | 'loading' | 'done' | 'error' = 'idle';
+  exportPdfRawState: 'idle' | 'loading' | 'done' | 'error' = 'idle';
+  get isExporting(): boolean {
+    return this.exportLeanState === 'loading' || this.exportLeanState === 'verifying' ||
+           this.exportTexState === 'loading' || this.exportTexState === 'formatting' ||
+           this.exportPdfState === 'loading' || this.exportPdfState === 'formatting' ||
+           this.exportPdfState === 'generating' ||
+           this.exportTexRawState === 'loading' ||
+           this.exportPdfRawState === 'loading';
+  }
   get isBlocked(): boolean { return this.isVerifying || this.isActionRunning; }
 
   sidebarWidth = 420;
@@ -1018,6 +1051,13 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.activeAction = this.activeAction === action ? null : action;
     if (this.activeAction) {
       this.actionLeanCode = this.leanCode;
+      // Pre-populate lean_statement from the node's theorem signature when opening the compute panel
+      if (action === 'compute' && this.isComputationNode) {
+        const extracted = this._extractTheoremStatement(this.leanCode || '');
+        if (extracted) {
+          this.computationLeanStatement = extracted;
+        }
+      }
     }
   }
 
@@ -1176,6 +1216,352 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.taskService.saveApiKey(this.computeModelId, this.computeApiKeyInput).subscribe({
       next: status => { this.computeMaskedKey = status.masked_key; this.computeApiKeyInput = ''; this.computeApiKeySaving = false; },
       error: err => { this.computeApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.computeApiKeySaving = false; },
+    });
+  }
+
+  onNlComputeModelChange(): void {
+    this.nlComputeMaskedKey = null;
+    this.nlComputeApiKeyError = '';
+    if (!this.nlComputeModelId) return;
+    this.taskService.getApiKeyStatus(this.nlComputeModelId).subscribe({
+      next: s => { this.nlComputeMaskedKey = s.has_key ? s.masked_key : null; },
+      error: () => { this.nlComputeMaskedKey = null; },
+    });
+  }
+
+  saveNlComputeApiKey(): void {
+    if (!this.nlComputeApiKeyInput.trim() || !this.nlComputeModelId) return;
+    this.nlComputeApiKeySaving = true;
+    this.nlComputeApiKeyError = '';
+    this.taskService.saveApiKey(this.nlComputeModelId, this.nlComputeApiKeyInput).subscribe({
+      next: status => { this.nlComputeMaskedKey = status.masked_key; this.nlComputeApiKeyInput = ''; this.nlComputeApiKeySaving = false; },
+      error: err => { this.nlComputeApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.nlComputeApiKeySaving = false; },
+    });
+  }
+
+  // ── NL Compute pipeline (Ejecutar Computación / Lenguaje Natural) ─────────
+
+  private _extractTheoremStatement(leanCode: string): string {
+    // Match: theorem/lemma <name> <params> : <statement> := by  or  :=
+    const m = leanCode.match(/(?:theorem|lemma)\s+\S+\s*(.*?)\s*:=\s*(?:by\b|$)/s);
+    if (!m) return '';
+    // The captured group contains optional binders + ": <statement>"; strip leading binder to ":"
+    const body = m[1].trim();
+    const colonIdx = body.indexOf(':');
+    if (colonIdx === -1) return '';
+    return body.slice(colonIdx + 1).trim();
+  }
+
+  submitNlCompute(): void {
+    if (!this.selectedNode || !this.isComputationNode || this.isBlocked) return;
+    if (!this.nlComputeModelId) {
+      this.status = 'Debes seleccionar un modelo para la generación del payload NL→Compute.';
+      return;
+    }
+    const text = this.nlComputeText.trim();
+    if (!text) {
+      this.status = 'Describe el experimento numérico en lenguaje natural.';
+      return;
+    }
+
+    // Pre-populate lean_statement from the node's current Lean code
+    const extractedStatement = this._extractTheoremStatement(this.leanCode || '');
+    if (extractedStatement) {
+      this.computationLeanStatement = extractedStatement;
+    }
+    const apiKey = !this.nlComputeMaskedKey ? (this.nlComputeApiKeyInput.trim() || undefined) : undefined;
+    this.isActionRunning = true;
+    this.lastResultSource = 'Ejecutar (NL)';
+    this.nlComputePhase = 'Cargando contexto del nodo…';
+    this.status = 'Compute NL: cargando contexto…';
+
+    const nodeId = this.selectedNode.id;
+    forkJoin({
+      tex: this.taskService.getNodeTexFile(this.projectId, nodeId).pipe(
+        catchError(() => of({ content: '', path: '' }))
+      ),
+    }).subscribe(({ tex }) => {
+      const texContent = tex.content?.trim() || '';
+      const agentContext = texContent || this.leanCode?.trim() || '';
+
+      const systemPrompt =
+        'You are a scientific computing expert. Given a natural language description of a numerical computation experiment, ' +
+        'generate a JSON object for a computation node validation payload. The JSON MUST have exactly these fields:\n' +
+        '- "language": "python" or "mpi". Use "mpi" when the user explicitly requests distributed or MPI execution.\n' +
+        '- "code": a Python string with ONLY a function `def run(input_data, target):` that performs the computation ' +
+        'and returns {"evidence": <list or dict>, "sufficient": <bool>, "summary": <str>, "records": <list>}.\n' +
+        '- "entrypoint": "run"\n' +
+        '- "input_data": the numeric input data for the computation (array or object). ' +
+        'For MPI mode, this MUST be a JSON array where each element is a work descriptor for ONE rank ' +
+        '(e.g. [{"start":1,"end":500000}, {"start":500001,"end":1000000}]).\n' +
+        '- "target": a validation target object with parameters the run() function uses for checking.\n' +
+        '- "lean_statement": the Lean theorem/definition name this computation validates (use "GoalDef" if not specified)\n' +
+        '- "timeout_seconds": integer timeout (default 120)\n\n' +
+        'CRITICAL ARCHITECTURE CONSTRAINT — READ CAREFULLY:\n' +
+        'The MPI framework is handled ENTIRELY by the runner. Your `run(input_data, target)` function:\n' +
+        '- Receives input_data as a LIST (a sub-slice of the original input_data array). ' +
+        'Even if that slice contains only one element, it is still a list. ' +
+        'ALWAYS extract the work descriptor with `chunk = input_data[0]` before accessing any keys.\n' +
+        '- Must NEVER import or use mpi4py, MPI, comm, gather, scatter, or any MPI primitives.\n' +
+        '- Must NEVER do its own rank/size detection or data partitioning.\n' +
+        '- Must ONLY process its local chunk and return a local result.\n' +
+        'The runner handles: importing mpi4py, distributing slices to ranks, gathering results, and merging.\n\n' +
+        'EXAMPLE of correct access pattern for MPI:\n' +
+        '  def run(input_data, target):\n' +
+        '      chunk = input_data[0]  # always index [0] — runner passes a list slice\n' +
+        '      start, end = chunk["start"], chunk["end"]\n' +
+        '      ...\n\n' +
+        'LIBRARY CONSTRAINTS:\n' +
+        '- Use ONLY Python standard library modules (math, itertools, etc.).\n' +
+        '- Do NOT import numpy, scipy, pandas, or any third-party library — they are NOT installed.\n\n' +
+        'Reply ONLY with a single valid JSON object. Do NOT include markdown code blocks, explanations, or any other text.';
+
+      const fullPrompt = agentContext
+        ? `${text}\n\n=== Theorem context ===\n${agentContext}${extractedStatement ? `\n\n=== Lean statement for this node ===\n${extractedStatement}` : ''}`
+        : `${text}${extractedStatement ? `\n\n=== Lean statement for this node ===\n${extractedStatement}` : ''}`;
+
+      this.nlComputePhase = 'Generando payload con IA…';
+      this.status = 'Compute NL: generando payload…';
+      const payload: SuggestPayload = {
+        prompt: fullPrompt,
+        model_id: this.nlComputeModelId,
+        ...(apiKey ? { api_key: apiKey } : {}),
+        system_prompt: systemPrompt,
+      };
+      this.taskService.submitSuggest(payload).subscribe({
+        next: ({ task_id }) => this._pollNlComputePayload(task_id, apiKey),
+        error: err => this._nlComputeError(err, 'Error al enviar solicitud al agente.'),
+      });
+    });
+  }
+
+  private _pollNlComputePayload(taskId: string, apiKey: string | undefined): void {
+    this.nlComputePhase = 'Esperando respuesta del agente…';
+    this._pollResult<SuggestResult>(
+      taskId,
+      id => this.taskService.getSuggestResult(id),
+      result => {
+        this.nlComputePhase = 'Aplicando payload y enviando computación…';
+        this.status = 'Compute NL: aplicando payload…';
+        if (!this._parseComputePayload(result.suggestion)) {
+          this._nlComputeError(null, 'La IA no generó un JSON de payload válido. Intenta reformular la descripción.');
+          return;
+        }
+        this._runCompute(this.nlComputeModelId, apiKey, 'Ejecutar (NL)', err => this._nlComputeError(err, 'Error al ejecutar la computación.'));
+      },
+      err => this._nlComputeError(err, 'Error al obtener el payload del agente.'),
+    );
+  }
+
+  private _nlComputeError(error: any, fallback: string): void {
+    this.isActionRunning = false;
+    this.nlComputePhase = '';
+    if (error && this.handleAuthError(error)) {
+      this.lastResponse = error?.error || error;
+      return;
+    }
+    if (error) this.lastResponse = error?.error || error;
+    this.status = this.getBackendErrorMessage(error) || fallback;
+  }
+
+  // ── IA Auto Compute pipeline ──────────────────────────────────────────────
+
+  submitAiCompute(): void {
+    if (!this.selectedNode || !this.isComputationNode || this.isBlocked) return;
+    if (!this.aiAutoModelId) {
+      this.status = 'Debes seleccionar un modelo para IA Auto Compute.';
+      return;
+    }
+    const nodeId = this.selectedNode.id;
+    const apiKey = !this.aiAutoMaskedKey ? (this.aiAutoApiKeyInput.trim() || undefined) : undefined;
+    this.isActionRunning = true;
+    this.lastResultSource = 'Ejecutar (IA Auto)';
+    this.aiAutoPhase = 'Consultando IA para diseñar el experimento…';
+    this.status = 'IA Auto Compute: consultando modelo…';
+
+    forkJoin({
+      tex: this.taskService.getNodeTexFile(this.projectId, nodeId).pipe(
+        catchError(() => of({ content: '', path: '' }))
+      ),
+    }).subscribe(({ tex }) => {
+      const texContent = tex.content?.trim() || '';
+      const agentContext = texContent || this.leanCode?.trim() || '';
+
+      const describeSystemPrompt =
+        'You are a scientific computing expert. Given a mathematical theorem (provided as context), ' +
+        'describe in plain English a concrete numerical experiment that would validate the theorem computationally. ' +
+        'Include: what function or operation to compute, what range of input values to use, ' +
+        'how many sample points, and what mathematical property to verify. ' +
+        'Be specific and concise (3–5 sentences). Do not write code or JSON.';
+
+      const suggestPayload: SuggestPayload = {
+        prompt: this.aiAutoPrompt.trim() || 'Design a numerical experiment to validate this theorem computationally.',
+        model_id: this.aiAutoModelId,
+        ...(apiKey ? { api_key: apiKey } : {}),
+        system_prompt: describeSystemPrompt,
+        context: agentContext,
+      };
+      this.taskService.submitSuggest(suggestPayload).subscribe({
+        next: ({ task_id }) => this._pollAiComputeDescribe(task_id, apiKey, agentContext),
+        error: err => this._aiComputeError(err, 'Error al consultar el agente IA.'),
+      });
+    });
+  }
+
+  private _pollAiComputeDescribe(taskId: string, apiKey: string | undefined, context: string): void {
+    this.aiAutoPhase = 'Esperando descripción del experimento…';
+    this._pollResult<SuggestResult>(
+      taskId,
+      id => this.taskService.getSuggestResult(id),
+      result => {
+        this.aiAutoPhase = 'Generando payload de computación…';
+        this.status = 'IA Auto Compute: generando payload…';
+        this._aiComputeRunPayload(result.suggestion, apiKey, context);
+      },
+      err => this._aiComputeError(err, 'Error al obtener la descripción del experimento.'),
+    );
+  }
+
+  private _aiComputeRunPayload(nlDesc: string, apiKey: string | undefined, context: string): void {
+    const systemPrompt =
+      'You are a scientific computing expert. Given a natural language description of a numerical computation experiment, ' +
+      'generate a JSON object for a computation node validation payload. The JSON MUST have exactly these fields:\n' +
+      '- "language": "python" (use "mpi" only if explicitly requested for distributed computation)\n' +
+      '- "code": a Python string with a function `def run(input_data, target):` that performs the computation ' +
+      'and returns {"evidence": <list or dict>, "sufficient": <bool>, "summary": <str>}\n' +
+      '- "entrypoint": "run"\n' +
+      '- "input_data": the numeric input data for the computation (array or object)\n' +
+      '- "target": a validation target object with a "kind" field (e.g. "range_check") and relevant parameters\n' +
+      '- "lean_statement": the Lean theorem/definition name this computation validates (use "GoalDef" if not specified)\n' +
+      '- "timeout_seconds": integer timeout (default 120)\n' +
+      'CRITICAL CONSTRAINTS for the "code" field:\n' +
+      '- Use ONLY Python standard library modules (math, itertools, statistics, etc.). ' +
+      'Do NOT import numpy, scipy, pandas, or any other third-party library — they are NOT installed.\n' +
+      '- For MPI code, only mpi4py is available beyond the standard library; do NOT use numpy or any other package.\n' +
+      'Reply ONLY with a single valid JSON object. Do NOT include markdown code blocks, explanations, or any other text.';
+
+    const fullPrompt = context
+      ? `${nlDesc}\n\n=== Theorem context ===\n${context}`
+      : nlDesc;
+    const payload: SuggestPayload = {
+      prompt: fullPrompt,
+      model_id: this.aiAutoModelId,
+      ...(apiKey ? { api_key: apiKey } : {}),
+      system_prompt: systemPrompt,
+    };
+    this.taskService.submitSuggest(payload).subscribe({
+      next: ({ task_id }) => this._pollAiComputePayload(task_id, apiKey),
+      error: err => this._aiComputeError(err, 'Error al enviar solicitud de payload al agente.'),
+    });
+  }
+
+  private _pollAiComputePayload(taskId: string, apiKey: string | undefined): void {
+    this.aiAutoPhase = 'Esperando payload de la IA…';
+    this._pollResult<SuggestResult>(
+      taskId,
+      id => this.taskService.getSuggestResult(id),
+      result => {
+        this.aiAutoPhase = 'Aplicando payload y enviando computación…';
+        this.status = 'IA Auto Compute: aplicando payload…';
+        if (!this._parseComputePayload(result.suggestion)) {
+          this._aiComputeError(null, 'La IA no generó un JSON de payload válido. Intenta de nuevo.');
+          return;
+        }
+        this._runCompute(this.aiAutoModelId, apiKey, 'Ejecutar (IA Auto)', err => this._aiComputeError(err, 'Error al ejecutar la computación.'));
+      },
+      err => this._aiComputeError(err, 'Error al obtener el payload del agente.'),
+    );
+  }
+
+  private _aiComputeError(error: any, fallback: string): void {
+    this.isActionRunning = false;
+    this.aiAutoPhase = '';
+    if (error && this.handleAuthError(error)) {
+      this.lastResponse = error?.error || error;
+      return;
+    }
+    if (error) this.lastResponse = error?.error || error;
+    this.status = this.getBackendErrorMessage(error) || fallback;
+  }
+
+  // ── Shared compute helpers ────────────────────────────────────────────────
+
+  private _parseComputePayload(raw: string): boolean {
+    let text = raw.trim();
+    const blockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (blockMatch) { text = blockMatch[1].trim(); }
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1) return false;
+    text = text.slice(start, end + 1);
+    try {
+      const p = JSON.parse(text) as Record<string, unknown>;
+      if (p['language'] === 'mpi' || p['language'] === 'python') {
+        this.computationLanguage = p['language'] as 'python' | 'mpi';
+      }
+      if (typeof p['code'] === 'string') this.computationCode = p['code'];
+      if (typeof p['entrypoint'] === 'string') this.computationEntrypoint = p['entrypoint'];
+      if (p['input_data'] !== undefined) this.computationInputJson = JSON.stringify(p['input_data'], null, 2);
+      if (p['target'] !== undefined && typeof p['target'] === 'object' && !Array.isArray(p['target'])) {
+        this.computationTargetJson = JSON.stringify(p['target'], null, 2);
+      }
+      if (typeof p['lean_statement'] === 'string') this.computationLeanStatement = p['lean_statement'];
+      if (typeof p['timeout_seconds'] === 'number') this.computationTimeoutSeconds = p['timeout_seconds'];
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private _runCompute(modelId: string, apiKey: string | undefined, source: string, onError: (err: any) => void): void {
+    if (!this.selectedNode) { onError(null); return; }
+    const parsedTarget = this.safeParseJson(this.computationTargetJson);
+    if (!parsedTarget || typeof parsedTarget !== 'object' || Array.isArray(parsedTarget)) {
+      this.status = 'El payload target generado no es un JSON objeto válido.';
+      onError(null);
+      return;
+    }
+    const parsedInput = this.safeParseJson(this.computationInputJson);
+    this.lastResultSource = source;
+    this.status = 'Enviando computacion…';
+    this.taskService.computeNode(this.projectId, this.selectedNode.id, {
+      language: this.computationLanguage,
+      code: this.computationCode,
+      entrypoint: this.computationEntrypoint.trim() || 'run',
+      input_data: parsedInput,
+      target: parsedTarget as Record<string, unknown>,
+      lean_statement: this.computationLeanStatement.trim(),
+      timeout_seconds: this.computationTimeoutSeconds,
+      ...(modelId ? { model_id: modelId } : {}),
+      ...(modelId && apiKey ? { api_key: apiKey } : {}),
+    }).subscribe({
+      next: (response) => {
+        this.isActionRunning = false;
+        this.lastResponse = this.compactUiResponse(response);
+        const backendStatus = (response as { status?: string } | null)?.status;
+        if (backendStatus === 'insufficient_evidence') {
+          this.status = 'Computacion ejecutada, pero la evidencia fue insuficiente.';
+          this.loadGraph(false);
+          return;
+        }
+        if (backendStatus === 'already_computed') {
+          this.status = 'Computacion validada. No hubo cambios en repo; estado guardado en DB.';
+          this.loadGraph(false);
+          this.loadOpenPulls();
+          return;
+        }
+        this.status = 'Computacion enviada. Se creo un PR.';
+        this.loadOpenPulls();
+      },
+      error: (error) => {
+        if (this.handleAuthError(error)) {
+          this.lastResponse = this.compactUiResponse(error?.error || error);
+          onError(error);
+          return;
+        }
+        this.lastResponse = this.compactUiResponse(error?.error || error);
+        onError(error);
+      }
     });
   }
 
@@ -1780,6 +2166,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     onError: (err: any) => void,
     intervalMs = 2500,
     timeoutMs = 600_000,
+    skipActionRunningGuard = false,
   ): void {
     timer(0, intervalMs).pipe(
       switchMap(() => getter(taskId)),
@@ -1788,7 +2175,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
       timeout(timeoutMs),
     ).subscribe({
       next: res => {
-        if (!this.isActionRunning) return;
+        if (!skipActionRunningGuard && !this.isActionRunning) return;
         onDone(res as T);
       },
       error: err => onError(err),
@@ -1914,5 +2301,405 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
       clearInterval(this.autoRefreshHandle);
       this.autoRefreshHandle = null;
     }
+  }
+
+  // ── Export model ────────────────────────────────────────────────────────────
+  onExportModelChange(): void {
+    this.exportMaskedKey = null;
+    this.exportApiKeyError = '';
+    if (!this.exportModelId) return;
+    this.taskService.getApiKeyStatus(this.exportModelId).subscribe({
+      next: s => { this.exportMaskedKey = s.has_key ? s.masked_key : null; },
+      error: () => { this.exportMaskedKey = null; },
+    });
+  }
+
+  saveExportApiKey(): void {
+    if (!this.exportApiKeyInput.trim() || !this.exportModelId) return;
+    this.exportApiKeySaving = true;
+    this.exportApiKeyError = '';
+    this.taskService.saveApiKey(this.exportModelId, this.exportApiKeyInput).subscribe({
+      next: status => { this.exportMaskedKey = status.masked_key; this.exportApiKeyInput = ''; this.exportApiKeySaving = false; },
+      error: err => { this.exportApiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; this.exportApiKeySaving = false; },
+    });
+  }
+
+  // ── Build leaf-first node order ──────────────────────────────────────────
+  private _buildLeafFirstOrder(nodes: NewNodeDto[]): NewNodeDto[] {
+    if (nodes.length === 0) return [];
+    const childrenOf = new Map<string | null, NewNodeDto[]>();
+    for (const n of nodes) {
+      const key = n.parent_node_id ?? null;
+      if (!childrenOf.has(key)) childrenOf.set(key, []);
+      childrenOf.get(key)!.push(n);
+    }
+    const roots = nodes.filter(n => !n.parent_node_id);
+    const ordered: NewNodeDto[] = [];
+    const queue: NewNodeDto[] = [...roots];
+    while (queue.length) {
+      const node = queue.shift()!;
+      ordered.push(node);
+      (childrenOf.get(node.id) ?? []).forEach(c => queue.push(c));
+    }
+    return ordered.reverse(); // leaves first, root last
+  }
+
+  // ── Export full .lean ────────────────────────────────────────────────────
+  exportFullLean(): void {
+    if (!this.projectId || this.nodes.length === 0) return;
+    this.exportLeanState = 'loading';
+    this.exportLeanPhase = 'Cargando archivos .lean…';
+    this.exportLeanErrors = [];
+    this.exportLeanWarning = '';
+
+    const ordered = this._buildLeafFirstOrder(this.nodes);
+    // Root node (no parent) — used for project-aware verification
+    const rootNode = this.nodes.find(n => !n.parent_node_id) ?? null;
+
+    forkJoin(
+      ordered.map(node =>
+        this.taskService.getNodeLeanFile(this.projectId, node.id).pipe(
+          catchError(() => of({ content: '', path: node.name + '.lean', project_id: this.projectId, node_id: node.id }))
+        )
+      )
+    ).subscribe({
+      next: files => {
+        // Deduplicate import lines across all files; each node contributes only
+        // its non-import body so that `import` never appears mid-file.
+        const seenImports = new Set<string>();
+        const importLines: string[] = [];
+        const bodyParts: string[] = [];
+
+        ordered.forEach((node, i) => {
+          const content = files[i].content || '';
+          const lines = content.split(/\r?\n/);
+          let inImportBlock = true;
+          const nodeBody: string[] = [];
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (inImportBlock && (trimmed.startsWith('import ') || trimmed === '')) {
+              if (trimmed.startsWith('import ') && !seenImports.has(trimmed)) {
+                seenImports.add(trimmed);
+                importLines.push(line);
+              }
+            } else {
+              inImportBlock = false;
+              nodeBody.push(line);
+            }
+          }
+
+          const body = nodeBody.join('\n').trim();
+          const sep = `-- ${'─'.repeat(60)}\n-- Node: ${node.name}\n-- ${'─'.repeat(60)}`;
+          bodyParts.push(`${sep}\n${body}`);
+        });
+
+        const combined = [...importLines, '', ...bodyParts].join('\n\n');
+
+        // Verify via the root node's full import-tree (has project context and
+        // access to Definitions.lean), instead of the sandbox snippet verifier.
+        if (rootNode) {
+          this.exportLeanState = 'verifying';
+          this.exportLeanPhase = 'Verificando árbol de imports del nodo raíz…';
+          this.taskService.verifyNode(this.projectId, rootNode.id).subscribe({
+            next: (response: VerifyNodeResponse) => {
+              this.exportLeanState = 'done';
+              this.exportLeanPhase = '';
+              const errors = response.verification?.errors || [];
+              const sorries = response.sorry_locations || [];
+              if (!response.verification?.valid) {
+                this.exportLeanErrors = errors.slice(0, 10).map(e => `L${e.line}:${e.column} ${e.message}`);
+                this.exportLeanWarning = `Verificación falló con ${errors.length} error(es). El archivo se descargará de todas formas.`;
+              } else if (sorries.length > 0) {
+                this.exportLeanWarning = `Compila, pero contiene ${sorries.length} sorry. El archivo se descargará de todas formas.`;
+              } else {
+                this.exportLeanErrors = [];
+                this.exportLeanWarning = '';
+              }
+              this._downloadTextFile(combined, `${this.projectName || 'project'}_full.lean`, 'text/plain');
+              this.status = 'Exportación .lean completada.';
+            },
+            error: err => this._exportLeanError(err, 'Error en la verificación del árbol de imports.'),
+          });
+        } else {
+          // No identifiable root — download without verification
+          this.exportLeanState = 'done';
+          this.exportLeanPhase = '';
+          this.exportLeanWarning = 'No se encontró nodo raíz; descargado sin verificar.';
+          this._downloadTextFile(combined, `${this.projectName || 'project'}_full.lean`, 'text/plain');
+          this.status = 'Exportación .lean completada (sin verificación).';
+        }
+      },
+      error: err => this._exportLeanError(err, 'Error cargando archivos .lean.'),
+    });
+  }
+
+  private _exportLeanError(err: any, fallback: string): void {
+    this.exportLeanState = 'error';
+    this.exportLeanPhase = '';
+    this.status = this.getBackendErrorMessage(err) || fallback;
+  }
+
+  // ── Export full .tex ────────────────────────────────────────────────────
+  exportFullTex(): void {
+    if (!this.projectId || this.nodes.length === 0) return;
+    if (!this.exportModelId) {
+      this.status = 'Selecciona un modelo para el formateo IA del .tex exportado.';
+      return;
+    }
+    this.exportTexState = 'loading';
+    this.exportTexPhase = 'Cargando archivos .tex…';
+    const ordered = this._buildLeafFirstOrder(this.nodes);
+    const apiKey = !this.exportMaskedKey ? (this.exportApiKeyInput.trim() || undefined) : undefined;
+    forkJoin(
+      ordered.map(node =>
+        this.taskService.getNodeTexFile(this.projectId, node.id).pipe(
+          catchError(() => of({ content: '', path: '', project_id: this.projectId, node_id: node.id }))
+        )
+      )
+    ).subscribe({
+      next: files => {
+        const parts = ordered.map((node, i) => {
+          const content = (files[i].content || '').trim();
+          return `% ── ${node.name}\n${content}`;
+        });
+        this.exportTexState = 'formatting';
+        this.exportTexPhase = 'Formateando con IA…';
+        this._formatAndDownloadTex(parts.join('\n\n'), apiKey, false);
+      },
+      error: err => {
+        this.exportTexState = 'error';
+        this.exportTexPhase = '';
+        this.status = this.getBackendErrorMessage(err) || 'Error cargando archivos .tex.';
+      },
+    });
+  }
+
+  // ── Export full PDF ─────────────────────────────────────────────────────
+  exportFullPdf(): void {
+    if (!this.projectId || this.nodes.length === 0) return;
+    if (!this.exportModelId) {
+      this.status = 'Selecciona un modelo para el formateo IA del documento PDF.';
+      return;
+    }
+    this.exportPdfState = 'loading';
+    this.exportPdfPhase = 'Cargando archivos .tex…';
+    const ordered = this._buildLeafFirstOrder(this.nodes);
+    const apiKey = !this.exportMaskedKey ? (this.exportApiKeyInput.trim() || undefined) : undefined;
+    forkJoin(
+      ordered.map(node =>
+        this.taskService.getNodeTexFile(this.projectId, node.id).pipe(
+          catchError(() => of({ content: '', path: '', project_id: this.projectId, node_id: node.id }))
+        )
+      )
+    ).subscribe({
+      next: files => {
+        const parts = ordered.map((node, i) => {
+          const content = (files[i].content || '').trim();
+          return `% ── ${node.name}\n${content}`;
+        });
+        this.exportPdfState = 'formatting';
+        this.exportPdfPhase = 'Formateando con IA…';
+        this._formatAndDownloadTex(parts.join('\n\n'), apiKey, true);
+      },
+      error: err => {
+        this.exportPdfState = 'error';
+        this.exportPdfPhase = '';
+        this.status = this.getBackendErrorMessage(err) || 'Error cargando archivos .tex para PDF.';
+      },
+    });
+  }
+
+  private _formatAndDownloadTex(rawTex: string, apiKey: string | undefined, asPdf: boolean): void {
+    const systemPrompt =
+      'You are a LaTeX document formatter. Given raw LaTeX theorem content from multiple proof nodes, ' +
+      'produce a single, well-structured LaTeX document. Requirements:\n' +
+      '1. Add a proper preamble: \\documentclass{article}, \\usepackage{amsmath,amssymb,amsthm}, ' +
+      '\\newtheorem{theorem}{Theorem}, \\newtheorem{lemma}{Lemma}, \\newtheorem{definition}{Definition}, ' +
+      '\\begin{document}, and \\end{document}.\n' +
+      '2. For every \\begin{theorem}, \\begin{lemma}, \\begin{definition} environment, ' +
+      'ensure the optional label in square brackets contains the Lean theorem name in parentheses ' +
+      '(e.g. \\begin{theorem}[Commutativity (MyTheoremName)]).\n' +
+      '3. Preserve all mathematical content. The order is: leaf lemmas first, root theorem last.\n' +
+      '4. Add \\section{Lemmas} before leaf lemmas and \\section{Main Result} before the root theorem.\n' +
+      '5. Remove separator comment lines (lines starting with %).' +
+      'Reply ONLY with the complete LaTeX source. No markdown, no explanations.';
+
+    const payload: SuggestPayload = {
+      prompt: rawTex,
+      model_id: this.exportModelId,
+      ...(apiKey ? { api_key: apiKey } : {}),
+      system_prompt: systemPrompt,
+    };
+    this.taskService.submitSuggest(payload).subscribe({
+      next: ({ task_id }) => this._pollExportTexFormat(task_id, asPdf),
+      error: err => {
+        if (asPdf) { this.exportPdfState = 'error'; this.exportPdfPhase = ''; }
+        else { this.exportTexState = 'error'; this.exportTexPhase = ''; }
+        this.status = this.getBackendErrorMessage(err) || 'Error al enviar solicitud de formato al agente.';
+      },
+    });
+  }
+
+  private _pollExportTexFormat(taskId: string, asPdf: boolean): void {
+    if (asPdf) this.exportPdfPhase = 'Esperando respuesta del agente…';
+    else this.exportTexPhase = 'Esperando respuesta del agente…';
+    this._pollResult<SuggestResult>(
+      taskId,
+      id => this.taskService.getSuggestResult(id),
+      // onDone, onError, intervalMs, timeoutMs are below; skipActionRunningGuard = true
+      result => {
+        let formatted = result.suggestion.trim();
+        const blockMatch = formatted.match(/```(?:latex|tex)?\s*([\s\S]*?)```/);
+        if (blockMatch) formatted = blockMatch[1].trim();
+        if (asPdf) {
+          this.exportPdfState = 'generating';
+          this.exportPdfPhase = 'Abriendo diálogo de impresión…';
+          this._printTexAsPdf(formatted);
+          this.exportPdfState = 'done';
+          this.exportPdfPhase = '';
+          this.status = 'PDF listo. Usa el diálogo de impresión para guardar como PDF.';
+        } else {
+          this.exportTexState = 'done';
+          this.exportTexPhase = '';
+          this._downloadTextFile(formatted, `${this.projectName || 'project'}_full.tex`, 'application/x-tex');
+          this.status = 'Exportación .tex completada.';
+        }
+      },
+      err => {
+        if (asPdf) { this.exportPdfState = 'error'; this.exportPdfPhase = ''; }
+        else { this.exportTexState = 'error'; this.exportTexPhase = ''; }
+        this.status = this.getBackendErrorMessage(err) || 'Error en el formateo del documento.';
+      },
+      2500,
+      600_000,
+      true, // skipActionRunningGuard — export does not use isActionRunning
+    );
+  }
+
+  // ── Raw (no-AI) .tex / PDF export ────────────────────────────────────────
+  private _loadTexNodes(
+    onReady: (ordered: NewNodeDto[], parts: string[]) => void,
+    onError: (err: any) => void,
+  ): void {
+    const ordered = this._buildLeafFirstOrder(this.nodes);
+    forkJoin(
+      ordered.map(node =>
+        this.taskService.getNodeTexFile(this.projectId, node.id).pipe(
+          catchError(() => of({ content: '', path: '', project_id: this.projectId, node_id: node.id }))
+        )
+      )
+    ).subscribe({
+      next: files => {
+        const parts = ordered.map((node, i) => (files[i].content || '').trim());
+        onReady(ordered, parts);
+      },
+      error: err => onError(err),
+    });
+  }
+
+  private _buildRawTexDocument(ordered: NewNodeDto[], parts: string[]): string {
+    const body = ordered.map((node, i) => {
+      const sep = `% ${'─'.repeat(60)}\n% ${node.name}\n% ${'─'.repeat(60)}`;
+      return `${sep}\n${parts[i]}`;
+    }).join('\n\n');
+    return [
+      '\\documentclass{article}',
+      '\\usepackage{amsmath,amssymb,amsthm}',
+      '\\newtheorem{theorem}{Theorem}',
+      '\\newtheorem{lemma}{Lemma}',
+      '\\newtheorem{definition}{Definition}',
+      '',
+      '\\begin{document}',
+      '',
+      body,
+      '',
+      '\\end{document}',
+    ].join('\n');
+  }
+
+  exportRawTex(): void {
+    if (!this.projectId || this.nodes.length === 0) return;
+    this.exportTexRawState = 'loading';
+    this._loadTexNodes(
+      (ordered, parts) => {
+        const combined = this._buildRawTexDocument(ordered, parts);
+        this._downloadTextFile(combined, `${this.projectName || 'project'}_full_raw.tex`, 'application/x-tex');
+        this.exportTexRawState = 'done';
+        this.status = 'Exportación .tex (sin IA) completada.';
+      },
+      err => {
+        this.exportTexRawState = 'error';
+        this.status = this.getBackendErrorMessage(err) || 'Error cargando archivos .tex.';
+      },
+    );
+  }
+
+  exportRawPdf(): void {
+    if (!this.projectId || this.nodes.length === 0) return;
+    this.exportPdfRawState = 'loading';
+    this._loadTexNodes(
+      (ordered, parts) => {
+        const combined = this._buildRawTexDocument(ordered, parts);
+        this._printTexAsPdf(combined);
+        this.exportPdfRawState = 'done';
+        this.status = 'PDF (sin IA) listo. Usa el diálogo de impresión para guardar como PDF.';
+      },
+      err => {
+        this.exportPdfRawState = 'error';
+        this.status = this.getBackendErrorMessage(err) || 'Error cargando archivos .tex para PDF.';
+      },
+    );
+  }
+
+  private _printTexAsPdf(texSource: string): void {
+    const rendered = (this._renderTexHtml(texSource) as any)['changingThisBreaksApplicationSecurity'] as string || '';
+    const win = window.open('', '_blank', 'width=920,height=720');
+    if (!win) {
+      this.status = 'Ventana emergente bloqueada. Permite pop-ups para exportar PDF.';
+      return;
+    }
+    const htmlContent = `<!DOCTYPE html><html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>${this.projectName || 'Project'} — Export</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <style>
+    body { font-family: Georgia, serif; max-width: 780px; margin: 48px auto; padding: 0 24px;
+           color: #111; line-height: 1.75; font-size: 14px; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.3em; }
+    h2.tex-h2 { font-size: 1.15rem; margin-top: 2em; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+    h3.tex-h3 { font-size: 1rem; margin-top: 1.4em; }
+    strong { font-weight: bold; }
+    em { font-style: italic; }
+    code { font-family: monospace; background: #f5f5f5; padding: 1px 4px; border-radius: 3px; }
+    @media print {
+      body { margin: 0; max-width: 100%; }
+      @page { margin: 1.5cm 2cm; }
+    }
+  </style>
+</head>
+<body>
+  <h1>${this.projectName || 'Project'} &mdash; Full Proof</h1>
+  ${rendered}
+  <script>
+    window.onload = function() { setTimeout(function(){ window.print(); }, 800); };
+  </script>
+</body>
+</html>`;
+    win.document.write(htmlContent);
+    win.document.close();
+  }
+
+  private _downloadTextFile(content: string, filename: string, mimeType: string): void {
+    const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 }
