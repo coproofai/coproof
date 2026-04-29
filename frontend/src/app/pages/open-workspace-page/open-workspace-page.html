@@ -16,7 +16,7 @@
                 {{ project.name }} (Colaborador)
               </option>
             </optgroup>
-            <optgroup label="Proyectos públicos" *ngIf="publicProjects.length > 0">
+            <optgroup label="Proyectos públicos seguidos" *ngIf="publicProjects.length > 0">
               <option *ngFor="let project of publicProjects" [value]="project.id">
                 {{ project.name }} (Público)
               </option>

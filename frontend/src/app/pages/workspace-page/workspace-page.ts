@@ -209,6 +209,57 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   }
   get isBlocked(): boolean { return this.isVerifying || this.isActionRunning; }
 
+  /** 0-100 percentage driven by current phase strings / status. */
+  get actionProgress(): number {
+    if (!this.isBlocked) return 0;
+    // NL Compute pipeline
+    if (this.nlComputePhase) {
+      if (this.nlComputePhase.includes('Cargando')) return 12;
+      if (this.nlComputePhase.includes('Generando payload')) return 45;
+      if (this.nlComputePhase.includes('Esperando respuesta')) return 65;
+      if (this.nlComputePhase.includes('Aplicando')) return 82;
+      return 20;
+    }
+    // NL Solve pipeline
+    if (this.nlSolvePhase) {
+      if (this.nlSolvePhase.includes('Cargando')) return 10;
+      if (this.nlSolvePhase.includes('Traduciendo')) return 38;
+      if (this.nlSolvePhase.includes('Verificando')) return 62;
+      if (this.nlSolvePhase.includes('Compilación')) return 82;
+      return 20;
+    }
+    // NL Split pipeline
+    if (this.nlSplitPhase) {
+      if (this.nlSplitPhase.includes('Cargando')) return 10;
+      if (this.nlSplitPhase.includes('Traduciendo')) return 38;
+      if (this.nlSplitPhase.includes('Dividiendo')) return 62;
+      if (this.nlSplitPhase.includes('Compilación')) return 82;
+      return 20;
+    }
+    // AI Auto pipeline
+    if (this.aiAutoPhase) {
+      if (this.aiAutoPhase.includes('Consultando')) return 15;
+      if (this.aiAutoPhase.includes('Esperando descripción')) return 35;
+      if (this.aiAutoPhase.includes('Generando payload')) return 52;
+      if (this.aiAutoPhase.includes('Esperando payload')) return 65;
+      if (this.aiAutoPhase.includes('Traduciendo')) return 38;
+      if (this.aiAutoPhase.includes('Verificando')) return 62;
+      if (this.aiAutoPhase.includes('Dividiendo')) return 62;
+      if (this.aiAutoPhase.includes('Aplicando')) return 82;
+      if (this.aiAutoPhase.includes('Compilación')) return 82;
+      return 20;
+    }
+    // Create computation node
+    if (this.createComputePhase) return 35;
+    // Verify
+    if (this.isVerifying) return 30;
+    // FL Solve / Split (status-driven, two-phase)
+    const s = this.status;
+    if (s.includes('.tex') || s.includes('Generando')) return 60;
+    if (s.includes('Verificando') || s.includes('Enviando')) return 20;
+    return 15;
+  }
+
   sidebarWidth = 420;
   isResizing = false;
   private resizeStartX = 0;

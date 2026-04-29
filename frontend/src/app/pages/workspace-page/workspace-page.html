@@ -954,6 +954,16 @@
 
 <!-- Toast overlay -->
 <div class="toast-container" aria-live="polite">
+  <!-- Progress bar: visible while any action is running -->
+  <div *ngIf="isBlocked" class="action-progress-card">
+    <div class="action-progress-header">
+      <span class="action-progress-label">{{ status }}</span>
+      <span class="action-progress-pct">{{ actionProgress }}%</span>
+    </div>
+    <div class="action-progress-track">
+      <div class="action-progress-fill" [style.width.%]="actionProgress"></div>
+    </div>
+  </div>
   <div *ngFor="let t of toasts" class="toast" [ngClass]="'toast-' + t.type">
     <span class="toast-msg">{{ t.message }}</span>
     <button class="toast-close" (click)="dismissToast(t.id)" aria-label="Cerrar">×</button>

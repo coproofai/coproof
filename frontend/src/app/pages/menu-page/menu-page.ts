@@ -28,7 +28,7 @@ export class MenuPageComponent {
 
   publicItems: MenuItem[] = [
     { title: 'Validar Demostración',  description: 'Verifica la corrección de una demostración en Lean 4.',         route: '/validation' },
-    { title: 'Traducir a Lean',       description: 'Convierte lenguaje natural matemático a código Lean 4.',          route: '/translation' },
+    { title: 'Traducir a Lean',       description: 'Convierte lenguaje natural matemático a código Lean 4.',          route: '/translation', protected: true },
     { title: 'Buscar Demostración',   description: 'Explora demostraciones formales registradas en la plataforma.',   route: '/proof-search' },
     { title: 'Buscar Linaje',         description: 'Rastrea el árbol de dependencias de un teorema o proyecto.',       route: '/lineage-search' },
     { title: 'Buscar Proyectos',      description: 'Navega proyectos públicos disponibles en la plataforma.',         route: '/project-search' },

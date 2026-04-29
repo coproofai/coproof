@@ -6,10 +6,17 @@
 <section class="card-section">
   <h2 class="section-heading">Herramientas</h2>
   <div class="card-grid">
-    <a *ngFor="let item of publicItems" [routerLink]="item.route" class="card">
-      <span class="card-title">{{ item.title }}</span>
-      <span class="card-desc">{{ item.description }}</span>
-    </a>
+    <ng-container *ngFor="let item of publicItems">
+      <a *ngIf="!item.protected || (isLoggedIn$ | async)" [routerLink]="item.route" class="card">
+        <span class="card-title">{{ item.title }}</span>
+        <span class="card-desc">{{ item.description }}</span>
+      </a>
+      <div *ngIf="item.protected && !(isLoggedIn$ | async)" class="card card-locked">
+        <span class="card-title">{{ item.title }}</span>
+        <span class="card-desc">{{ item.description }}</span>
+        <span class="card-lock-label">Auth</span>
+      </div>
+    </ng-container>
   </div>
 </section>
 

@@ -45,6 +45,17 @@ export interface ProjectDto {
   updated_at?: string;
 }
 
+/** Extended DTO returned by GET /projects/public — includes node coverage stats and follow state. */
+export interface PublicProjectDto extends ProjectDto {
+  total_nodes: number;
+  validated_nodes: number;
+  total_leaves: number;
+  validated_leaves: number;
+  author_login: string | null;
+  contributor_logins: string[];
+  is_following: boolean;
+}
+
 export interface NodeDto {
   id: string;
   name: string;

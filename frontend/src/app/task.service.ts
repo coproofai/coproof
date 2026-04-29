@@ -24,7 +24,8 @@ import {
   PullRequestFilesResponse,
   ContributorDto,
   UserProfileDto,
-  GitHubInvitationDto
+  GitHubInvitationDto,
+  PublicProjectDto
 } from './task.models';
 
 @Injectable({
@@ -230,6 +231,29 @@ export class TaskService {
     return this.http.get<AccessibleProjectsResponse>(`${this.apiBaseUrl}/projects/accessible`, {
       headers: this.authHeaders()
     });
+  }
+
+  searchPublicProjects(q = '', page = 1, perPage = 40): Observable<{ projects: PublicProjectDto[]; total: number; pages: number; current_page: number }> {
+    const params: Record<string, string> = { page: String(page), per_page: String(perPage) };
+    if (q) params['q'] = q;
+    return this.http.get<{ projects: PublicProjectDto[]; total: number; pages: number; current_page: number }>(
+      `${this.apiBaseUrl}/projects/public`,
+      { headers: this.authHeaders(), params }
+    );
+  }
+
+  followProject(projectId: string): Observable<{ status: string; project_id: string }> {
+    return this.http.post<{ status: string; project_id: string }>(
+      `${this.apiBaseUrl}/projects/${projectId}/follow`, {},
+      { headers: this.authHeaders() }
+    );
+  }
+
+  unfollowProject(projectId: string): Observable<{ status: string; project_id: string }> {
+    return this.http.delete<{ status: string; project_id: string }>(
+      `${this.apiBaseUrl}/projects/${projectId}/follow`,
+      { headers: this.authHeaders() }
+    );
   }
 
   getSimpleGraph(projectId: string): Observable<SimpleGraphResponse> {

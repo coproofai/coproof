@@ -142,9 +142,13 @@ class ProjectService:
         except (ValueError, TypeError):
             raise CoProofError("Invalid user id in token.", code=400)
 
+        from app.models.user_followed_project import UserFollowedProject
+        followed_rows = UserFollowedProject.query.filter_by(user_id=user_uuid).all()
+        followed_ids = [r.project_id for r in followed_rows]
+
         return Project.query.filter(
             or_(
-                Project.visibility == 'public',
+                Project.id.in_(followed_ids),
                 Project.author_id == user_uuid,
                 Project.contributor_ids.contains([user_uuid]),
             )
