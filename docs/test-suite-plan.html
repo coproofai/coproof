@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>test-suite-plan.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> or <div class="page"></div> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="plan-de-acción-suite-de-pruebas-exhaustiva-de-microservicios--coproof">Plan de Acción: Suite de Pruebas Exhaustiva de Microservicios — CoPROOF</h1>
+<hr>
+<h2 id="1-objetivo-del-plan">1. Objetivo del Plan</h2>
+<p>Implementar una suite de pruebas automatizadas —unitarias, de integración y end-to-end— para cada uno de los diez contenedores de la plataforma CoPROOF (<code>web</code>, <code>celery_worker</code>, <code>lean-worker</code>, <code>computation-worker</code>, <code>cluster-computation-worker</code>, <code>nl2fl-worker</code>, <code>agents-worker</code>, <code>frontend</code>, <code>db</code>, <code>redis</code>), de modo que el equipo de desarrollo pueda detectar y corregir regresiones antes de que estas impacten a los usuarios finales de la plataforma. Al cierre del plan, cada microservicio backend deberá alcanzar ≥ 85 % de cobertura de líneas y ≥ 70 % de cobertura de ramas, el frontend ≥ 80 % de cobertura de statements, y el 100 % de los flujos E2E definidos en Cypress deberán ejecutarse sin fallos en el pipeline de CI/CD. Para lograrlo, el trabajo se distribuye en 51 acciones asignadas equitativamente a cuatro integrantes (David, Daniel, Jesús y Emiliano), utilizando exclusivamente herramientas open-source (<code>pytest</code>, <code>Jest</code>, <code>Cypress</code>, <code>fakeredis</code>, <code>testcontainers</code>) y el tier gratuito de GitHub Actions, sin requerir infraestructura adicional de pago. Esta iniciativa responde directamente a la necesidad del cliente: la ausencia de pruebas automatizadas expone a los usuarios de CoPROOF a fallos silenciosos en la verificación formal Lean 4, en la traducción NL→FL y en la gestión de versiones git, comprometiendo la confiabilidad del sistema como herramienta de demostración matemática colaborativa. Todas las suites estarán implementadas, ejecutadas y documentadas en un reporte consolidado de cobertura integrado al pipeline CI/CD antes del <strong>15 de mayo de 2026</strong>, a 17 días hábiles del inicio del plan (29 de abril de 2026).</p>
+<hr>
+<h2 id="2-acciones-recursos-y-responsables">2. Acciones, Recursos y Responsables</h2>
+<h3 id="infraestructura-compartida-todos-los-integrantes">Infraestructura Compartida (todos los integrantes)</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Acción</th>
+<th>Fecha</th>
+<th>Responsable</th>
+<th>Recursos tecnológicos</th>
+<th>Recursos económicos</th>
+<th>Dependencias</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Kick-off: análisis de microservicios, acuerdos de convenciones de testing y estructura de directorio <code>tests/</code></td>
+<td>29 abr</td>
+<td>Todos</td>
+<td>Docker Engine ≥ 24, Docker Compose v2, Python 3.11, Node.js 20 LTS</td>
+<td>$0</td>
+<td>Acceso al repositorio común</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Configurar <code>docker-compose.test.yml</code> con todos los contenedores en modo test</td>
+<td>30 abr</td>
+<td>Todos</td>
+<td>Docker Compose v2, imágenes base de Docker Hub</td>
+<td>$0</td>
+<td>Acción 1 completada</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Crear <code>conftest.py</code> global con fixtures de DB, Redis, <code>factory_boy</code> y mocks LLM base</td>
+<td>01 may</td>
+<td>Todos</td>
+<td><code>pytest 8.x</code>, <code>testcontainers-python</code>, <code>fakeredis</code>, <code>factory_boy</code>, <code>Faker</code></td>
+<td>$0</td>
+<td><code>docker-compose.test.yml</code> funcional</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Pipeline CI/CD GitHub Actions: <code>.github/workflows/test.yml</code> con matrix por servicio</td>
+<td>15 may</td>
+<td>Todos</td>
+<td>GitHub Actions (2 000 min/mes gratis), <code>pytest-html</code>, <code>codecov</code></td>
+<td>$0</td>
+<td>Todas las suites completadas</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="david--web-flask-api-rest--celery_worker-git-engine">David — <code>web</code> (Flask API REST) + <code>celery_worker</code> (Git Engine)</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Acción</th>
+<th>Fecha</th>
+<th>Responsable</th>
+<th>Recursos tecnológicos</th>
+<th>Recursos económicos</th>
+<th>Dependencias</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5</td>
+<td>Inventario de endpoints y diseño de casos de prueba para <code>web</code></td>
+<td>29 abr</td>
+<td>David</td>
+<td>Revisión de <code>server/app/api/</code> (auth, projects, nodes, translate, agents, webhooks)</td>
+<td>$0</td>
+<td>Acción 1</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Diseño de casos de prueba para <code>celery_worker</code> git tasks</td>
+<td>30 abr</td>
+<td>David</td>
+<td>Revisión de <code>server/celery_worker.py</code> y <code>app/services/git_service.py</code></td>
+<td>$0</td>
+<td>Acción 1</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Unit tests — autenticación, JWT y GitHub OAuth callback</td>
+<td>01–02 may</td>
+<td>David</td>
+<td><code>pytest-flask</code>, <code>pytest-mock</code>, <code>fakeredis</code>, <code>responses</code> (mock GitHub OAuth)</td>
+<td>$0</td>
+<td>Acción 3 (fixtures globales)</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Unit tests — endpoints <code>/projects</code> y <code>/nodes</code></td>
+<td>05–06 may</td>
+<td>David</td>
+<td><code>pytest-flask</code>, <code>factory_boy</code> (fixtures <code>NewProject</code>, <code>NewNode</code>)</td>
+<td>$0</td>
+<td>Acción 7 (auth funcional)</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Unit tests — <code>/translate</code>, <code>/agents</code> y <code>/webhooks</code></td>
+<td>07 may</td>
+<td>David</td>
+<td><code>pytest-flask</code>, <code>responses</code> (mock de tasks Celery con ALWAYS_EAGER)</td>
+<td>$0</td>
+<td>Acción 8</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Unit tests git tasks — clone, commit y push</td>
+<td>06 may</td>
+<td>David</td>
+<td><code>pytest-celery</code> (<code>CELERY_TASK_ALWAYS_EAGER=True</code>), <code>responses</code> (mock GitHub REST), <code>tempfile</code>, <code>GitPython</code></td>
+<td>$0</td>
+<td>Acción 6; <code>fakeredis</code> como broker</td>
+</tr>
+<tr>
+<td>11</td>
+<td>Unit tests git tasks — merge, PR y no-op solve</td>
+<td>07 may</td>
+<td>David</td>
+<td><code>responses</code> (mock GitHub merge endpoint), <code>pytest-mock</code></td>
+<td>$0</td>
+<td>Acción 10</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Integración <code>web</code> ↔ PostgreSQL via SQLAlchemy</td>
+<td>08 may</td>
+<td>David</td>
+<td><code>testcontainers[postgres]</code>, <code>pytest-flask</code></td>
+<td>$0</td>
+<td>PostgreSQL en <code>docker-compose.test.yml</code></td>
+</tr>
+<tr>
+<td>13</td>
+<td>Integración <code>web</code> ↔ Redis y Celery queues</td>
+<td>11 may</td>
+<td>David</td>
+<td><code>testcontainers[redis]</code>, <code>pytest-celery</code></td>
+<td>$0</td>
+<td>Redis en <code>docker-compose.test.yml</code></td>
+</tr>
+<tr>
+<td>14</td>
+<td>Integración <code>celery_worker</code> ↔ GitHub API mock</td>
+<td>12 may</td>
+<td>David</td>
+<td><code>responses</code>, personal access token de cuenta de desarrollo (gratuito)</td>
+<td>$0</td>
+<td>Acciones 10–11 completadas</td>
+</tr>
+<tr>
+<td>15</td>
+<td>Reporte de cobertura <code>web</code> + <code>celery_worker</code></td>
+<td>14 may</td>
+<td>David</td>
+<td><code>pytest-cov</code>, <code>pytest-html</code></td>
+<td>$0</td>
+<td>Acciones 12–14; cobertura objetivo ≥ 85 %</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="daniel--lean-worker--computation-worker">Daniel — <code>lean-worker</code> + <code>computation-worker</code></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Acción</th>
+<th>Fecha</th>
+<th>Responsable</th>
+<th>Recursos tecnológicos</th>
+<th>Recursos económicos</th>
+<th>Dependencias</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>16</td>
+<td>Análisis de <code>lean_service.py</code>, configuración de <code>elan</code> y localización del ejecutable Lean 4</td>
+<td>29 abr</td>
+<td>Daniel</td>
+<td>Imagen Docker <code>lean-worker</code>, Lean 4 (open-source), <code>elan</code></td>
+<td>$0</td>
+<td>Acción 1</td>
+</tr>
+<tr>
+<td>17</td>
+<td>Análisis de <code>computation_service.py</code> y funcionamiento del sandbox subprocess</td>
+<td>30 abr</td>
+<td>Daniel</td>
+<td>Python 3.11, revisión de <code>computation/computation_service.py</code></td>
+<td>$0</td>
+<td>Acción 1</td>
+</tr>
+<tr>
+<td>18</td>
+<td>Unit tests lean-worker — verificación de snippets Lean 4 válidos</td>
+<td>01–02 may</td>
+<td>Daniel</td>
+<td><code>pytest</code>, <code>subprocess</code> mock (sin invocar Lean real), <code>pytest-mock</code></td>
+<td>$0</td>
+<td>Acción 3</td>
+</tr>
+<tr>
+<td>19</td>
+<td>Unit tests lean-worker — snippets inválidos y edge cases de errores del compilador</td>
+<td>05 may</td>
+<td>Daniel</td>
+<td><code>pytest</code>, fixtures de snippets con errores de tipo conocidos</td>
+<td>$0</td>
+<td>Acción 18</td>
+</tr>
+<tr>
+<td>20</td>
+<td>Unit tests lean-worker — <code>parse_theorem_info</code>: teoremas, lemas y definiciones complejos</td>
+<td>06 may</td>
+<td>Daniel</td>
+<td><code>pytest</code>, módulo <code>re</code> stdlib</td>
+<td>$0</td>
+<td>Acción 18</td>
+</tr>
+<tr>
+<td>21</td>
+<td>Integración <code>lean-worker</code> ↔ Redis/Celery</td>
+<td>07–08 may</td>
+<td>Daniel</td>
+<td><code>testcontainers[redis]</code>, <code>pytest-celery</code>, imagen <code>lean-worker</code> construida (~5–10 min primer build)</td>
+<td>$0</td>
+<td><code>docker-compose.test.yml</code>; imagen construida</td>
+</tr>
+<tr>
+<td>22</td>
+<td>Unit tests <code>computation-worker</code> — sandbox: ejecución aislada Python, retornos correctos</td>
+<td>05–06 may</td>
+<td>Daniel</td>
+<td><code>pytest</code>, <code>unittest.mock.patch</code> sobre <code>subprocess.run</code>, <code>tempfile</code></td>
+<td>$0</td>
+<td>Acción 17; acción 3</td>
+</tr>
+<tr>
+<td>23</td>
+<td>Unit tests <code>computation-worker</code> — <code>normalize_result</code>: tipos de retorno, edge cases</td>
+<td>07 may</td>
+<td>Daniel</td>
+<td><code>pytest</code>, fixtures con variantes de <code>dict</code> y <code>tuple</code></td>
+<td>$0</td>
+<td>Acción 22</td>
+</tr>
+<tr>
+<td>24</td>
+<td>Unit tests <code>computation-worker</code> — timeouts y excepciones del sandbox</td>
+<td>08 may</td>
+<td>Daniel</td>
+<td><code>pytest-timeout</code>, <code>unittest.mock</code> para <code>subprocess.TimeoutExpired</code></td>
+<td>$0</td>
+<td>Acción 22</td>
+</tr>
+<tr>
+<td>25</td>
+<td>Integración <code>computation-worker</code> ↔ Redis/Celery</td>
+<td>11 may</td>
+<td>Daniel</td>
+<td><code>fakeredis</code>, <code>pytest-celery</code></td>
+<td>$0</td>
+<td>Acción 2; acciones 22–24</td>
+</tr>
+<tr>
+<td>26</td>
+<td>Reporte de cobertura <code>lean-worker</code> + <code>computation-worker</code></td>
+<td>14 may</td>
+<td>Daniel</td>
+<td><code>pytest-cov</code>, <code>pytest-html</code></td>
+<td>$0</td>
+<td>Acciones 21, 25; cobertura objetivo ≥ 85 %</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="jesús--nl2fl-worker--agents-worker">Jesús — <code>nl2fl-worker</code> + <code>agents-worker</code></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Acción</th>
+<th>Fecha</th>
+<th>Responsable</th>
+<th>Recursos tecnológicos</th>
+<th>Recursos económicos</th>
+<th>Dependencias</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>27</td>
+<td>Análisis de <code>nl2fl_service.py</code>: flujo retry LLM, providers y ciclo de retroalimentación</td>
+<td>29 abr</td>
+<td>Jesús</td>
+<td>Revisión de <code>nl2fl/nl2fl_service.py</code></td>
+<td>$0</td>
+<td>Acción 1</td>
+</tr>
+<tr>
+<td>28</td>
+<td>Análisis de <code>agents_service.py</code>: cuatro providers y system prompt</td>
+<td>30 abr</td>
+<td>Jesús</td>
+<td>Revisión de <code>agents/agents_service.py</code></td>
+<td>$0</td>
+<td>Acción 1</td>
+</tr>
+<tr>
+<td>29</td>
+<td>Unit tests <code>nl2fl-worker</code> — llamadas LLM con los cuatro providers mockeados</td>
+<td>01–02 may</td>
+<td>Jesús</td>
+<td><code>pytest</code>, <code>responses</code> (mock REST APIs de OpenAI, Anthropic, Google, DeepSeek), <code>pytest-mock</code></td>
+<td>$0</td>
+<td>Acción 3</td>
+</tr>
+<tr>
+<td>30</td>
+<td>Unit tests <code>nl2fl-worker</code> — ciclo retry con errores del compilador Lean inyectados</td>
+<td>05–06 may</td>
+<td>Jesús</td>
+<td><code>pytest</code>, fixtures de errores Lean (cadenas de texto conocidas)</td>
+<td>$0</td>
+<td>Acción 29</td>
+</tr>
+<tr>
+<td>31</td>
+<td>Unit tests <code>nl2fl-worker</code> — historial de intentos, respuesta vacía y provider desconocido</td>
+<td>07 may</td>
+<td>Jesús</td>
+<td><code>pytest</code>, <code>pytest-mock</code></td>
+<td>$0</td>
+<td>Acción 29</td>
+</tr>
+<tr>
+<td>32</td>
+<td>Integración <code>nl2fl-worker</code> ↔ <code>lean-worker</code> via Celery (pipeline completo)</td>
+<td>08–11 may</td>
+<td>Jesús</td>
+<td><code>pytest-celery</code>, imagen <code>lean-worker</code> construida, <code>fakeredis</code></td>
+<td>$0</td>
+<td>Acción 21 (lean-worker integrado); acción 3</td>
+</tr>
+<tr>
+<td>33</td>
+<td>Unit tests <code>agents-worker</code> — providers OpenAI, Anthropic, Google, DeepSeek y <code>mock/</code></td>
+<td>06–07 may</td>
+<td>Jesús</td>
+<td><code>pytest</code>, <code>responses</code>, proxy Copilot local (<code>http://host.docker.internal:8000</code>)</td>
+<td>$0</td>
+<td>Acción 28; acción 3</td>
+</tr>
+<tr>
+<td>34</td>
+<td>Unit tests <code>agents-worker</code> — system prompt, timeout 120 s y HTTP 429 rate limit</td>
+<td>08 may</td>
+<td>Jesús</td>
+<td><code>pytest</code>, <code>pytest-timeout</code>, <code>responses</code> (mock 429)</td>
+<td>$0</td>
+<td>Acción 33</td>
+</tr>
+<tr>
+<td>35</td>
+<td>Integración <code>agents-worker</code> ↔ Redis/Celery</td>
+<td>11 may</td>
+<td>Jesús</td>
+<td><code>fakeredis</code>, <code>pytest-celery</code></td>
+<td>$0</td>
+<td>Acción 3</td>
+</tr>
+<tr>
+<td>36</td>
+<td>Reporte de cobertura <code>nl2fl-worker</code> + <code>agents-worker</code></td>
+<td>13–14 may</td>
+<td>Jesús</td>
+<td><code>pytest-cov</code>, <code>pytest-html</code></td>
+<td>$0 (unit/integración); ~$2–5 USD opcional si se usan tokens LLM reales</td>
+<td>Acciones 32, 35; cobertura objetivo ≥ 85 %</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="emiliano--frontend-angular--cluster-computation-worker">Emiliano — <code>frontend</code> (Angular) + <code>cluster-computation-worker</code></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Acción</th>
+<th>Fecha</th>
+<th>Responsable</th>
+<th>Recursos tecnológicos</th>
+<th>Recursos económicos</th>
+<th>Dependencias</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>37</td>
+<td>Análisis de componentes y servicios Angular (<code>AuthService</code>, <code>TaskService</code>, rutas, guards)</td>
+<td>29 abr</td>
+<td>Emiliano</td>
+<td>Angular CLI 17, Node.js 20, revisión de <code>frontend/src/app/</code></td>
+<td>$0</td>
+<td>Acción 1</td>
+</tr>
+<tr>
+<td>38</td>
+<td>Análisis de <code>cluster_computation/computation_service.py</code> y <code>cluster_api</code> HTTP endpoints</td>
+<td>30 abr</td>
+<td>Emiliano</td>
+<td>Revisión de <code>cluster_computation/</code>, <code>cluster_api/app.py</code></td>
+<td>$0</td>
+<td>Acción 1</td>
+</tr>
+<tr>
+<td>39</td>
+<td>Unit tests Angular — <code>AuthService</code> y <code>auth.guard</code></td>
+<td>01–02 may</td>
+<td>Emiliano</td>
+<td><code>Jest</code> + <code>jest-preset-angular</code>, <code>Angular TestBed</code>, <code>RouterTestingModule</code>, <code>HttpClientTestingModule</code></td>
+<td>$0</td>
+<td>Acción 3</td>
+</tr>
+<tr>
+<td>40</td>
+<td>Unit tests Angular — <code>TaskService</code> y HTTP interceptors</td>
+<td>05–06 may</td>
+<td>Emiliano</td>
+<td><code>HttpClientTestingModule</code>, <code>RouterTestingModule</code></td>
+<td>$0</td>
+<td>Acción 39</td>
+</tr>
+<tr>
+<td>41</td>
+<td>Unit tests Angular — componentes de páginas principales (creación de proyecto, validación, traducción)</td>
+<td>07 may</td>
+<td>Emiliano</td>
+<td><code>Angular TestBed</code>, <code>msw</code> (Mock Service Worker) para simular API <code>web</code></td>
+<td>$0</td>
+<td>Acción 40</td>
+</tr>
+<tr>
+<td>42</td>
+<td>E2E Cypress — flujo de autenticación GitHub OAuth</td>
+<td>08–09 may</td>
+<td>Emiliano</td>
+<td><code>Cypress ≥ 13</code>, cuenta de GitHub de desarrollo (gratuita)</td>
+<td>$0</td>
+<td>Acción 39; servidor <code>web</code> o MSW disponible</td>
+</tr>
+<tr>
+<td>43</td>
+<td>E2E Cypress — flujo completo: crear proyecto → validar nodo → traducir</td>
+<td>09–10 may</td>
+<td>Emiliano</td>
+<td><code>Cypress</code>, <code>cy.intercept</code> para control de timing, <code>msw</code></td>
+<td>$0</td>
+<td>Acción 42; API <code>web</code> mock vía MSW</td>
+</tr>
+<tr>
+<td>44</td>
+<td>Integración <code>frontend</code> ↔ <code>web</code> API vía Mock Service Worker</td>
+<td>11 may</td>
+<td>Emiliano</td>
+<td><code>msw</code>, <code>Jest</code>, <code>HttpClientTestingModule</code></td>
+<td>$0</td>
+<td>Acciones 41–43</td>
+</tr>
+<tr>
+<td>45</td>
+<td>Unit tests <code>cluster-computation-worker</code> — polling y transiciones PENDING/RUNNING/COMPLETED</td>
+<td>06–07 may</td>
+<td>Emiliano</td>
+<td><code>pytest</code>, <code>responses</code> (mock <code>cluster_api</code> REST), <code>pytest-mock</code></td>
+<td>$0</td>
+<td>Acción 38; acción 3</td>
+</tr>
+<tr>
+<td>46</td>
+<td>Unit tests <code>cluster-computation-worker</code> — edge cases: <code>TIMEOUT</code>, <code>NODE_FAIL</code>, <code>CLUSTER_API_KEY</code> vacía</td>
+<td>08 may</td>
+<td>Emiliano</td>
+<td><code>pytest</code>, <code>responses</code></td>
+<td>$0</td>
+<td>Acción 45</td>
+</tr>
+<tr>
+<td>47</td>
+<td>Integración <code>cluster-computation-worker</code> ↔ <code>cluster_api</code> mock</td>
+<td>12 may</td>
+<td>Emiliano</td>
+<td><code>responses</code>, <code>fakeredis</code>, <code>pytest-celery</code>, variable <code>CLUSTER_API_URL</code> configurable</td>
+<td>$0 (red lab física: sin costo)</td>
+<td>Acciones 45–46</td>
+</tr>
+<tr>
+<td>48</td>
+<td>Reporte de cobertura <code>frontend</code> + <code>cluster-computation-worker</code></td>
+<td>14 may</td>
+<td>Emiliano</td>
+<td><code>pytest-cov</code>, <code>Jest --coverage</code>, <code>pytest-html</code></td>
+<td>$0</td>
+<td>Acciones 44, 47; cobertura objetivo ≥ 80 %</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="cierre-todos-los-integrantes">Cierre (todos los integrantes)</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Acción</th>
+<th>Fecha</th>
+<th>Responsable</th>
+<th>Recursos tecnológicos</th>
+<th>Recursos económicos</th>
+<th>Dependencias</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>49</td>
+<td>Ejecución de suite E2E completa con <code>docker-compose.test.yml</code> (todos los contenedores)</td>
+<td>13 may</td>
+<td>Todos</td>
+<td><code>docker-compose.test.yml</code>, <code>pytest</code>, <code>Cypress</code></td>
+<td>$0</td>
+<td>Todas las suites unitarias e integración completadas</td>
+</tr>
+<tr>
+<td>50</td>
+<td>Análisis de fallos E2E y correcciones finales</td>
+<td>14 may</td>
+<td>Todos</td>
+<td>Logs de <code>pytest-html</code>, panel de Cypress</td>
+<td>$0</td>
+<td>Acción 49</td>
+</tr>
+<tr>
+<td>51</td>
+<td>Reporte consolidado de cobertura y merge del pipeline CI/CD a <code>main</code></td>
+<td>15 may</td>
+<td>Todos</td>
+<td><code>codecov</code>, <code>pytest-html</code>, GitHub Actions</td>
+<td>$0</td>
+<td>Acción 50; todos los reportes individuales</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="3-carta-de-gantt">3. Carta de Gantt</h2>
+<pre><code class="language-mermaid"><div class="mermaid">gantt
+    title Suite de Pruebas CoPROOF — 29 Abr al 15 May 2026
+    dateFormat YYYY-MM-DD
+    excludes weekends
+    axisFormat %d/%m
+
+    section Infraestructura Compartida
+    #1  :shared1, 2026-04-29, 1d
+    #2  :shared2, 2026-04-30, 1d
+    #3  :shared3, 2026-05-01, 1d
+    #4  :shared4, 2026-05-15, 1d
+
+    section David — web (Flask API)
+    #5  :d_web1, 2026-04-29, 1d
+    #7  :d_web2, 2026-05-01, 2d
+    #8  :d_web3, 2026-05-05, 2d
+    #9  :d_web4, 2026-05-07, 1d
+    #12 :d_web5, 2026-05-08, 1d
+    #13 :d_web6, 2026-05-11, 1d
+
+    section David — celery_worker (Git Engine)
+    #6  :d_git0, 2026-04-30, 1d
+    #10 :d_git1, 2026-05-06, 1d
+    #11 :d_git2, 2026-05-07, 1d
+    #14 :d_git3, 2026-05-12, 1d
+    #15 :d_cov,  2026-05-14, 1d
+
+    section Daniel — lean-worker
+    #16 :dn_l1, 2026-04-29, 1d
+    #18 :dn_l2, 2026-05-01, 2d
+    #19 :dn_l3, 2026-05-05, 1d
+    #20 :dn_l4, 2026-05-06, 1d
+    #21 :dn_l5, 2026-05-07, 2d
+    #26 :dn_lcov, 2026-05-14, 1d
+
+    section Daniel — computation-worker
+    #17 :dn_c1, 2026-04-30, 1d
+    #22 :dn_c2, 2026-05-05, 2d
+    #23 :dn_c3, 2026-05-07, 1d
+    #24 :dn_c4, 2026-05-08, 1d
+    #25 :dn_c5, 2026-05-11, 1d
+    #26 :dn_ccov, 2026-05-14, 1d
+
+    section Jesus — nl2fl-worker
+    #27 :j_n1, 2026-04-29, 1d
+    #29 :j_n2, 2026-05-01, 2d
+    #30 :j_n3, 2026-05-05, 2d
+    #31 :j_n4, 2026-05-07, 1d
+    #32 :j_n5, 2026-05-08, 2d
+    #36 :j_ncov, 2026-05-14, 1d
+
+    section Jesus — agents-worker
+    #28 :j_a1, 2026-04-30, 1d
+    #33 :j_a2, 2026-05-06, 2d
+    #34 :j_a3, 2026-05-08, 1d
+    #35 :j_a4, 2026-05-11, 1d
+    #36 :j_acov, 2026-05-13, 1d
+
+    section Emiliano — frontend (Angular)
+    #37 :e_fe1, 2026-04-29, 1d
+    #39 :e_fe2, 2026-05-01, 2d
+    #40 :e_fe3, 2026-05-05, 2d
+    #41 :e_fe4, 2026-05-07, 1d
+    #42 :e_fe5, 2026-05-08, 2d
+    #44 :e_fe6, 2026-05-11, 1d
+    #48 :e_fecov, 2026-05-14, 1d
+
+    section Emiliano — cluster-computation-worker
+    #38 :e_cl1, 2026-04-30, 1d
+    #45 :e_cl2, 2026-05-06, 2d
+    #46 :e_cl3, 2026-05-08, 1d
+    #47 :e_cl4, 2026-05-12, 1d
+    #48 :e_clcov, 2026-05-14, 1d
+
+    section Cierre
+    #49 :e2e1, 2026-05-13, 1d
+    #50 :e2e2, 2026-05-14, 1d
+    #51 :e2e3, 2026-05-15, 1d
+</div></code></pre>
+
+</body>
+</html>

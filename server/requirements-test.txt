@@ -1,0 +1,14 @@
+# Test-only dependencies for the `web` and `celery_worker` microservices
+# Install alongside requirements.txt:
+#   pip install -r requirements.txt -r requirements-test.txt
+
+pytest>=8.0
+pytest-flask
+pytest-mock
+pytest-cov
+pytest-html
+responses>=0.25
+fakeredis[aioredis]
+factory-boy
+Faker
+testcontainers[postgres,redis]
