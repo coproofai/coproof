@@ -1,40 +1,262 @@
-    <div class="max-wrap">
-      <h1>Buscar Demostración en la Base de Conocimiento</h1>
+<div class="page-wrap">
 
-      <div class="search-panel">
-        <input type="text" [(ngModel)]="query" (input)="filterResults()" placeholder="Buscar por Teorema, Lema, o Resultado..." />
+  <h1>Buscar Demostración en Mathlib</h1>
+
+  <!-- ── Settings panel (model + API key) ─────────────────────────── -->
+  @if (isLoggedIn) {
+  <div class="settings-panel">
+    <button class="settings-toggle" (click)="settingsOpen = !settingsOpen">
+      <span>⚙ Configuración del modelo</span>
+      <span class="toggle-chevron">{{ settingsOpen ? '▲' : '▼' }}</span>
+    </button>
+
+    @if (settingsOpen) {
+      <div class="settings-body">
+
+        <!-- Model selector -->
+        <div class="setting-group">
+          <label for="model-select">Modelo LLM</label>
+          <select id="model-select"
+            [(ngModel)]="selectedModelId"
+            (ngModelChange)="onModelChange()">
+            <option value="">— Selecciona un modelo —</option>
+            @for (m of (models$ | async) ?? []; track m.id) {
+              <option [value]="m.id">{{ m.provider }} · {{ m.name }}</option>
+            }
+          </select>
+        </div>
+
+        <!-- API key (only when logged in) -->
+        <div class="setting-group">
+          <label>API Key</label>
+          @if (maskedKey) {
+            <span class="masked-key">{{ maskedKey }}</span>
+          }
+          <div class="api-key-row">
+            <input type="password"
+              [(ngModel)]="apiKeyInput"
+              placeholder="sk-…"
+              autocomplete="new-password" />
+            <button class="btn-save"
+              (click)="saveApiKey()"
+              [disabled]="apiKeySaving || !apiKeyInput.trim()">
+              {{ apiKeySaving ? 'Guardando…' : 'Guardar' }}
+            </button>
+          </div>
+          @if (apiKeyError) {
+            <p class="error-text">{{ apiKeyError }}</p>
+          }
+        </div>
+
       </div>
+    }
+  </div>
+  }
 
-      <div class="grid">
-        <section>
-          <h2>Resultados ({{ filtered.length }})</h2>
-          <div class="content-box results-box">
-            <div *ngFor="let demo of filtered" class="result-item" (click)="showDetail(demo)">
-              <h3>{{ demo.title }}</h3>
-              <p>{{ demo.preview }}</p>
-            </div>
-            <p *ngIf="filtered.length === 0" class="empty">No se encontraron resultados que coincidan.</p>
-          </div>
-        </section>
+  <!-- ── Mode tabs ─────────────────────────────────────────────────── -->
+  <div class="mode-tabs">
+    <button class="mode-tab" [class.mode-tab-active]="searchMode === 'byName'"
+      (click)="switchMode('byName')">
+      🔍 Buscar por Nombre
+    </button>
+    @if (isLoggedIn) {
+      <button class="mode-tab" [class.mode-tab-active]="searchMode === 'byNL'"
+        (click)="switchMode('byNL')">
+        ✦ Buscar desde Lenguaje Natural
+      </button>
+    }
+  </div>
 
-        <section *ngIf="selected" class="detail">
-          <h2>Detalle de Demostración: {{ selected.title }}</h2>
-          <div class="toggles">
-            <label><input type="checkbox" [(ngModel)]="showNatural" /> Lenguaje Natural</label>
-            <label><input type="checkbox" [(ngModel)]="showLean" /> Formalismo Lean</label>
-          </div>
+  @if (!isLoggedIn) {
+    <p class="muted login-hint">
+      <a routerLink="/auth">Inicia sesión</a> para usar la búsqueda por lenguaje natural y la traducción a NL (.tex).
+    </p>
+  }
 
-          <div class="detail-columns" [class.single-column]="!(showNatural && showLean)">
-            <div *ngIf="showNatural">
-              <h3>Lenguaje Natural</h3>
-              <pre class="content-box detail-box">{{ selected.naturalFull }}</pre>
-            </div>
-            <div *ngIf="showLean">
-              <h3>Formalismo Lean</h3>
-              <pre class="content-box detail-box">{{ selected.leanFull }}</pre>
-            </div>
-          </div>
-        </section>
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- Mode A · Buscar por nombre de declaración Mathlib                  -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  @if (searchMode === 'byName') {
+    <div class="input-panel">
+      <p class="panel-hint">
+        Escribe el nombre exacto de la declaración en Mathlib4, por ejemplo
+        <code>Nat.succ_pos</code>, <code>Real.sqrt_sq</code>, <code>Finset.sum_comm</code>.
+      </p>
+      <div class="search-row">
+        <input type="text" class="name-input"
+          [(ngModel)]="mathlibNameInput"
+          placeholder="Nat.succ_pos"
+          (keydown.enter)="submitLookup()" />
+        <button class="btn-primary"
+          (click)="submitLookup()"
+          [disabled]="!mathlibNameInput.trim()">
+          Buscar
+        </button>
+        <button class="btn-ghost" (click)="resetLookup()">Limpiar</button>
       </div>
     </div>
+  }
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- Mode B · NL description → Mathlib suggestions                      -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  @if (searchMode === 'byNL') {
+    <div class="input-panel">
+      <p class="panel-hint">
+        Describe el teorema en lenguaje natural; el modelo sugerirá nombres de declaraciones en Mathlib4.
+      </p>
+      <textarea class="text-area"
+        [(ngModel)]="nlDescriptionInput"
+        rows="4"
+        placeholder="Ejemplo: 'The successor of any natural number is positive'">
+      </textarea>
+      <div class="col-actions">
+        <button class="btn-primary"
+          (click)="submitSuggest()"
+          [disabled]="!nlDescriptionInput.trim() || !selectedModelId">
+          Buscar Sugerencias
+        </button>
+        <button class="btn-ghost" (click)="resetSuggest()">Limpiar</button>
+        @if (!selectedModelId) {
+          <span class="muted">Selecciona un modelo en ⚙ Configuración.</span>
+        }
+      </div>
+    </div>
+
+    <!-- Suggest status + results -->
+    @if (suggest$ | async; as svm) {
+      @if (svm.state !== 'idle') {
+        <div class="status-bar"
+          [class]="'status-bar status-' + (svm.state === 'loading' || svm.state === 'validating' ? 'translating' : svm.state === 'done' ? 'valid' : 'error')">
+          <span class="status-dot"></span>
+          <span class="status-label">{{ getSuggestStateLabel(svm.state) }}</span>
+        </div>
+      }
+
+      @if (svm.state === 'error') {
+        <p class="error-text server-error">{{ svm.error }}</p>
+      }
+
+      @if (svm.state === 'done' && svm.candidates.length > 0) {
+        <div class="suggestion-list">
+          <p class="suggestion-header">Selecciona una declaración para cargar su .lean:</p>
+          @for (name of svm.candidates; track name) {
+            <div class="suggestion-item">
+              <code class="suggestion-name">{{ name }}</code>
+              <button class="btn-load" (click)="loadFromSuggestion(name)">
+                Cargar .lean
+              </button>
+            </div>
+          }
+        </div>
+      }
+
+      @if (svm.state === 'done' && svm.candidates.length === 0) {
+        <p class="muted">No se encontraron declaraciones válidas en Mathlib. Intenta reformular la descripción.</p>
+      }
+    }
+  }
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- Lookup result (shared between modes)                               -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  @if (lookup$ | async; as lvm) {
+    @if (lvm.state !== 'idle') {
+      <div class="result-section">
+
+        <div class="status-bar"
+          [class]="'status-bar status-' + (lvm.state === 'loading' ? 'translating' : lvm.state === 'found' ? 'valid' : lvm.state === 'notFound' ? 'invalid' : 'error')">
+          <span class="status-dot"></span>
+          <span class="status-label">{{ getLookupStateLabel(lvm.state) }}</span>
+          @if (lvm.state === 'found' && lvm.result) {
+            <span class="status-meta">{{ lvm.result.declaration_name }}</span>
+          }
+          @if (lvm.state === 'found' && lvm.result) {
+            <span class="status-meta">{{ lvm.result.processing_time_seconds | number:'1.1-1' }}s</span>
+          }
+        </div>
+
+        @if (lvm.state === 'loading') {
+          <div class="placeholder">
+            <div class="spinner"></div>
+            <span>Consultando al worker de Lean…</span>
+          </div>
+        }
+
+        @if (lvm.state === 'found' && lvm.result) {
+          <pre class="code-block lean-block">{{ lvm.result.lean_source }}</pre>
+          <div class="col-actions">
+            @if (isLoggedIn) {
+              <button class="btn-primary"
+                (click)="translateToNL(lvm.result.lean_source)"
+                [disabled]="!selectedModelId || !lvm.result.lean_source">
+                Traducir a NL (.tex)
+              </button>
+              @if (!selectedModelId) {
+                <span class="muted">Selecciona un modelo para traducir a NL.</span>
+              }
+            }
+            <button class="btn-ghost" (click)="resetLookup()">Cerrar</button>
+          </div>
+        }
+
+        @if (lvm.state === 'notFound') {
+          <p class="muted not-found-msg">
+            La declaración <code>{{ mathlibNameInput }}</code> no fue encontrada en Mathlib.
+            Verifica que el nombre sea exacto y que Mathlib4 esté disponible en el worker.
+          </p>
+          @if (lvm.error) {
+            <pre class="code-block error-block">{{ lvm.error }}</pre>
+          }
+        }
+
+        @if (lvm.state === 'error') {
+          <p class="error-text server-error">{{ lvm.error }}</p>
+        }
+
+      </div>
+    }
+  }
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- FL → NL result (logged-in users only)                              -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  @if (isLoggedIn) {
+  @if (fl2nl$ | async; as fvm) {
+    @if (fvm.state !== 'idle') {
+      <div class="result-section">
+
+        <div class="status-bar"
+          [class]="'status-bar status-' + (fvm.state === 'translating' ? 'translating' : fvm.state === 'done' ? 'done' : 'error')">
+          <span class="status-dot"></span>
+          <span class="status-label">{{ getFl2NlStateLabel(fvm.state) }}</span>
+          @if (fvm.state === 'done') {
+            <span class="status-meta">{{ fvm.processingTime | number:'1.1-1' }}s</span>
+          }
+        </div>
+
+        @if (fvm.state === 'translating') {
+          <div class="placeholder">
+            <div class="spinner"></div>
+            <span>Interpretando el código Lean…</span>
+          </div>
+        }
+
+        @if (fvm.state === 'done') {
+          <div class="tex-preview-pane" [innerHTML]="fvm.renderedHtml"></div>
+          <div class="col-actions">
+            <button class="btn-ghost" (click)="resetFl2nl()">Cerrar traducción</button>
+          </div>
+        }
+
+        @if (fvm.state === 'error') {
+          <p class="error-text server-error">{{ fvm.error }}</p>
+        }
+
+      </div>
+    }
+  }
+  }
+
+</div>
   

@@ -300,3 +300,17 @@ export interface SuggestResult {
   model_id: string;
   processing_time_seconds: number;
 }
+
+// --- Mathlib Lookup ---
+
+export interface MathlibLookupPayload {
+  declaration_name: string;
+}
+
+export interface MathlibLookupResult {
+  declaration_name: string;
+  lean_source: string;
+  found: boolean;
+  error_message: string;
+  processing_time_seconds: number;
+}

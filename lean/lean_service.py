@@ -410,3 +410,102 @@ def to_compiler_project_response(file_map: dict, entry_file: str):
     }
 
 
+def get_mathlib_info(declaration_name: str) -> dict:
+    """
+    Attempts to retrieve the Lean 4 source/type of a Mathlib4 declaration
+    by running `#check <name>` and `#print <name>` via the lean executable.
+
+    Requires the lean worker environment to have Mathlib4 pre-built (lake build).
+    If Mathlib is not available or the declaration is unknown, returns found=False
+    with a graceful error message rather than raising.
+
+    Returns:
+        {
+            "declaration_name": str,
+            "lean_source": str,   -- stdout captured from lean (empty if not found)
+            "found": bool,
+            "error_message": str, -- human-readable reason when found=False
+            "processing_time_seconds": float,
+        }
+    """
+    start_time = time.time()
+    lean_executable = find_lean_executable()
+
+    if not lean_executable:
+        return {
+            "declaration_name": declaration_name,
+            "lean_source": "",
+            "found": False,
+            "error_message": "Lean executable not found. Please install Lean 4 via elan.",
+            "processing_time_seconds": round(time.time() - start_time, 3),
+        }
+
+    lean_code = (
+        "import Mathlib\n"
+        f"#check {declaration_name}\n"
+        f"#print {declaration_name}\n"
+    )
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        lean_file_path = os.path.join(temp_dir, "mathlib_lookup.lean")
+        with open(lean_file_path, "w", encoding="utf-8") as fh:
+            fh.write(lean_code)
+
+        try:
+            result = subprocess.run(
+                [lean_executable, lean_file_path],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=temp_dir,
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "declaration_name": declaration_name,
+                "lean_source": "",
+                "found": False,
+                "error_message": "Timeout: Mathlib lookup exceeded 120 seconds.",
+                "processing_time_seconds": round(time.time() - start_time, 3),
+            }
+        except Exception as exc:
+            return {
+                "declaration_name": declaration_name,
+                "lean_source": "",
+                "found": False,
+                "error_message": str(exc),
+                "processing_time_seconds": round(time.time() - start_time, 3),
+            }
+
+    elapsed = round(time.time() - start_time, 3)
+    combined = (result.stdout or "") + (result.stderr or "")
+
+    # Heuristics to detect a "not found" response from lean.
+    not_found_hints = [
+        "unknown identifier",
+        "unknown constant",
+        "declaration not found",
+        "error: unknown",
+        "failed to synthesize",
+    ]
+    not_found = any(hint in combined.lower() for hint in not_found_hints)
+
+    # Even a non-zero return code is treated as not found when the output
+    # contains meaningful lean text (e.g. type errors from a bad import).
+    if not_found or (result.returncode != 0 and not result.stdout.strip()):
+        return {
+            "declaration_name": declaration_name,
+            "lean_source": "",
+            "found": False,
+            "error_message": combined.strip() or "Declaration not found in Mathlib.",
+            "processing_time_seconds": elapsed,
+        }
+
+    return {
+        "declaration_name": declaration_name,
+        "lean_source": result.stdout.strip(),
+        "found": True,
+        "error_message": "",
+        "processing_time_seconds": elapsed,
+    }
+
+

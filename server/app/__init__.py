@@ -63,6 +63,7 @@ def create_app(config_class=None):
     from app.api.agents import agent_bp
     from app.api.webhooks import webhooks_bp
     from app.api.translate import translate_bp
+    from app.api.lean import lean_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(projects_bp)
@@ -70,6 +71,7 @@ def create_app(config_class=None):
     app.register_blueprint(agent_bp)
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(translate_bp)
+    app.register_blueprint(lean_bp)
 
     return app
 

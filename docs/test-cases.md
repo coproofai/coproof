@@ -40,6 +40,12 @@
 14. [TCD-14 — Angular `authGuard` (`frontend`)](#tcd-14--angular-authguard-frontend)
 15. [TCD-15 — E2E: Authentication Flow](#tcd-15--e2e-authentication-flow)
 16. [TCD-16 — E2E: Project & Node Flow](#tcd-16--e2e-project--node-flow)
+17. [TCD-17 — Lean Worker: Functional Verification](#tcd-17--lean-worker-functional-verification)
+18. [TCD-18 — Computation Worker: Functional Execution](#tcd-18--computation-worker-functional-execution)
+19. [TCD-19 — NL2FL Worker: Functional Pipeline](#tcd-19--nl2fl-worker-functional-pipeline)
+20. [TCD-20 — Agents Worker: Functional Suggestion Flow](#tcd-20--agents-worker-functional-suggestion-flow)
+21. [TCD-21 — Cluster Computation: Functional Polling Flow](#tcd-21--cluster-computation-functional-polling-flow)
+22. [TCD-22 — Web API + PostgreSQL: Functional Integration](#tcd-22--web-api--postgresql-functional-integration)
 
 ---
 
@@ -1922,6 +1928,478 @@ intercepted via `cy.intercept`.
 
 ---
 
+## TCD-17 — Lean Worker: Functional Verification
+
+**Module:** `lean/lean_service.py` — `verify_lean_proof()`  
+**Tool:** `pytest` (no mocking of subprocess — real Lean 4 compiler invoked)  
+**Status:** ✅ 5/5 passing (Python 3.10.12, pytest-9.0.3, inside `lean-worker` container)  
+**Run:** `docker compose cp lean/tests lean-worker:/app/tests && docker compose exec lean-worker bash -c "pip3 install pytest --quiet && cd /app && pytest -v tests/tcd17_lean_functional/"`
+
+**Infrastructure notes:**
+- These tests call `verify_lean_proof()` directly. No Celery broker is needed; the function runs synchronously via `subprocess.run`.
+- Lean 4 must be reachable as `lean` or `~/.elan/bin/lean`. Inside the `lean-worker` Docker container this is always satisfied. On a developer machine, `elan` must be installed and `lean` must be on `$PATH`.
+- The `tests/` directory is not copied into the Docker image — it must be injected via `docker compose cp` or a bind-mount volume before running.
+- The test file uses `pytestmark = pytest.mark.skipif(find_lean_executable() is None, ...)` so the suite auto-skips gracefully on Windows hosts where Lean is not installed, without failing.
+- All test snippets are self-contained (`import Mathlib`-free) so no Mathlib pre-compilation is required. All 5 tests completed in 1.10 s.
+- TC-17-02 uses `by sorry` — Lean compiles this successfully (return code 0) but emits a `warning: 'sorry' tactic` diagnostic. The test asserts `verified: True` and that the warning message is present.
+- TC-17-03 uses an explicit type mismatch. The test asserts `verified: False`, `returnCode != 0`, and that at least one `error`-severity message is present.
+- TC-17-04 submits two `theorem` declarations in a single snippet; `parse_theorem_info` must detect both.
+- TC-17-05 asserts the shape of the response dict regardless of whether verification succeeds — all required keys (`verified`, `returnCode`, `theorems`, `messages`, `feedback`, `processingTimeSeconds`) must be present.
+
+**Description:**  
+Functional tests that invoke the real Lean 4 compiler to verify that
+`verify_lean_proof()` correctly handles valid code, sorry-based proofs, type
+errors, multi-theorem files, and always returns a well-formed response.
+
+---
+
+### TC-17-01 — Valid trivial theorem verifies successfully
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable (real compiler — no mock) |
+| **Steps** | 1. Call `verify_lean_proof("theorem hello : True := trivial")` |
+| **Expected** | `verified == True`; `returnCode == 0`; `theorems` list contains one entry with `name == "hello"` |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-17-02 — Theorem using `sorry` compiles but emits a warning
+
+| Field | Detail |
+|---|---|
+| **Pre** | Real Lean 4 executable |
+| **Steps** | 1. Call `verify_lean_proof("theorem sorry_ex : 1 = 2 := by sorry")` |
+| **Expected** | `verified == True` (return code 0); at least one message with `severity == "warning"` whose `message` contains `"sorry"` |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-17-03 — Code with a type mismatch returns `verified=False` with error diagnostics
+
+| Field | Detail |
+|---|---|
+| **Pre** | Real Lean 4 executable |
+| **Steps** | 1. Call `verify_lean_proof("theorem bad : True := (42 : Nat)")` |
+| **Expected** | `verified == False`; `returnCode != 0`; `messages` contains at least one entry with `severity == "error"` |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-17-04 — Multi-theorem snippet: all declarations are detected
+
+| Field | Detail |
+|---|---|
+| **Pre** | Real Lean 4 executable |
+| **Steps** | 1. Call `verify_lean_proof` with a snippet containing `theorem alpha : True := trivial` and `theorem beta : True := trivial` on separate lines |
+| **Expected** | `verified == True`; `theorems` list has length 2; names are `"alpha"` and `"beta"` in order |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-17-05 — Response dict always contains all required keys
+
+| Field | Detail |
+|---|---|
+| **Pre** | Real Lean 4 executable |
+| **Steps** | 1. Call `verify_lean_proof` with any snippet (valid or invalid) |
+| **Expected** | Return value is a `dict` containing exactly the keys: `verified`, `returnCode`, `theorems`, `messages`, `feedback`, `processingTimeSeconds`; `feedback` is itself a dict with keys `stdout` and `stderr` |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+## TCD-18 — Computation Worker: Functional Execution
+
+**Module:** `computation/computation_service.py` — `run_computation_job()`  
+**Tool:** `pytest` (no mocking — real Python `subprocess.run` spawns a sandbox runner process)  
+**Status:** ✅ 5/5 passing (Python 3.11.15, pytest-9.0.3, inside `computation-worker` container)  
+**Run:** `docker compose cp computation/tests computation-worker:/app/tests && docker compose exec computation-worker bash -c "pip3 install pytest --quiet && cd /app && pytest -v tests/tcd18_computation_functional/"`
+
+**Infrastructure notes:**
+- These tests call `run_computation_job()` directly with no patching. The function spawns a real child `python runner.py` subprocess in a `tempfile.TemporaryDirectory`.
+- No Celery broker is needed.
+- The `tests/` directory is not copied into the Docker image — it must be injected via `docker compose cp` before running.
+- TC-18-01/02 use a minimal one-liner entrypoint passed as `source_code` that returns immediately.
+- TC-18-03 uses an entrypoint that raises `ValueError` — the sandbox catches all exceptions and returns `completed: False` with the error string.
+- TC-18-04 passes `timeout_seconds=2` and a busy-loop entrypoint. `subprocess.TimeoutExpired` is caught by `run_computation_job` which injects `"Computation timeout after 2 seconds."` as the error. `@pytest.mark.timeout(8)` is a safety net; registered in `pytest.ini` to suppress `PytestUnknownMarkWarning` when `pytest-timeout` is absent.
+- TC-18-05 passes `language="julia"` — `run_computation_job` returns immediately with `completed: False` and `error` containing `"Unsupported"`. No subprocess spawned.
+
+**Description:**  
+Functional tests that execute the real Python sandbox runner to verify that
+`run_computation_job()` correctly handles successful computations, insufficient
+evidence, entrypoint exceptions, execution timeouts, and unsupported languages.
+
+---
+
+### TC-18-01 — Valid computation returns `completed=True` and correct evidence
+
+| Field | Detail |
+|---|---|
+| **Pre** | Python interpreter available (no external deps) |
+| **Steps** | 1. Call `run_computation_job({ "source_code": "def compute(d, t): return (42, True)", "entrypoint": "compute", "input_data": None, "target": None })` |
+| **Expected** | `completed == True`; `sufficient == True`; `evidence == 42`; `error` is `None` |
+| **Tool** | pytest, real subprocess |
+
+---
+
+### TC-18-02 — Computation returning `sufficient=False` is correctly relayed
+
+| Field | Detail |
+|---|---|
+| **Pre** | Python interpreter available |
+| **Steps** | 1. Call `run_computation_job` with an entrypoint that returns `("no evidence", False)` |
+| **Expected** | `completed == True`; `sufficient == False`; `evidence == "no evidence"` |
+| **Tool** | pytest, real subprocess |
+
+---
+
+### TC-18-03 — Entrypoint exception yields `completed=False` with error message
+
+| Field | Detail |
+|---|---|
+| **Pre** | Python interpreter available |
+| **Steps** | 1. Call `run_computation_job` with an entrypoint that executes `raise ValueError("intentional failure")` |
+| **Expected** | `completed == False`; `sufficient == False`; `error` is a non-empty string containing `"intentional failure"` |
+| **Tool** | pytest, real subprocess |
+
+---
+
+### TC-18-04 — Infinite-loop entrypoint is terminated by `timeout_seconds`
+
+| Field | Detail |
+|---|---|
+| **Pre** | Python interpreter available |
+| **Steps** | 1. Call `run_computation_job({ ..., "source_code": "def compute(d, t):\n  while True: pass", "timeout_seconds": 2 })` |
+| **Expected** | `completed == False`; `error` string contains `"timeout"` or `"Timeout"` (case-insensitive); call returns within ≈ 3 s |
+| **Tool** | pytest, real subprocess |
+
+---
+
+### TC-18-05 — Unsupported language returns `completed=False` immediately
+
+| Field | Detail |
+|---|---|
+| **Pre** | None |
+| **Steps** | 1. Call `run_computation_job({ "language": "julia", "source_code": "...", "entrypoint": "compute" })` |
+| **Expected** | `completed == False`; `error` contains `"Unsupported"` (from `run_computation_job` early-return branch); no subprocess is spawned |
+| **Tool** | pytest |
+
+---
+
+---
+
+## TCD-19 — NL2FL Worker: Functional Pipeline
+
+**Module:** `nl2fl/nl2fl_service.py` — `translate_and_verify()`, `_extract_lean_code()`, `_call_llm()`  
+**Tool:** `pytest`, `responses` (mock LLM HTTP endpoints)  
+**Status:** ⬜ Not yet implemented  
+**Run:** `cd nl2fl && pytest -v tests/tcd19_nl2fl_functional/`
+
+**Infrastructure notes:**
+- `_call_llm` makes real `requests.post` calls to provider URLs. These are intercepted with `@responses.activate` — no real API key is needed.
+- `_verify_with_lean` calls a Celery task via `client.send_task(...)`. Patch `nl2fl_service._verify_with_lean` directly using `unittest.mock.patch` to return a controlled `VerifyCompilerResult` dict, keeping the retry-loop logic real.
+- TC-19-01: LLM returns valid Lean on the first attempt — `_verify_with_lean` patched to return `{"valid": True, "errors": []}`. Asserts `valid == True` and `attempts == 1`.
+- TC-19-02: LLM returns invalid Lean on attempt 1, valid on attempt 2 — `_verify_with_lean` patched to return `{"valid": False, "errors": [...]}` the first time and `{"valid": True, "errors": []}` the second. Asserts `attempts == 2` and `valid == True`.
+- TC-19-03: LLM returns invalid Lean for all `max_retries=2` attempts. Asserts `valid == False`, `len(history) == 2`, and `history[0]["errors"]` is non-empty.
+- TC-19-04: `_call_llm` raises `RuntimeError` (e.g. HTTP 401 from provider). `translate_and_verify` must catch it, record the error in `history`, and return `valid == False` without propagating the exception.
+- TC-19-05: `_extract_lean_code` correctly strips the ` ```lean ``` ` fence from a raw LLM reply. Test directly (no HTTP mocking needed).
+
+**Description:**  
+Functional tests for the NL→Lean translation pipeline. The retry orchestration,
+error-feedback injection, and response-shape contract are exercised with a
+controlled mock LLM — no real API key or Lean worker is required.
+
+---
+
+### TC-19-01 — Valid Lean on first attempt: `valid=True`, `attempts=1`
+
+| Field | Detail |
+|---|---|
+| **Pre** | `@responses.activate`; LLM endpoint returns `{"choices": [{"message": {"content": "```lean\ntheorem t : True := trivial\n```"}}]}`; `_verify_with_lean` patched to return `{"valid": True, "errors": []}` |
+| **Steps** | 1. Call `translate_and_verify("True is true", "openai/gpt-4o", "key", max_retries=3)` |
+| **Expected** | `valid == True`; `attempts == 1`; `history` has 1 entry; `final_lean` contains `"theorem"` |
+| **Tool** | pytest, `responses`, `unittest.mock.patch` |
+
+---
+
+### TC-19-02 — Invalid on attempt 1, valid on attempt 2: retry loop resolves
+
+| Field | Detail |
+|---|---|
+| **Pre** | `_verify_with_lean` side-effected to return `{"valid": False, "errors": [{"line": 1, "column": 0, "message": "type mismatch"}]}` on call 1, then `{"valid": True, "errors": []}` on call 2; LLM endpoint always returns a Lean snippet |
+| **Steps** | 1. Call `translate_and_verify(...)` with `max_retries=3` |
+| **Expected** | `valid == True`; `attempts == 2`; `history[0]["errors"]` non-empty; `history[1]["errors"]` empty |
+| **Tool** | pytest, `responses`, `unittest.mock.patch` |
+
+---
+
+### TC-19-03 — All retries exhausted: `valid=False`, full history recorded
+
+| Field | Detail |
+|---|---|
+| **Pre** | `_verify_with_lean` always returns `{"valid": False, "errors": [...]}` |
+| **Steps** | 1. Call `translate_and_verify(...)` with `max_retries=2` |
+| **Expected** | `valid == False`; `attempts == 2`; `len(history) == 2`; each `history[i]["errors"]` is non-empty |
+| **Tool** | pytest, `responses`, `unittest.mock.patch` |
+
+---
+
+### TC-19-04 — LLM HTTP error: exception caught, `valid=False` returned gracefully
+
+| Field | Detail |
+|---|---|
+| **Pre** | `@responses.activate`; LLM endpoint returns HTTP 401; no exception propagates from `translate_and_verify` |
+| **Steps** | 1. Call `translate_and_verify("...", "openai/gpt-4o", "bad-key", max_retries=2)` |
+| **Expected** | Returns a dict with `valid == False`; `history[0]["errors"][0]["message"]` contains `"LLM error"` |
+| **Tool** | pytest, `responses` |
+
+---
+
+### TC-19-05 — `_extract_lean_code` strips ` ```lean ``` ` fence from raw LLM output
+
+| Field | Detail |
+|---|---|
+| **Pre** | None |
+| **Steps** | 1. Call `_extract_lean_code("Some preamble.\n```lean\ntheorem t : True := trivial\n```\nSome postamble.")` |
+| **Expected** | Returns `"theorem t : True := trivial"` (no fence markers, no surrounding whitespace) |
+| **Tool** | pytest (pure unit, no HTTP) |
+
+---
+
+## TCD-20 — Agents Worker: Functional Suggestion Flow
+
+**Module:** `agents/agents_service.py` — `suggest()`, `_call_llm()`  
+**Tool:** `pytest`, `responses` (mock LLM HTTP endpoints)  
+**Status:** ⬜ Not yet implemented  
+**Run:** `cd agents && pytest -v tests/tcd20_agents_functional/`
+
+**Infrastructure notes:**
+- `suggest()` calls `_call_llm()` which makes one `requests.post` call. No retry loop; one HTTP interaction per test.
+- All four provider routes (openai-compat, anthropic, google, mock/copilot) pass through `_call_llm`; TC-20-01 and TC-20-02 test the two main paths (openai-compat and anthropic); TC-20-03 tests the mock/copilot path.
+- TC-20-04 tests the `context` prepend: when `context` is provided, the user message sent to the LLM must begin with the context string.
+- Use `@responses.activate` + `responses.add(...)` to intercept each provider URL.
+- Response shape contract: `{"suggestion": str, "model_id": str, "processing_time_seconds": float}`.
+
+**Description:**  
+Functional tests for the agents suggestion service. Provider routing, the
+optional context prepend, and the response-shape contract are exercised with
+mocked HTTP — no real API key is required.
+
+---
+
+### TC-20-01 — OpenAI-compatible provider returns suggestion
+
+| Field | Detail |
+|---|---|
+| **Pre** | `@responses.activate`; `POST https://api.openai.com/v1/chat/completions` returns `{"choices": [{"message": {"content": "Use induction."}}]}` |
+| **Steps** | 1. Call `suggest("How do I prove this?", "openai/gpt-4o", "key")` |
+| **Expected** | `suggestion == "Use induction."`; `model_id == "openai/gpt-4o"`; `processing_time_seconds >= 0` |
+| **Tool** | pytest, `responses` |
+
+---
+
+### TC-20-02 — Anthropic provider returns suggestion
+
+| Field | Detail |
+|---|---|
+| **Pre** | `@responses.activate`; `POST https://api.anthropic.com/v1/messages` returns `{"content": [{"text": "Try `ring` tactic."}]}` |
+| **Steps** | 1. Call `suggest("Hint?", "anthropic/claude-3-5-sonnet", "key")` |
+| **Expected** | `suggestion == "Try \`ring\` tactic."` |
+| **Tool** | pytest, `responses` |
+
+---
+
+### TC-20-03 — Unknown provider raises `RuntimeError`
+
+| Field | Detail |
+|---|---|
+| **Pre** | None |
+| **Steps** | 1. Call `suggest("...", "xyz/some-model", "key")` |
+| **Expected** | `RuntimeError` raised; error message contains `"Unknown provider"` or `"Supported"` |
+| **Tool** | pytest |
+
+---
+
+### TC-20-04 — `context` is prepended to the user message
+
+| Field | Detail |
+|---|---|
+| **Pre** | `@responses.activate`; capture the request body sent to the provider |
+| **Steps** | 1. Call `suggest("What next?", "openai/gpt-4o", "key", context="theorem foo : True")` |
+| **Expected** | The `messages[1]["content"]` field in the captured request body starts with `"theorem foo : True"` |
+| **Tool** | pytest, `responses` |
+
+---
+
+## TCD-21 — Cluster Computation: Functional Polling Flow
+
+**Module:** `cluster_computation/computation_service.py` — `run_cluster_computation_job()`, `run_cluster_job()`  
+**Tool:** `pytest`, `responses` (mock cluster REST API)  
+**Status:** ⬜ Not yet implemented  
+**Run:** `cd cluster_computation && pytest -v tests/tcd21_cluster_functional/`
+
+**Infrastructure notes:**
+- `run_cluster_job` makes real `requests.post` (submit) and `requests.get` (poll) calls. Both are intercepted with `@responses.activate`.
+- The poll interval `POLL_INTERVAL` must be patched to `0` (or a very small value) via `unittest.mock.patch('cluster_computation_service.POLL_INTERVAL', 0)` to avoid real `time.sleep` calls during tests.
+- TC-21-01: job completes on the first poll (status `COMPLETED`). No sleep needed.
+- TC-21-02: job is `PENDING` on polls 1–2, `COMPLETED` on poll 3. Uses `responses` callback or a `responses` list to cycle through statuses.
+- TC-21-03: job submission returns HTTP 500. `run_cluster_job` must return `completed: False` with the error message from `_error_result`.
+- TC-21-04: job ends in terminal state `FAILED` with no `result` field. `run_cluster_job` returns `completed: False` with appropriate error.
+- TC-21-05: `language="cobol"` passed to `run_cluster_computation_job`. The early-return branch fires before any HTTP call — asserts `completed: False` and `error` contains `"does not handle language"`.
+
+**Description:**  
+Functional tests for the cluster computation worker. Submit/poll lifecycle,
+error states, and unsupported-language early exit are verified against a
+mocked cluster REST API.
+
+---
+
+### TC-21-01 — Job completes immediately on first poll
+
+| Field | Detail |
+|---|---|
+| **Pre** | `@responses.activate`; `POST /jobs` → `{"job_id": "j-1"}`; `GET /jobs/j-1` → `{"status": "COMPLETED", "result": {"completed": true, "sufficient": true, "evidence": 42}, "slurm_job_id": "j-1"}`; `POLL_INTERVAL` patched to `0` |
+| **Steps** | 1. Call `run_cluster_computation_job({"language": "mpi", ...})` |
+| **Expected** | `completed == True`; `sufficient == True`; `evidence == 42`; `slurm_job_id == "j-1"`; `processing_time_seconds >= 0` |
+| **Tool** | pytest, `responses`, `unittest.mock.patch` |
+
+---
+
+### TC-21-02 — Job transitions PENDING → RUNNING → COMPLETED across polls
+
+| Field | Detail |
+|---|---|
+| **Pre** | `GET /jobs/j-2` returns `PENDING`, then `RUNNING`, then `COMPLETED` on successive calls (use `responses` callback with a counter); `POLL_INTERVAL` patched to `0` |
+| **Steps** | 1. Call `run_cluster_computation_job(...)` |
+| **Expected** | `completed == True`; exactly 3 GET calls recorded |
+| **Tool** | pytest, `responses` |
+
+---
+
+### TC-21-03 — Submission failure returns `completed=False` with error
+
+| Field | Detail |
+|---|---|
+| **Pre** | `POST /jobs` returns HTTP 500 |
+| **Steps** | 1. Call `run_cluster_computation_job(...)` |
+| **Expected** | `completed == False`; `error` contains `"Failed to submit"` |
+| **Tool** | pytest, `responses` |
+
+---
+
+### TC-21-04 — Terminal state `FAILED` with no result field returns `completed=False`
+
+| Field | Detail |
+|---|---|
+| **Pre** | `POST /jobs` → `{"job_id": "j-3"}`; `GET /jobs/j-3` → `{"status": "FAILED"}` (no `result` key) |
+| **Steps** | 1. Call `run_cluster_computation_job(...)` |
+| **Expected** | `completed == False`; `slurm_state == "FAILED"`; `error` is non-empty |
+| **Tool** | pytest, `responses` |
+
+---
+
+### TC-21-05 — Unsupported language returns `completed=False` without HTTP calls
+
+| Field | Detail |
+|---|---|
+| **Pre** | `@responses.activate` (no routes registered) |
+| **Steps** | 1. Call `run_cluster_computation_job({"language": "cobol", ...})` |
+| **Expected** | `completed == False`; `error` contains `"does not handle language"`; no HTTP request made |
+| **Tool** | pytest, `responses` |
+
+---
+
+## TCD-22 — Web API + PostgreSQL: Functional Integration
+
+**Module:** `server/app/` — full Flask request/response cycle against a real PostgreSQL database  
+**Tool:** `pytest-flask`, real `coproof_test_db`, `responses` (mock GitHub REST API)  
+**Status:** ⬜ Not yet implemented  
+**Run:** `cd server && pytest -v tests/tcd22_web_functional/` (requires `db` container running)
+
+**Infrastructure notes:**
+- Same `coproof_test_db` + `NullPool` + `pg_terminate_backend` + `TRUNCATE users CASCADE` infrastructure as TCD-01 through TCD-05.
+- GitHub REST API calls (repo creation, file commits, branch creation) are intercepted via `@responses.activate` so no real GitHub token or organization is needed.
+- The tests exercise the **full Flask request → service layer → SQLAlchemy → PostgreSQL** path — no mock of the DB or the service layer.
+- TC-22-01 covers the happy path: authenticated user creates a project. Asserts HTTP 201, checks that a `NewProject` row and a `NewNode` (root node) row were actually committed to `coproof_test_db`.
+- TC-22-02 checks that creating a second project with the same name for the same user returns HTTP 409 (or another documented conflict status) and does NOT create a duplicate row.
+- TC-22-03: list accessible projects returns only the authenticated user’s projects (not other users’).
+- TC-22-04: authenticated GET on a non-existent project returns HTTP 404.
+- TC-22-05: token refresh happy path — valid refresh token in DB produces a new access token, no GitHub call involved.
+- TC-22-06: calling a protected endpoint with an expired/invalid JWT returns HTTP 401.
+
+**Description:**  
+Functional integration tests that drive the Flask API end-to-end against a
+real PostgreSQL instance. The service layer and ORM are exercised without
+mocks; only GitHub REST calls are stubbed.
+
+---
+
+### TC-22-01 — Authenticated user creates a project: HTTP 201 and DB rows committed
+
+| Field | Detail |
+|---|---|
+| **Pre** | Real `coproof_test_db`; a `User` row seeded; valid access JWT issued; `@responses.activate` stubs GitHub repo-creation and file-commit endpoints |
+| **Steps** | 1. `POST /api/v1/projects` with `{"name": "Test", "goal": "..."}` and `Authorization: Bearer <token>` |
+| **Expected** | HTTP 201; response JSON contains `"id"`; querying `coproof_test_db` confirms one `NewProject` row and one `NewNode` row with `node_type == "root"` |
+| **Tool** | pytest-flask, real PostgreSQL, `responses` |
+
+---
+
+### TC-22-02 — Duplicate project name returns conflict status
+
+| Field | Detail |
+|---|---|
+| **Pre** | A project with name `"Dupe"` already exists for the authenticated user |
+| **Steps** | 1. `POST /api/v1/projects` with `{"name": "Dupe", "goal": "..."}` |
+| **Expected** | HTTP 409 (or 422); no additional `NewProject` row created |
+| **Tool** | pytest-flask, real PostgreSQL |
+
+---
+
+### TC-22-03 — List accessible projects returns only the requesting user’s projects
+
+| Field | Detail |
+|---|---|
+| **Pre** | Two users seeded; each owns one project |
+| **Steps** | 1. `GET /api/v1/projects/accessible` as user A |
+| **Expected** | HTTP 200; response list contains exactly user A’s project and not user B’s |
+| **Tool** | pytest-flask, real PostgreSQL |
+
+---
+
+### TC-22-04 — GET on non-existent project returns HTTP 404
+
+| Field | Detail |
+|---|---|
+| **Pre** | Authenticated user; no project with ID `"00000000-0000-0000-0000-000000000000"` |
+| **Steps** | 1. `GET /api/v1/projects/00000000-0000-0000-0000-000000000000/graph/simple` |
+| **Expected** | HTTP 404 |
+| **Tool** | pytest-flask, real PostgreSQL |
+
+---
+
+### TC-22-05 — Token refresh returns a new access token
+
+| Field | Detail |
+|---|---|
+| **Pre** | `User` row with a valid `refresh_token` in DB |
+| **Steps** | 1. `POST /api/v1/auth/refresh` with `{"refresh_token": "<valid>"}` |
+| **Expected** | HTTP 200; response contains `"access_token"` (non-empty string) |
+| **Tool** | pytest-flask, real PostgreSQL |
+
+---
+
+### TC-22-06 — Protected endpoint with invalid JWT returns HTTP 401
+
+| Field | Detail |
+|---|---|
+| **Pre** | None |
+| **Steps** | 1. `GET /api/v1/projects/accessible` with `Authorization: Bearer invalid.jwt.token` |
+| **Expected** | HTTP 401 |
+| **Tool** | pytest-flask, real PostgreSQL |
+
+---
+
 ## Summary Table
 
 | TCD | Microservice / Module | # TCs | Status | Primary Tool |
@@ -1942,4 +2420,10 @@ intercepted via `cy.intercept`.
 | TCD-14 | `frontend` — `authGuard` | 3 | ✅ 3/3 | Vitest, `TestBed.runInInjectionContext`, `provideRouter` |
 | TCD-15 | E2E — Authentication | 7 | ✅ 7/7 | Cypress 15, `cy.intercept` |
 | TCD-16 | E2E — Project & Node | 6 | ✅ 6/6 | Cypress 15, `cy.intercept` |
-| **Total** | | **299** | **299/299** | |
+| TCD-17 | `lean-worker` — Functional | 5 | ✅ 5/5 | `pytest`, real `lean` subprocess |
+| TCD-18 | `computation-worker` — Functional | 5 | ✅ 5/5 | `pytest`, real Python subprocess |
+| TCD-19 | `nl2fl-worker` — Functional | 5 | ⬜ | `pytest`, `responses`, real retry loop |
+| TCD-20 | `agents-worker` — Functional | 4 | ⬜ | `pytest`, `responses`, real routing |
+| TCD-21 | `cluster-computation-worker` — Functional | 5 | ⬜ | `pytest`, `responses`, real poll loop |
+| TCD-22 | `web` — API + PostgreSQL Functional | 6 | ⬜ | `pytest-flask`, real PostgreSQL, `responses` |
+| **Total** | | **329** | **309/329** | |

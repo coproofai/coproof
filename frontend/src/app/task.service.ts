@@ -25,7 +25,8 @@ import {
   ContributorDto,
   UserProfileDto,
   GitHubInvitationDto,
-  PublicProjectDto
+  PublicProjectDto,
+  MathlibLookupResult,
 } from './task.models';
 
 @Injectable({
@@ -468,6 +469,21 @@ export class TaskService {
   getSuggestResult(taskId: string): Observable<SuggestResult | { status: 'pending' }> {
     return this.http.get<SuggestResult | { status: 'pending' }>(
       `${this.apiBaseUrl}/agents/suggest/${taskId}/result`
+    );
+  }
+
+  // --- Mathlib Declaration Lookup ---
+
+  submitMathlibLookup(declarationName: string): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${this.apiBaseUrl}/lean/mathlib/lookup/submit`,
+      { declaration_name: declarationName }
+    );
+  }
+
+  getMathlibLookupResult(taskId: string): Observable<MathlibLookupResult | { status: 'pending' }> {
+    return this.http.get<MathlibLookupResult | { status: 'pending' }>(
+      `${this.apiBaseUrl}/lean/mathlib/lookup/${taskId}/result`
     );
   }
 }
