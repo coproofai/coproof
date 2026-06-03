@@ -28,37 +28,37 @@ pipeline {
 
                 stage('TCD-01 · Auth API') {
                     steps {
-                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd01_auth/'"
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && python3 -m pytest -v tests/tcd01_auth/'"
                     }
                 }
 
                 stage('TCD-02 · Projects API') {
                     steps {
-                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd02_projects/'"
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && python3 -m pytest -v tests/tcd02_projects/'"
                     }
                 }
 
                 stage('TCD-03 · Nodes API') {
                     steps {
-                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd03_nodes/'"
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && python3 -m pytest -v tests/tcd03_nodes/'"
                     }
                 }
 
                 stage('TCD-04 · Translation API') {
                     steps {
-                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd04_translate/'"
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && python3 -m pytest -v tests/tcd04_translate/'"
                     }
                 }
 
                 stage('TCD-05 · Agents API') {
                     steps {
-                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd05_agents/'"
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && python3 -m pytest -v tests/tcd05_agents/'"
                     }
                 }
 
                 stage('TCD-06 · GitHub Service / Git Engine') {
                     steps {
-                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd06_github_service/'"
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && python3 -m pytest -v tests/tcd06_github_service/'"
                     }
                 }
 
@@ -75,7 +75,7 @@ pipeline {
                     steps {
                         sh "${DC} exec -T lean-worker mkdir -p /app/tests/tcd07_lean_worker"
                         sh "${DC} cp /workspace/lean/tests/tcd07_lean_worker lean-worker:/app/tests/tcd07_lean_worker"
-                        sh "${DC} exec -T lean-worker bash -c 'cd /app && pytest -v tests/tcd07_lean_worker/'"
+                        sh "${DC} exec -T lean-worker bash -c 'cd /app && python3 -m pytest -v tests/tcd07_lean_worker/'"
                     }
                 }
 
@@ -83,7 +83,7 @@ pipeline {
                     steps {
                         sh "${DC} exec -T computation-worker mkdir -p /app/tests/tcd08_computation"
                         sh "${DC} cp /workspace/computation/tests/tcd08_computation computation-worker:/app/tests/tcd08_computation"
-                        sh "${DC} exec -T computation-worker bash -c 'cd /app && pytest -v tests/tcd08_computation/'"
+                        sh "${DC} exec -T computation-worker bash -c 'cd /app && python3 -m pytest -v tests/tcd08_computation/'"
                     }
                 }
 
@@ -91,7 +91,7 @@ pipeline {
                     steps {
                         sh "${DC} exec -T cluster-computation-worker mkdir -p /app/tests/tcd09_cluster"
                         sh "${DC} cp /workspace/cluster_computation/tests/tcd09_cluster cluster-computation-worker:/app/tests/tcd09_cluster"
-                        sh "${DC} exec -T cluster-computation-worker bash -c 'cd /app && pytest -v tests/tcd09_cluster/'"
+                        sh "${DC} exec -T cluster-computation-worker bash -c 'cd /app && python3 -m pytest -v tests/tcd09_cluster/'"
                     }
                 }
 
@@ -99,7 +99,7 @@ pipeline {
                     steps {
                         sh "${DC} exec -T nl2fl-worker mkdir -p /app/tests/tcd10_nl2fl"
                         sh "${DC} cp /workspace/nl2fl/tests/tcd10_nl2fl nl2fl-worker:/app/tests/tcd10_nl2fl"
-                        sh "${DC} exec -T nl2fl-worker bash -c 'cd /app && pytest -v tests/tcd10_nl2fl/'"
+                        sh "${DC} exec -T nl2fl-worker bash -c 'cd /app && python3 -m pytest -v tests/tcd10_nl2fl/'"
                     }
                 }
 
@@ -107,7 +107,7 @@ pipeline {
                     steps {
                         sh "${DC} exec -T agents-worker mkdir -p /app/tests/tcd11_agents"
                         sh "${DC} cp /workspace/agents/tests/tcd11_agents agents-worker:/app/tests/tcd11_agents"
-                        sh "${DC} exec -T agents-worker bash -c 'cd /app && pytest -v tests/tcd11_agents/'"
+                        sh "${DC} exec -T agents-worker bash -c 'cd /app && python3 -m pytest -v tests/tcd11_agents/'"
                     }
                 }
 

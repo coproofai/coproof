@@ -35,7 +35,7 @@ pipeline {
             steps {
                 sh "${DC} exec -T lean-worker mkdir -p /app/tests/tcd17_lean_functional"
                 sh "${DC} cp /workspace/lean/tests/tcd17_lean_functional lean-worker:/app/tests/tcd17_lean_functional"
-                sh "${DC} exec -T lean-worker bash -c 'cd /app && pytest -v tests/tcd17_lean_functional/'"
+                sh "${DC} exec -T lean-worker bash -c 'cd /app && python3 -m pytest -v tests/tcd17_lean_functional/'"
             }
         }
 
@@ -46,7 +46,7 @@ pipeline {
             steps {
                 sh "${DC} exec -T computation-worker mkdir -p /app/tests/tcd18_computation_functional"
                 sh "${DC} cp /workspace/computation/tests/tcd18_computation_functional computation-worker:/app/tests/tcd18_computation_functional"
-                sh "${DC} exec -T computation-worker bash -c 'cd /app && pytest -v tests/tcd18_computation_functional/'"
+                sh "${DC} exec -T computation-worker bash -c 'cd /app && python3 -m pytest -v tests/tcd18_computation_functional/'"
             }
         }
 

@@ -39,7 +39,7 @@ pipeline {
                 sh "${DC} cp /workspace/lean/tests/tcd24_lean_performance lean-worker:/app/tests/tcd24_lean_performance"
                 sh """${DC} exec -T lean-worker bash -c \
                     'pip3 install pytest-benchmark --quiet && \
-                     cd /app && pytest -v -s tests/tcd24_lean_performance/ \
+                     cd /app && python3 -m pytest -v -s tests/tcd24_lean_performance/ \
                      --benchmark-sort=mean --benchmark-min-rounds=3'"""
             }
         }
@@ -54,7 +54,7 @@ pipeline {
                 sh "${DC} cp /workspace/lean/tests/tcd25_lean_realworld lean-worker:/app/tests/tcd25_lean_realworld"
                 sh """${DC} exec -T lean-worker bash -c \
                     'pip3 install pytest-benchmark --quiet && \
-                     cd /app && pytest -v -s tests/tcd25_lean_realworld/ \
+                     cd /app && python3 -m pytest -v -s tests/tcd25_lean_realworld/ \
                      --benchmark-sort=mean'"""
             }
         }
