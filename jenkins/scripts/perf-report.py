@@ -126,7 +126,7 @@ if tcd24 and "benchmarks" in tcd24:
         "  Each benchmark calls a specific lean_service function repeatedly\n"
         "  (at least 3 rounds) and records how long a single call takes.\n"
         "  Times under ~300 ms use an in-process Lean evaluation path;\n"
-        "  times in the 4–5 s range require loading the full Mathlib library.\n"
+        "  times in the 4-5 s range require loading the full Mathlib library.\n"
     )
     for bm in tcd24["benchmarks"]:
         name = bm["name"]
