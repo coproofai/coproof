@@ -122,9 +122,9 @@ pipeline {
                 dir('/workspace/frontend') {
                     sh 'npm ci --prefer-offline'
                     sh '''npx vitest run \
-                        src/app/services/auth.service.spec.ts \
-                        src/app/services/task.service.spec.ts \
-                        src/app/guards/auth.guard.spec.ts'''
+                        src/app/tcd12-auth-service.spec.ts \
+                        src/app/tcd13-task-service.spec.ts \
+                        src/app/tcd14-auth-guard.spec.ts'''
                 }
             }
         }
