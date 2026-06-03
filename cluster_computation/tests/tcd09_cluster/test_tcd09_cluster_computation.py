@@ -61,9 +61,12 @@ import pytest
 import requests
 import responses as rsps_lib
 
+import computation_service as _cs_module
 from computation_service import _headers, run_cluster_job
 
-_BASE = "http://192.168.0.17:8765"
+# Derive the base URL from the module constant so the mock URLs always match
+# regardless of which CLUSTER_API_URL env var is set in the container.
+_BASE = _cs_module.CLUSTER_API_URL
 _JOBS_URL = f"{_BASE}/jobs"
 
 _GOOD_RESULT = {
