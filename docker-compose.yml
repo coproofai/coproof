@@ -187,6 +187,7 @@ services:
       - .:/workspace
     environment:
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - DISPLAY=:99
     restart: unless-stopped
 
 volumes:

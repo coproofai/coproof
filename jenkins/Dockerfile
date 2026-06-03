@@ -26,6 +26,21 @@ RUN apt-get update \
     && apt-get install -y python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
+# ── Cypress system dependencies (Xvfb + browser libs) ──────────────────────
+RUN apt-get update \
+    && apt-get install -y \
+        xvfb \
+        libgtk2.0-0 \
+        libgtk-3-0 \
+        libgbm-dev \
+        libnotify-dev \
+        libnss3 \
+        libxss1 \
+        libasound2 \
+        libxtst6 \
+        xauth \
+    && rm -rf /var/lib/apt/lists/*
+
 # ── Docker group + entrypoint ──────────────────────────────────────────────
 RUN groupadd -f docker
 COPY docker-entrypoint.sh /docker-entrypoint.sh

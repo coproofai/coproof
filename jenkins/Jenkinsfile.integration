@@ -54,7 +54,17 @@ pipeline {
         stage('Frontend: npm ci') {
             steps {
                 dir('/workspace/frontend') {
-                    sh 'npm ci --prefer-offline'
+                    sh '''
+                        LOCK_HASH=$(md5sum package-lock.json | cut -d" " -f1)
+                        HASH_FILE=".npm-lock-hash"
+                        if [ ! -d node_modules ] || [ ! -f "$HASH_FILE" ] || [ "$(cat $HASH_FILE)" != "$LOCK_HASH" ]; then
+                            echo "package-lock.json changed or node_modules missing — running npm ci"
+                            npm ci --prefer-offline
+                            echo "$LOCK_HASH" > "$HASH_FILE"
+                        else
+                            echo "node_modules up to date (hash: $LOCK_HASH) — skipping npm ci"
+                        fi
+                    '''
                 }
             }
         }
@@ -62,26 +72,25 @@ pipeline {
         // ── E2E Tests (full-stack, Cypress headless) ─────────────────────────
         // Both specs share the same npm install done in the previous stage.
         // They run in parallel since they target different routes/features.
+        // Xvfb is started once before both parallel branches.
         stage('E2E Tests') {
-            parallel {
-
-                stage('TCD-15 · E2E Auth Flow') {
-                    steps {
-                        dir('/workspace/frontend') {
-                            sh "npx cypress run --spec 'cypress/e2e/tcd15_auth/**' --headless"
+            steps {
+                sh 'Xvfb :99 -screen 0 1280x720x24 &'
+                script {
+                    parallel(
+                        'TCD-15 · E2E Auth Flow': {
+                            dir('/workspace/frontend') {
+                                sh "npx cypress run --spec 'cypress/e2e/tcd15_auth/**' --headless"
+                            }
+                        },
+                        'TCD-16 · E2E Project & Node Flow': {
+                            dir('/workspace/frontend') {
+                                sh "npx cypress run --spec 'cypress/e2e/tcd16_project/**' --headless"
+                            }
                         }
-                    }
+                    )
                 }
-
-                stage('TCD-16 · E2E Project & Node Flow') {
-                    steps {
-                        dir('/workspace/frontend') {
-                            sh "npx cypress run --spec 'cypress/e2e/tcd16_project/**' --headless"
-                        }
-                    }
-                }
-
-            } // parallel
+            }
         }
 
         // ── Web API ↔ Celery Worker Round-Trip ───────────────────────────────
