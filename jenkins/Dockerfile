@@ -4,7 +4,7 @@ USER root
 
 # ── Docker CLI + Compose plugin ────────────────────────────────────────────
 RUN apt-get update \
-    && apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release \
+    && apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release gosu \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
        | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
@@ -26,8 +26,10 @@ RUN apt-get update \
     && apt-get install -y python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Allow jenkins user to run Docker commands via the host socket
-RUN groupadd -f docker && usermod -aG docker jenkins
+# ── Docker group + entrypoint ──────────────────────────────────────────────
+RUN groupadd -f docker
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # ── Pre-install Jenkins plugins ────────────────────────────────────────────
 # workflow-aggregator pulls in the full Pipeline suite (declarative + scripted)
@@ -39,3 +41,6 @@ RUN jenkins-plugin-cli --plugins \
     git \
     pipeline-stage-view \
     docker-workflow
+
+USER root
+ENTRYPOINT ["/docker-entrypoint.sh"]

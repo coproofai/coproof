@@ -35,6 +35,7 @@ pipeline {
         // concurrent batches (1 / 4 / 8 / 16 workers) measuring throughput.
         stage('TCD-24 · Lean Benchmarks & Load') {
             steps {
+                sh "${DC} exec -T lean-worker mkdir -p /app/tests/tcd24_lean_performance"
                 sh "${DC} cp /workspace/lean/tests/tcd24_lean_performance lean-worker:/app/tests/tcd24_lean_performance"
                 sh """${DC} exec -T lean-worker bash -c \
                     'pip3 install pytest-benchmark --quiet && \
@@ -49,6 +50,7 @@ pipeline {
         // NOTE: requires LEAN_PATH set inside the lean-worker container.
         stage('TCD-25 · Lean Mathlib Scenarios') {
             steps {
+                sh "${DC} exec -T lean-worker mkdir -p /app/tests/tcd25_lean_realworld"
                 sh "${DC} cp /workspace/lean/tests/tcd25_lean_realworld lean-worker:/app/tests/tcd25_lean_realworld"
                 sh """${DC} exec -T lean-worker bash -c \
                     'pip3 install pytest-benchmark --quiet && \
