@@ -79,9 +79,10 @@ describe('TC-15-02 — GitHub login button triggers OAuth redirect', () => {
     // same-origin URL from the mock so the browser stays within the test scope.
     // We verify that: (1) the button triggered the API call; (2) the app used
     // the URL from the API response for actual navigation.
-    cy.intercept('GET', `${API}/auth/github/url`, {
-      statusCode: 200,
-      body: { url: 'http://localhost:4200/menu' },
+    // Use baseUrl so the mock redirect stays same-origin in any environment
+    // (localhost:4200 in dev, http://frontend:80 in CI).
+    cy.intercept('GET', `${API}/auth/github/url`, (req) => {
+      req.reply({ statusCode: 200, body: { url: `${Cypress.config('baseUrl')}/menu` } });
     }).as('getGithubUrl');
 
     cy.visit('/auth');
