@@ -42,5 +42,6 @@ requests
 pytest
 pytest-flask
 pytest-mock
+responses
 black
 flake8
