@@ -1,6 +1,6 @@
 """
 perf-report.py
-Reads perf-summary.json and writes perf-report.txt — a plain-English summary
+Reads perf-summary.json and writes perf-report.txt - a plain-English summary
 of every performance section, with a short description of what each test does.
 Run from the Jenkins workspace (not inside a container).
 """
@@ -82,7 +82,7 @@ with open(summary_path) as f:
 reports = summary.get("reports", {})
 ts = summary.get("build_timestamp", "unknown")
 
-lines.append("CoProof — Performance Test Report")
+lines.append("CoProof - Performance Test Report")
 lines.append("Build timestamp : {}".format(ts))
 lines.append("=" * 72)
 
@@ -94,7 +94,7 @@ if web:
         "  What this measures:\n"
         "  Each HTTP endpoint listed below was called 20 times from inside the\n"
         "  CI network.  The table shows the fastest call (min), typical call\n"
-        "  (avg), the 95th-percentile call (p95 — 19 out of 20 calls were at\n"
+        "  (avg), the 95th-percentile call (p95 - 19 out of 20 calls were at\n"
         "  or below this value), and the slowest call (max).\n"
     )
     lines.append(
@@ -152,7 +152,7 @@ if tcd24 and "benchmarks" in tcd24:
             )
         )
 
-# ── 3. Lean Worker — Real-World Mathlib Scenarios (TCD-25) ───────────────────
+# ── 3. Lean Worker - Real-World Mathlib Scenarios (TCD-25) ───────────────────
 tcd25 = reports.get("tcd25-benchmark", {})
 if tcd25 and "benchmarks" in tcd25:
     lines.append(section("3. Lean Worker: Real-World Mathlib Scenarios (TCD-25)"))
@@ -186,7 +186,7 @@ if tcd25 and "benchmarks" in tcd25:
             )
         )
 
-# ── 4. Lean Worker — Concurrent Load Test ────────────────────────────────────
+# ── 4. Lean Worker - Concurrent Load Test ────────────────────────────────────
 load = reports.get("lean-concurrent-load", {})
 if load:
     lines.append(section("4. Lean Worker: Concurrent Load Test"))
