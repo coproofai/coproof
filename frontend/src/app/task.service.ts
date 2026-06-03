@@ -27,6 +27,7 @@ import {
   GitHubInvitationDto,
   PublicProjectDto,
   MathlibLookupResult,
+  MathlibLineageResult,
 } from './task.models';
 
 @Injectable({
@@ -440,6 +441,51 @@ export class TaskService {
     );
   }
 
+  // --- Cluster config ---
+
+  getClusterConfig(): Observable<import('./task.models').ClusterConfig> {
+    return this.http.get<import('./task.models').ClusterConfig>(
+      `${this.apiBaseUrl}/cluster/config`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  saveClusterConfig(url: string, apiKey: string): Observable<{ status: string }> {
+    const body: Record<string, string> = {};
+    if (url) body['url'] = url;
+    if (apiKey) body['api_key'] = apiKey;
+    return this.http.put<{ status: string }>(
+      `${this.apiBaseUrl}/cluster/config`,
+      body,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  clusterHealthcheck(url?: string, apiKey?: string): Observable<import('./task.models').ClusterHealthcheckResult> {
+    const body: Record<string, string> = {};
+    if (url) body['url'] = url;
+    if (apiKey) body['api_key'] = apiKey;
+    return this.http.post<import('./task.models').ClusterHealthcheckResult>(
+      `${this.apiBaseUrl}/cluster/healthcheck`,
+      body,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  clusterNodes(): Observable<{ nodes: import('./task.models').ClusterNodeInfo[]; timestamp: number }> {
+    return this.http.get<{ nodes: import('./task.models').ClusterNodeInfo[]; timestamp: number }>(
+      `${this.apiBaseUrl}/cluster/nodes`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  clusterQueue(): Observable<{ jobs: import('./task.models').ClusterQueueEntry[]; timestamp: number }> {
+    return this.http.get<{ jobs: import('./task.models').ClusterQueueEntry[]; timestamp: number }>(
+      `${this.apiBaseUrl}/cluster/queue`,
+      { headers: this.authHeaders() }
+    );
+  }
+
   // --- FL → NL (converse translation) ---
 
   submitFl2nl(payload: import('./task.models').Fl2NlPayload): Observable<{ task_id: string }> {
@@ -484,6 +530,21 @@ export class TaskService {
   getMathlibLookupResult(taskId: string): Observable<MathlibLookupResult | { status: 'pending' }> {
     return this.http.get<MathlibLookupResult | { status: 'pending' }>(
       `${this.apiBaseUrl}/lean/mathlib/lookup/${taskId}/result`
+    );
+  }
+
+  // --- Mathlib Lineage ---
+
+  submitMathlibLineage(declarationName: string, depth: number): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${this.apiBaseUrl}/lean/mathlib/lineage/submit`,
+      { declaration_name: declarationName, depth }
+    );
+  }
+
+  getMathlibLineageResult(taskId: string): Observable<MathlibLineageResult | { status: 'pending' }> {
+    return this.http.get<MathlibLineageResult | { status: 'pending' }>(
+      `${this.apiBaseUrl}/lean/mathlib/lineage/${taskId}/result`
     );
   }
 }

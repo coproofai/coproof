@@ -442,7 +442,6 @@ def get_mathlib_info(declaration_name: str) -> dict:
 
     lean_code = (
         "import Mathlib\n"
-        f"#check {declaration_name}\n"
         f"#print {declaration_name}\n"
     )
 
@@ -509,3 +508,220 @@ def get_mathlib_info(declaration_name: str) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Mathlib Lineage / Dependency Graph
+# ---------------------------------------------------------------------------
+
+# Qualified names: must start with an uppercase letter and have at least one dot
+# e.g. Nat.succ_pos, Real.sqrt_sq, Finset.sum_comm
+_QUALIFIED_NAME_RE = re.compile(r'\b([A-Z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_\']+)+)\b')
+
+# Lean built-in universe/sort keywords to exclude from deps
+_LEAN_BUILTINS = frozenset({
+    'Prop', 'Type', 'Sort', 'Bool', 'True', 'False', 'And', 'Or', 'Not',
+    'Iff', 'Eq', 'Ne', 'HEq', 'Exists', 'Sigma', 'PSigma', 'Subtype',
+    'List', 'Array', 'Option', 'Sum', 'Prod', 'Unit', 'Empty', 'String',
+    'Int', 'Float', 'Char', 'IO', 'Lean', 'Std', 'Lake',
+})
+
+MAX_LINEAGE_NODES = 30
+MAX_DEPS_PER_NODE = 10
+
+
+def _get_lean_batch_prints(names: list) -> dict:
+    """
+    Run a single Lean process that issues `#print <name>` for every name.
+
+    Returns a dict {name: printed_output} where printed_output is the
+    portion of stdout that belongs to that declaration (empty string if
+    the declaration was not found or lean errored for that entry).
+    """
+    if not names:
+        return {}
+
+    lean_executable = find_lean_executable()
+    if not lean_executable:
+        return {n: "" for n in names}
+
+    lines = ["import Mathlib"]
+    for name in names:
+        lines.append(f"#print {name}")
+    lean_code = "\n".join(lines) + "\n"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        lean_file = os.path.join(temp_dir, "batch_print.lean")
+        with open(lean_file, "w", encoding="utf-8") as fh:
+            fh.write(lean_code)
+
+        try:
+            result = subprocess.run(
+                [lean_executable, lean_file],
+                capture_output=True,
+                text=True,
+                timeout=180,
+                cwd=temp_dir,
+            )
+        except (subprocess.TimeoutExpired, Exception):
+            return {n: "" for n in names}
+
+    # Lean4 #print output goes to stdout; combine with stderr to be safe (mirrors get_mathlib_info).
+    stdout = (result.stdout or "") + (result.stderr or "")
+
+    output_map = {n: "" for n in names}
+
+    # Lean4 `#print Name` always emits a line like:
+    #   theorem Name.{u} : type := body
+    #   def Name.{u} : type := body
+    # The declaration keyword is always at column 0.  We anchor to it so we
+    # never accidentally match `Name` appearing inside another theorem's body.
+    _DECL_KW = (
+        r'(?:(?:protected|noncomputable|private)\s+)*'
+        r'(?:theorem|def|abbrev|instance|structure|class|axiom|opaque|lemma)\s+'
+    )
+    positions = []
+    for name in names:
+        pat = re.compile(r'(?m)^' + _DECL_KW + re.escape(name) + r'(?=[.{\s(:])')
+        m = pat.search(stdout)
+        if m:
+            # m.start() is the beginning of the declaration line ("theorem …")
+            positions.append((m.start(), name))
+
+    positions.sort(key=lambda t: t[0])
+
+    not_found_hints = [
+        "unknown identifier", "unknown constant",
+        "declaration not found", "error: unknown",
+    ]
+
+    for i, (start_idx, name) in enumerate(positions):
+        # Each start_idx is already at the beginning of a line, so the next
+        # section's start_idx cleanly terminates the current section.
+        end_idx = positions[i + 1][0] if i + 1 < len(positions) else len(stdout)
+        section = stdout[start_idx:end_idx].strip()
+        if section and not any(h in section.lower() for h in not_found_hints):
+            output_map[name] = section
+
+    return output_map
+
+
+def _extract_deps(lean_source: str, self_name: str) -> list:
+    """
+    Extract qualified Lean names from a #print output, excluding the
+    declaration itself and known built-ins.
+
+    Returns up to MAX_DEPS_PER_NODE unique names.
+    """
+    seen = set()
+    deps = []
+    for match in _QUALIFIED_NAME_RE.finditer(lean_source):
+        name = match.group(1)
+        if (
+            name != self_name
+            and name not in _LEAN_BUILTINS
+            and name not in seen
+            and not self_name.startswith(name + ".")
+        ):
+            seen.add(name)
+            deps.append(name)
+            if len(deps) >= MAX_DEPS_PER_NODE:
+                break
+    return deps
+
+
+def get_mathlib_lineage(declaration_name: str, depth: int = 2) -> dict:
+    """
+    Build a dependency graph for a Mathlib4 declaration by performing a
+    BFS of #print calls, one Lean process per depth level.
+
+    Returns:
+        {
+            "root": str,
+            "nodes": [{ "id", "name", "lean_source", "found", "depth_level" }],
+            "edges": [{ "source", "target" }],
+            "total_nodes": int,
+            "depth": int,
+            "truncated": bool,
+            "processing_time_seconds": float
+        }
+    """
+    start_time = time.time()
+    depth = max(1, min(4, depth))
+
+    node_registry = {
+        declaration_name: {
+            "id": 1,
+            "lean_source": "",
+            "found": False,
+            "depth_level": 0,
+        }
+    }
+    edge_set = set()
+    truncated = False
+    next_id = 2
+
+    for level in range(depth):
+        to_print = [
+            name for name, meta in node_registry.items()
+            if meta["depth_level"] == level
+        ]
+        if not to_print:
+            break
+
+        batch = _get_lean_batch_prints(to_print)
+
+        for name in to_print:
+            printed = batch.get(name, "")
+            found = bool(printed.strip())
+            node_registry[name]["lean_source"] = printed
+            node_registry[name]["found"] = found
+
+            if not found or level >= depth - 1:
+                continue
+
+            if len(node_registry) >= MAX_LINEAGE_NODES:
+                truncated = True
+                continue
+
+            deps = _extract_deps(printed, name)
+            parent_id = node_registry[name]["id"]
+
+            for dep in deps:
+                if len(node_registry) >= MAX_LINEAGE_NODES:
+                    truncated = True
+                    break
+                if dep not in node_registry:
+                    node_registry[dep] = {
+                        "id": next_id,
+                        "lean_source": "",
+                        "found": False,
+                        "depth_level": level + 1,
+                    }
+                    next_id += 1
+                dep_id = node_registry[dep]["id"]
+                edge_set.add((parent_id, dep_id))
+
+    elapsed = round(time.time() - start_time, 3)
+
+    nodes = [
+        {
+            "id": meta["id"],
+            "name": name,
+            "lean_source": meta["lean_source"],
+            "found": meta["found"],
+            "depth_level": meta["depth_level"],
+        }
+        for name, meta in node_registry.items()
+    ]
+    nodes.sort(key=lambda n: n["id"])
+
+    edges = [{"source": s, "target": t} for s, t in edge_set]
+
+    return {
+        "root": declaration_name,
+        "nodes": nodes,
+        "edges": edges,
+        "total_nodes": len(nodes),
+        "depth": depth,
+        "truncated": truncated,
+        "processing_time_seconds": elapsed,
+    }

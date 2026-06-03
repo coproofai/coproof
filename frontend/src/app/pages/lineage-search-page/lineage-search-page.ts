@@ -4,325 +4,542 @@ import {
   ChangeDetectorRef,
   Component,
   ElementRef,
-  NgZone,
   OnDestroy,
-  ViewChild
+  ViewChild,
 } from '@angular/core';
+import { AsyncPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { NgFor, NgIf } from '@angular/common';
+import { RouterLink } from '@angular/router';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { Observable, Subject, Subscription, defer, of, timer } from 'rxjs';
+import {
+  catchError,
+  filter,
+  finalize,
+  map,
+  shareReplay,
+  startWith,
+  switchMap,
+  take,
+  timeout,
+} from 'rxjs/operators';
+import { TaskService } from '../../task.service';
+import {
+  AvailableModel,
+  Fl2NlPayload,
+  MathlibLineageEdge,
+  MathlibLineageNode,
+  MathlibLineageResult,
+} from '../../task.models';
+import { UserPreferencesService } from '../../user-preferences.service';
 
-interface LineageNode {
-  id: number;
-  name: string;
-  type: string;
-  desc: string;
-  lean: string;
-}
+// ── Types ─────────────────────────────────────────────────────────────────────
+type LineageState = 'idle' | 'loading' | 'done' | 'error';
+type Fl2NlState   = 'idle' | 'translating' | 'done' | 'error';
 
-interface LineageLink {
-  source: number;
-  target: number;
-}
-
-interface SimNode extends LineageNode {
+interface LayoutNode extends MathlibLineageNode {
   x: number;
   y: number;
-  vx: number;
-  vy: number;
 }
+
+interface LineageVm {
+  state: LineageState;
+  root: string;
+  totalNodes: number;
+  truncated: boolean;
+  processingTime: number;
+  error: string;
+}
+
+interface Fl2NlVm {
+  state: Fl2NlState;
+  renderedHtml: SafeHtml;
+  processingTime: number;
+  error: string;
+}
+
+interface LineageRequest { name: string; depth: number; }
+interface Fl2NlRequest   { leanCode: string; modelId: string; apiKey?: string; }
+
+const IDLE_LINEAGE_VM: LineageVm = {
+  state: 'idle', root: '', totalNodes: 0, truncated: false, processingTime: 0, error: '',
+};
+const IDLE_FL2NL_VM: Fl2NlVm = {
+  state: 'idle', renderedHtml: '', processingTime: 0, error: '',
+};
+
+const FL2NL_SYSTEM_PROMPT =
+  'You are an expert in formal mathematics and mathematical writing. ' +
+  'Given one or more Lean 4 theorems (possibly with proofs), produce a structured mathematical exposition in natural language. ' +
+  'For EACH theorem or lemma found in the input, output exactly the following structure:\n\n' +
+  '**Theorem.** <state the mathematical claim clearly, using LaTeX notation ($...$ inline, $$...$$ display)>\n\n' +
+  '*Proof.* <explain the proof strategy and key steps in natural language, using LaTeX where appropriate. ' +
+  'If the proof body contains sorry or is otherwise left unsolved, write exactly "Unsolved." instead.>\n\n' +
+  'Rules:\n' +
+  '- Capture the mathematical ESSENCE and meaning of what the Lean statement expresses. Do NOT attempt to solve or prove anything.\n' +
+  '- Do NOT reproduce any Lean 4 syntax in your output.\n' +
+  '- Do NOT add commentary outside the Theorem/Proof blocks.\n' +
+  '- If there are multiple theorems, repeat the Theorem/Proof block for each one in order.';
 
 @Component({
   selector: 'app-lineage-search-page',
   standalone: true,
-  imports: [FormsModule, NgFor, NgIf],
+  imports: [FormsModule, AsyncPipe, DecimalPipe, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './lineage-search-page.html',
-  styleUrl: './lineage-search-page.css'
+  styleUrl: './lineage-search-page.css',
 })
 export class LineageSearchPageComponent implements AfterViewInit, OnDestroy {
   @ViewChild('graphSvg', { static: true }) graphSvg!: ElementRef<SVGSVGElement>;
 
-  searchInput = 'Paridad n² + n';
-  depthUp = 1;
-  depthDown = 2;
-  showNatural = true;
-  showLean = true;
+  // ── Form fields ────────────────────────────────────────────────────────────
+  nameInput = '';
+  depth = 2;
 
-  readonly allNodes: LineageNode[] = [
-    { id: 1, name: 'Axioma de Peano', type: 'Axioma', desc: 'Define los números naturales.', lean: 'inductive Nat ...' },
-    { id: 2, name: 'Inducción Matemática', type: 'Lema', desc: 'Principio de inducción en N.', lean: 'theorem nat_induction ...' },
-    { id: 3, name: 'Paridad n² + n', type: 'Teorema', desc: 'Demuestra que n²+n es par.', lean: 'theorem parity_n_sq_add_n ...' },
-    { id: 4, name: 'Divisibilidad por 2', type: 'Lema', desc: 'Define la paridad por divisibilidad.', lean: 'def even (n : Nat) := ∃ k, n = 2 * k' },
-    { id: 5, name: 'Aritmética Básica', type: 'Lema', desc: 'Relaciones básicas de suma y producto.', lean: 'lemma basic_arith ...' },
-    { id: 6, name: 'Corolario de Paridad', type: 'Corolario', desc: 'Extensiones de resultados de paridad.', lean: 'corollary parity_cor ...' }
-  ];
+  // ── Model / API key ────────────────────────────────────────────────────────
+  selectedModelId = '';
+  apiKeyInput = '';
+  maskedKey: string | null = null;
+  apiKeySaving = false;
+  apiKeyError = '';
+  settingsOpen = false;
 
-  readonly allLinks: LineageLink[] = [
-    { source: 1, target: 2 },
-    { source: 2, target: 3 },
-    { source: 4, target: 3 },
-    { source: 5, target: 3 },
-    { source: 3, target: 6 }
-  ];
+  // ── Graph state ────────────────────────────────────────────────────────────
+  visibleNodes: LayoutNode[] = [];
+  private _edgeDefs: MathlibLineageEdge[] = [];
+  selectedNode: LayoutNode | null = null;
 
-  visibleNodes: SimNode[] = [];
-  selected: SimNode | null = null;
+  // ── Zoom / pan ─────────────────────────────────────────────────────────────
+  graphScale = 1;
+  graphOffsetX = 0;
+  graphOffsetY = 0;
+  isGraphPanning = false;
+  private graphPanStartX = 0;
+  private graphPanStartY = 0;
 
-  zoom = 1;
-  offsetX = 0;
-  offsetY = 0;
+  // Shell resize
+  shellWidth = 320;
+  private _resizing = false;
+  private _resizeStartX = 0;
+  private _resizeStartWidth = 0;
 
-  private rafId: number | null = null;
-  private lastRenderTs = 0;
-  private readonly targetFrameMs = 1000 / 30;
   private draggingNodeId: number | null = null;
-    constructor(
-      private readonly cdr: ChangeDetectorRef,
-      private readonly zone: NgZone
-    ) {}
 
-  private dragPointerId: number | null = null;
-  private panning = false;
-  private panPointerId: number | null = null;
-  private panStartX = 0;
-  private panStartY = 0;
-  private panOriginX = 0;
-  private panOriginY = 0;
+  // ── Subjects ───────────────────────────────────────────────────────────────
+  private readonly lineageSubmit$ = new Subject<LineageRequest | null>();
+  private readonly fl2nlSubmit$   = new Subject<Fl2NlRequest | null>();
+  private readonly _subs = new Subscription();
 
-  get transform(): string {
-    return `translate(${this.offsetX} ${this.offsetY}) scale(${this.zoom})`;
+  // ── Model catalogue ────────────────────────────────────────────────────────
+  readonly models$: Observable<AvailableModel[]> = defer(() =>
+    this.taskService.getAvailableModels()
+  ).pipe(
+    catchError(() => of([])),
+    startWith([] as AvailableModel[]),
+    shareReplay(1),
+  );
+
+  // ── Lineage state machine ──────────────────────────────────────────────────
+  readonly lineage$: Observable<LineageVm> = this.lineageSubmit$.pipe(
+    switchMap(req => {
+      if (!req) return of(IDLE_LINEAGE_VM);
+
+      return this.taskService.submitMathlibLineage(req.name, req.depth).pipe(
+        switchMap(({ task_id }) =>
+          timer(2000, 3000).pipe(
+            switchMap(() => this.taskService.getMathlibLineageResult(task_id)),
+            filter((res: any) => res?.status !== 'pending'),
+            take(1),
+            timeout(300_000),
+          )
+        ),
+        map((res: any): LineageVm => {
+          const r = res as MathlibLineageResult;
+          // Populate graph fields (runs inside the pipe so zone-safe)
+          this._buildGraph(r);
+          return {
+            state: 'done',
+            root: r.root,
+            totalNodes: r.total_nodes,
+            truncated: r.truncated,
+            processingTime: r.processing_time_seconds,
+            error: '',
+          };
+        }),
+        startWith<LineageVm>({ ...IDLE_LINEAGE_VM, state: 'loading' }),
+        catchError(err => of<LineageVm>({
+          state: 'error',
+          root: '', totalNodes: 0, truncated: false, processingTime: 0,
+          error: err?.name === 'TimeoutError'
+            ? 'Tiempo de espera agotado (5 min).'
+            : (err?.error?.error ?? err?.message ?? 'Error al obtener el grafo de linaje.'),
+        })),
+      );
+    }),
+    startWith(IDLE_LINEAGE_VM),
+    shareReplay(1),
+  );
+
+  // ── FL → NL state machine ──────────────────────────────────────────────────
+  readonly fl2nl$: Observable<Fl2NlVm> = this.fl2nlSubmit$.pipe(
+    switchMap(req => {
+      if (!req) return of(IDLE_FL2NL_VM);
+
+      const payload: Fl2NlPayload = {
+        lean_code: req.leanCode,
+        model_id: req.modelId,
+        system_prompt: this.userPrefs.getSystemPrompt('fl2nl', FL2NL_SYSTEM_PROMPT),
+        ...(req.apiKey ? { api_key: req.apiKey } : {}),
+      };
+
+      return this.taskService.submitFl2nl(payload).pipe(
+        switchMap(({ task_id }) =>
+          timer(2000, 3000).pipe(
+            switchMap(() => this.taskService.getFl2nlResult(task_id)),
+            filter((res: any) => res?.status !== 'pending'),
+            take(1),
+            timeout(300_000),
+          )
+        ),
+        map((res: any): Fl2NlVm => ({
+          state: 'done',
+          renderedHtml: this._renderLatex((res as any).natural_text ?? ''),
+          processingTime: (res as any).processing_time_seconds ?? 0,
+          error: '',
+        })),
+        startWith<Fl2NlVm>({ ...IDLE_FL2NL_VM, state: 'translating' }),
+        catchError(err => of<Fl2NlVm>({
+          state: 'error',
+          renderedHtml: '',
+          processingTime: 0,
+          error: err?.name === 'TimeoutError'
+            ? 'Tiempo de espera agotado (5 min).'
+            : (err?.error?.error ?? err?.message ?? 'Error al traducir a lenguaje natural.'),
+        })),
+      );
+    }),
+    startWith(IDLE_FL2NL_VM),
+    shareReplay(1),
+  );
+
+  get isLoggedIn(): boolean {
+    return !!this.taskService.getCurrentUserIdFromToken();
   }
 
-  get renderedLinks() {
-    const byId = new Map(this.visibleNodes.map((node) => [node.id, node]));
-    return this.allLinks
-      .filter((link) => byId.has(link.source) && byId.has(link.target))
-      .map((link) => {
-        const source = byId.get(link.source) as SimNode;
-        const target = byId.get(link.target) as SimNode;
-        return {
-          x1: source.x,
-          y1: source.y,
-          x2: target.x,
-          y2: target.y
-        };
+  get transform(): string {
+    return `translate(${this.graphOffsetX} ${this.graphOffsetY}) scale(${this.graphScale})`;
+  }
+
+  get renderedLinks(): Array<{ x1: number; y1: number; x2: number; y2: number }> {
+    const byId = new Map(this.visibleNodes.map(n => [n.id, n]));
+    return this._edgeDefs
+      .filter(e => byId.has(e.source) && byId.has(e.target))
+      .map(e => {
+        const s = byId.get(e.source)!;
+        const t = byId.get(e.target)!;
+        return { x1: s.x, y1: s.y, x2: t.x, y2: t.y };
       });
   }
 
+  constructor(
+    private readonly taskService: TaskService,
+    private readonly sanitizer: DomSanitizer,
+    private readonly cdr: ChangeDetectorRef,
+    private readonly userPrefs: UserPreferencesService,
+  ) {
+    const defaultModel = this.userPrefs.getDefaultModelId();
+    if (defaultModel) this.selectedModelId = defaultModel;
+  }
+
   ngAfterViewInit() {
-    this.search();
-    this.zone.runOutsideAngular(() => {
-      window.addEventListener('pointermove', this.onPointerMove);
-      window.addEventListener('pointerup', this.onPointerUp);
-      this.startSimulation();
-    });
+    window.addEventListener('mousemove', this._onMouseMove);
+    window.addEventListener('mouseup',  this._onMouseUp);
   }
 
   ngOnDestroy() {
-    if (this.rafId != null) {
-      cancelAnimationFrame(this.rafId);
-    }
-    window.removeEventListener('pointermove', this.onPointerMove);
-    window.removeEventListener('pointerup', this.onPointerUp);
+    window.removeEventListener('mousemove', this._onMouseMove);
+    window.removeEventListener('mouseup',  this._onMouseUp);
+    this._subs.unsubscribe();
   }
 
-  search() {
-    const query = this.searchInput.trim().toLowerCase();
-    const filtered =
-      query.length === 0
-        ? this.allNodes
-        : this.allNodes.filter((node) => node.name.toLowerCase().includes(query));
+  // ── Search ─────────────────────────────────────────────────────────────────
 
-    const width = 980;
-    const height = 500;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const radius = Math.min(width, height) * 0.3;
+  submitLineage(): void {
+    const name = this.nameInput.trim();
+    if (!name) return;
+    this.selectedNode = null;
+    this.fl2nlSubmit$.next(null);
+    this.visibleNodes = [];
+    this._edgeDefs = [];
+    this.lineageSubmit$.next({ name, depth: this.depth });
+  }
 
-    this.visibleNodes = filtered.map((node, index) => {
-      const angle = (2 * Math.PI * index) / Math.max(filtered.length, 1) - Math.PI / 2;
-      return {
-        ...node,
-        x: centerX + radius * Math.cos(angle),
-        y: centerY + radius * Math.sin(angle),
-        vx: 0,
-        vy: 0
-      };
+  resetLineage(): void {
+    this.lineageSubmit$.next(null);
+    this.fl2nlSubmit$.next(null);
+    this.visibleNodes = [];
+    this._edgeDefs = [];
+    this.selectedNode = null;
+    this.graphScale = 1; this.graphOffsetX = 0; this.graphOffsetY = 0;
+    this.cdr.markForCheck();
+  }
+
+  selectNode(node: LayoutNode): void {
+    this.selectedNode = node;
+    this.fl2nlSubmit$.next(null);
+    this.cdr.markForCheck();
+  }
+
+  // ── Shell panel actions ────────────────────────────────────────────────────
+
+  translateToNL(): void {
+    if (!this.selectedNode?.lean_source?.trim() || !this.selectedModelId) return;
+    const apiKey = !this.maskedKey ? (this.apiKeyInput.trim() || undefined) : undefined;
+    this.fl2nlSubmit$.next({
+      leanCode: this.selectedNode.lean_source,
+      modelId: this.selectedModelId,
+      apiKey,
     });
-
-    this.selected = this.visibleNodes[0] ?? null;
-    this.zoom = 1;
-    this.offsetX = 0;
-    this.offsetY = 0;
-    this.cdr.markForCheck();
   }
 
-  select(node: SimNode) {
-    this.selected = node;
-    this.cdr.markForCheck();
+  resetFl2nl(): void {
+    this.fl2nlSubmit$.next(null);
   }
 
-  onWheel(event: WheelEvent) {
+  // ── Model / API key ────────────────────────────────────────────────────────
+
+  onModelChange(): void {
+    this.maskedKey = null;
+    this.apiKeyError = '';
+    if (!this.selectedModelId || !this.isLoggedIn) return;
+    this.taskService.getApiKeyStatus(this.selectedModelId).subscribe({
+      next: s => { this.maskedKey = s.has_key ? s.masked_key : null; },
+      error: () => { this.maskedKey = null; },
+    });
+  }
+
+  saveApiKey(): void {
+    if (!this.apiKeyInput.trim() || !this.selectedModelId) return;
+    this.apiKeySaving = true;
+    this.apiKeyError = '';
+    this.taskService.saveApiKey(this.selectedModelId, this.apiKeyInput).pipe(
+      finalize(() => { this.apiKeySaving = false; }),
+    ).subscribe({
+      next: status => { this.maskedKey = status.masked_key; this.apiKeyInput = ''; },
+      error: err => { this.apiKeyError = err?.error?.error ?? 'Error al guardar la clave.'; },
+    });
+  }
+
+  // ── State labels ───────────────────────────────────────────────────────────
+
+  getLineageStateLabel(state: LineageState): string {
+    const labels: Record<LineageState, string> = {
+      idle:    'Escribe un nombre de declaración Mathlib para explorar su linaje',
+      loading: 'Construyendo grafo de dependencias…',
+      done:    'Grafo de linaje completado',
+      error:   'Error al construir el grafo',
+    };
+    return labels[state];
+  }
+
+  getFl2NlStateLabel(state: Fl2NlState): string {
+    const labels: Record<Fl2NlState, string> = {
+      idle:        'Selecciona un nodo para ver su .lean y traducirlo',
+      translating: 'Traduciendo a lenguaje natural…',
+      done:        'Traducción completada',
+      error:       'Error en la traducción',
+    };
+    return labels[state];
+  }
+
+  // ── Zoom / pan (same pattern as workspace-page) ───────────────────────────
+
+  onGraphWheel(event: WheelEvent): void {
     event.preventDefault();
-    const point = this.pointerToGraph(event.clientX, event.clientY);
-    const previousZoom = this.zoom;
-    const delta = event.deltaY < 0 ? 1.12 : 0.88;
-    this.zoom = Math.max(0.45, Math.min(2.8, this.zoom * delta));
+    const svg = event.currentTarget as SVGElement;
+    const rect = svg.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
 
-    this.offsetX = point.screenX - (point.graphX * this.zoom);
-    this.offsetY = point.screenY - (point.graphY * this.zoom);
+    const oldScale = this.graphScale;
+    const factor = event.deltaY < 0 ? 1.1 : 0.9;
+    const nextScale = Math.min(2.8, Math.max(0.35, oldScale * factor));
+    if (nextScale === oldScale) return;
 
-    if (Math.abs(previousZoom - this.zoom) < 0.0001) {
-      return;
-    }
+    const worldX = (mouseX - this.graphOffsetX) / oldScale;
+    const worldY = (mouseY - this.graphOffsetY) / oldScale;
+    this.graphScale  = nextScale;
+    this.graphOffsetX = mouseX - worldX * nextScale;
+    this.graphOffsetY = mouseY - worldY * nextScale;
   }
 
-  onBackgroundPointerDown(event: PointerEvent) {
-    if (event.button !== 0) {
-      return;
-    }
-
-    this.panning = true;
-    this.panPointerId = event.pointerId;
-    this.panStartX = event.clientX;
-    this.panStartY = event.clientY;
-    this.panOriginX = this.offsetX;
-    this.panOriginY = this.offsetY;
+  onGraphMouseDown(event: MouseEvent): void {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('.graph-node')) return;
+    this.isGraphPanning = true;
+    this.graphPanStartX = event.clientX - this.graphOffsetX;
+    this.graphPanStartY = event.clientY - this.graphOffsetY;
   }
 
-  onNodePointerDown(event: PointerEvent, nodeId: number) {
+  onGraphMouseMove(event: MouseEvent): void {
+    if (this.draggingNodeId != null) {
+      const node = this.visibleNodes.find(n => n.id === this.draggingNodeId);
+      if (node) {
+        const svg = this.graphSvg.nativeElement;
+        const rect = svg.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+        node.x = (mouseX - this.graphOffsetX) / this.graphScale;
+        node.y = (mouseY - this.graphOffsetY) / this.graphScale;
+        this.cdr.markForCheck();
+      }
+      return;
+    }
+    if (!this.isGraphPanning) return;
+    this.graphOffsetX = event.clientX - this.graphPanStartX;
+    this.graphOffsetY = event.clientY - this.graphPanStartY;
+  }
+
+  stopGraphPan(): void {
+    this.isGraphPanning = false;
+  }
+
+  onNodeMouseDown(event: MouseEvent, nodeId: number): void {
     event.stopPropagation();
     this.draggingNodeId = nodeId;
-    this.dragPointerId = event.pointerId;
   }
 
-  private onPointerMove = (event: PointerEvent) => {
-    if (this.dragPointerId === event.pointerId && this.draggingNodeId != null) {
-      const point = this.pointerToGraph(event.clientX, event.clientY);
-      const node = this.visibleNodes.find((item) => item.id === this.draggingNodeId);
-      if (!node) {
-        return;
-      }
+  resetGraphTransform(): void {
+    this.graphScale = 1; this.graphOffsetX = 0; this.graphOffsetY = 0;
+  }
 
-      node.x = point.graphX;
-      node.y = point.graphY;
-      node.vx = 0;
-      node.vy = 0;
-      return;
-    }
+  // ── Shell resize ───────────────────────────────────────────────────────────
 
-    if (this.panning && this.panPointerId === event.pointerId) {
-      this.offsetX = this.panOriginX + (event.clientX - this.panStartX);
-      this.offsetY = this.panOriginY + (event.clientY - this.panStartY);
-    }
+  startResize(event: PointerEvent): void {
+    this._resizing = true;
+    this._resizeStartX = event.clientX;
+    this._resizeStartWidth = this.shellWidth;
+    (event.target as HTMLElement).setPointerCapture(event.pointerId);
+  }
+
+  onResizeMove(event: PointerEvent): void {
+    if (!this._resizing) return;
+    const delta = this._resizeStartX - event.clientX;
+    this.shellWidth = Math.max(220, Math.min(600, this._resizeStartWidth + delta));
+  }
+
+  stopResize(): void {
+    this._resizing = false;
+  }
+
+  // ── Private: global mouse handlers ────────────────────────────────────────
+
+  private readonly _onMouseMove = (event: MouseEvent) => this.onGraphMouseMove(event);
+  private readonly _onMouseUp   = () => {
+    this.isGraphPanning = false;
+    this.draggingNodeId = null;
   };
 
-  private onPointerUp = (event: PointerEvent) => {
-    if (this.dragPointerId === event.pointerId) {
-      this.dragPointerId = null;
-      this.draggingNodeId = null;
-    }
+  // ── Private: hierarchical layout ──────────────────────────────────────────
 
-    if (this.panPointerId === event.pointerId) {
-      this.panPointerId = null;
-      this.panning = false;
-    }
-  };
+  private _buildGraph(r: MathlibLineageResult): void {
+    const VIEWBOX_W = 980, VIEWBOX_H = 520;
+    const rowGap = 110;
+    const nodeR = 26;
+    const padding = nodeR + 20;
 
-  private pointerToGraph(clientX: number, clientY: number) {
+    // Group nodes by depth_level
+    const byLevel = new Map<number, MathlibLineageNode[]>();
+    for (const n of r.nodes) {
+      const lvl = n.depth_level ?? 0;
+      if (!byLevel.has(lvl)) byLevel.set(lvl, []);
+      byLevel.get(lvl)!.push(n);
+    }
+    const levels = [...byLevel.keys()].sort((a, b) => a - b);
+    const totalRows = levels.length;
+    const totalHeight = Math.max(VIEWBOX_H, totalRows * rowGap + padding * 2);
+
+    // Position nodes: depth level → Y row, index-within-level → X
+    this.visibleNodes = r.nodes.map((n): LayoutNode => {
+      const lvl = n.depth_level ?? 0;
+      const levelNodes = byLevel.get(lvl)!;
+      const colCount = levelNodes.length;
+      const colIndex = levelNodes.indexOf(n);
+      const rowIndex = levels.indexOf(lvl);
+
+      const colGap = Math.max(80, (VIEWBOX_W - padding * 2) / colCount);
+      const x = padding + colGap * colIndex + colGap / 2;
+      const y = padding + rowIndex * rowGap;
+      return { ...n, x, y };
+    });
+
+    this._edgeDefs = r.edges;
+    this.selectedNode = null;
+    this.graphScale = 1;
+    this.graphOffsetX = 0;
+    this.graphOffsetY = (VIEWBOX_H - totalHeight) / 2;
+    this.cdr.markForCheck();
+  }
+
+  private _pointerToGraph(clientX: number, clientY: number) {
     const rect = this.graphSvg.nativeElement.getBoundingClientRect();
-    const screenX = ((clientX - rect.left) / rect.width) * 980;
-    const screenY = ((clientY - rect.top) / rect.height) * 500;
-
+    const mouseX = clientX - rect.left;
+    const mouseY = clientY - rect.top;
     return {
-      screenX,
-      screenY,
-      graphX: (screenX - this.offsetX) / this.zoom,
-      graphY: (screenY - this.offsetY) / this.zoom
+      graphX: (mouseX - this.graphOffsetX) / this.graphScale,
+      graphY: (mouseY - this.graphOffsetY) / this.graphScale,
     };
   }
 
-  private startSimulation() {
-    const tick = (timestamp: number) => {
-      this.simulateStep();
+  // ── KaTeX rendering ────────────────────────────────────────────────────────
 
-      if (timestamp - this.lastRenderTs >= this.targetFrameMs) {
-        this.lastRenderTs = timestamp;
-        this.zone.run(() => this.cdr.detectChanges());
-      }
+  private _renderLatex(src: string): SafeHtml {
+    const text = src.trim();
+    if (!text) return this.sanitizer.bypassSecurityTrustHtml('<p class="tex-empty">Sin contenido para renderizar.</p>');
 
-      this.rafId = requestAnimationFrame(tick);
-    };
-    this.rafId = requestAnimationFrame(tick);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const katex = (window as any)['katex'];
+    if (!katex) return this.sanitizer.bypassSecurityTrustHtml('<p>KaTeX no está disponible. Recarga la página e inténtalo de nuevo.</p>');
+
+    try {
+      let body = text;
+      const displayPH: string[] = [];
+      body = body.replace(/\$\$([\s\S]*?)\$\$/g, (_, m) => {
+        const i = displayPH.length;
+        try { displayPH.push('<div class="tex-display">' + katex.renderToString(m.trim(), { displayMode: true, throwOnError: false }) + '</div>'); }
+        catch { displayPH.push(`<div class="tex-err">$$${this._escapeHtml(m)}$$</div>`); }
+        return `\x00D${i}\x00`;
+      });
+      body = body.replace(/\\\[([\s\S]*?)\\\]/g, (_, m) => {
+        const i = displayPH.length;
+        try { displayPH.push('<div class="tex-display">' + katex.renderToString(m.trim(), { displayMode: true, throwOnError: false }) + '</div>'); }
+        catch { displayPH.push(`<div class="tex-err">\\[${this._escapeHtml(m)}\\]</div>`); }
+        return `\x00D${i}\x00`;
+      });
+      const inlinePH: string[] = [];
+      body = body.replace(/\$([^$\n]{1,300}?)\$/g, (_, m) => {
+        const i = inlinePH.length;
+        try { inlinePH.push(katex.renderToString(m.trim(), { displayMode: false, throwOnError: false })); }
+        catch { inlinePH.push(`$${this._escapeHtml(m)}$`); }
+        return `\x00I${i}\x00`;
+      });
+      body = this._escapeHtml(body);
+      body = body.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+      body = body.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
+      const paras = body.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
+      body = paras.map(p => (/^<(div|h[1-6])/.test(p) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`)).join('\n');
+      // Substitute KaTeX HTML back LAST so SVG path data is never mangled.
+      inlinePH.forEach((h, i) => { body = body.replace(`\x00I${i}\x00`, h); });
+      displayPH.forEach((h, i) => { body = body.replace(`\x00D${i}\x00`, h); });
+      return this.sanitizer.bypassSecurityTrustHtml(body);
+    } catch {
+      return this.sanitizer.bypassSecurityTrustHtml('<p>Error al renderizar el LaTeX.</p>');
+    }
   }
 
-  private simulateStep() {
-    if (this.visibleNodes.length === 0) {
-      return;
-    }
-
-    const idToNode = new Map(this.visibleNodes.map((node) => [node.id, node]));
-
-    for (let i = 0; i < this.visibleNodes.length; i++) {
-      for (let j = i + 1; j < this.visibleNodes.length; j++) {
-        const nodeA = this.visibleNodes[i];
-        const nodeB = this.visibleNodes[j];
-        const dx = nodeB.x - nodeA.x;
-        const dy = nodeB.y - nodeA.y;
-        const distSq = dx * dx + dy * dy + 0.01;
-        const force = 1200 / distSq;
-        const dist = Math.sqrt(distSq);
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-
-        nodeA.vx -= fx;
-        nodeA.vy -= fy;
-        nodeB.vx += fx;
-        nodeB.vy += fy;
-      }
-    }
-
-    const springLength = 145;
-    const springK = 0.012;
-    for (const link of this.allLinks) {
-      const source = idToNode.get(link.source);
-      const target = idToNode.get(link.target);
-      if (!source || !target) {
-        continue;
-      }
-
-      const dx = target.x - source.x;
-      const dy = target.y - source.y;
-      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-      const stretch = distance - springLength;
-      const force = stretch * springK;
-      const fx = (dx / distance) * force;
-      const fy = (dy / distance) * force;
-
-      source.vx += fx;
-      source.vy += fy;
-      target.vx -= fx;
-      target.vy -= fy;
-    }
-
-    const centerX = 490;
-    const centerY = 250;
-    for (const node of this.visibleNodes) {
-      if (this.draggingNodeId === node.id) {
-        continue;
-      }
-
-      node.vx += (centerX - node.x) * 0.0008;
-      node.vy += (centerY - node.y) * 0.0008;
-
-      node.vx *= 0.93;
-      node.vy *= 0.93;
-
-      node.x += node.vx;
-      node.y += node.vy;
-
-      node.x = Math.max(40, Math.min(940, node.x));
-      node.y = Math.max(40, Math.min(460, node.y));
-    }
+  private _escapeHtml(text: string): string {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 }
+

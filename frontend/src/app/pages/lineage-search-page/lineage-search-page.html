@@ -1,73 +1,226 @@
-    <div class="max-wrap">
-      <h1>Búsqueda de Linaje y Dependencias de Teoremas</h1>
+<div class="page-wrap">
 
-      <div class="controls">
-        <input [(ngModel)]="searchInput" placeholder="Buscar Teorema, Lema o Resultado inicial..." />
-        <label>Ancestros <input type="number" [(ngModel)]="depthUp" min="0" max="5" /></label>
-        <label>Descendencia <input type="number" [(ngModel)]="depthDown" min="0" max="5" /></label>
-        <button (click)="search()">Actualizar</button>
-      </div>
+  <h1>Buscar Linaje de Dependencias</h1>
 
-      <div class="layout">
-        <section>
-          <h2>Grafo de Linaje de Dependencias</h2>
-          <div class="graph-placeholder">
-            <svg
-              #graphSvg
-              class="graph-svg"
-              viewBox="0 0 980 500"
-              preserveAspectRatio="xMidYMid meet"
-              (wheel)="onWheel($event)"
-              (pointerdown)="onBackgroundPointerDown($event)"
-            >
-              <g [attr.transform]="transform">
-                <line
-                  *ngFor="let link of renderedLinks"
-                  class="graph-link"
-                  [attr.x1]="link.x1"
-                  [attr.y1]="link.y1"
-                  [attr.x2]="link.x2"
-                  [attr.y2]="link.y2"
-                ></line>
+  <!-- ── Search bar ───────────────────────────────────────────────────── -->
+  <div class="search-bar">
+    <input class="name-input" type="text"
+      [(ngModel)]="nameInput"
+      placeholder="Nat.exists_infinite_primes"
+      (keydown.enter)="submitLineage()" />
 
-                <g
-                  *ngFor="let node of visibleNodes"
-                  class="graph-node"
-                  [class.selected]="selected?.id === node.id"
-                  (pointerdown)="onNodePointerDown($event, node.id)"
-                  (click)="select(node)"
-                >
-                  <circle [attr.cx]="node.x" [attr.cy]="node.y" r="27"></circle>
-                  <text [attr.x]="node.x" [attr.y]="node.y + 50">{{ node.name }}</text>
-                </g>
-              </g>
-            </svg>
-          </div>
-        </section>
-
-        <section class="detail-box">
-          <h2>Detalle del Nodo Seleccionado</h2>
-          <p *ngIf="!selected" class="empty">Selecciona un nodo para ver su descripción.</p>
-
-          <div *ngIf="selected">
-            <h3>{{ selected.name }}</h3>
-            <p class="type">{{ selected.type }}</p>
-            <div class="toggles">
-              <label><input type="checkbox" [(ngModel)]="showNatural" /> Lenguaje Natural</label>
-              <label><input type="checkbox" [(ngModel)]="showLean" /> Formalismo Lean</label>
-            </div>
-
-            <div *ngIf="showNatural" class="content-block">
-              <h4>Definición (Natural)</h4>
-              <p>{{ selected.desc }}</p>
-            </div>
-
-            <div *ngIf="showLean" class="content-block">
-              <h4>Código Lean</h4>
-              <pre>{{ selected.lean }}</pre>
-            </div>
-          </div>
-        </section>
-      </div>
+    <div class="depth-control">
+      <label for="depth-input">Profundidad</label>
+      <input id="depth-input" type="number"
+        [(ngModel)]="depth"
+        min="1" max="4" step="1" />
     </div>
-  
+
+    <button class="btn-primary" (click)="submitLineage()" [disabled]="!nameInput.trim()">
+      Buscar Linaje
+    </button>
+    <button class="btn-ghost" (click)="resetLineage()">Limpiar</button>
+  </div>
+
+  <!-- ── Login hint ───────────────────────────────────────────────────── -->
+  @if (!isLoggedIn) {
+    <p class="muted login-hint">
+      <a routerLink="/auth">Inicia sesión</a> para traducir declaraciones a lenguaje natural (.tex).
+    </p>
+  }
+
+  <!-- ── Settings panel (auth-gated) ─────────────────────────────────── -->
+  @if (isLoggedIn) {
+    <div class="settings-panel">
+      <button class="settings-toggle" (click)="settingsOpen = !settingsOpen">
+        <span>⚙ Configuración del modelo</span>
+        <span class="toggle-chevron">{{ settingsOpen ? '▲' : '▼' }}</span>
+      </button>
+      @if (settingsOpen) {
+        <div class="settings-body">
+          <div class="setting-group">
+            <label for="model-select">Modelo LLM</label>
+            <select id="model-select" [(ngModel)]="selectedModelId" (ngModelChange)="onModelChange()">
+              <option value="">— Selecciona un modelo —</option>
+              @for (m of (models$ | async) ?? []; track m.id) {
+                <option [value]="m.id">{{ m.provider }} · {{ m.name }}</option>
+              }
+            </select>
+          </div>
+          <div class="setting-group">
+            <label>API Key</label>
+            @if (maskedKey) { <span class="masked-key">{{ maskedKey }}</span> }
+            <div class="api-key-row">
+              <input type="password" [(ngModel)]="apiKeyInput" placeholder="sk-…" autocomplete="new-password" />
+              <button class="btn-save" (click)="saveApiKey()" [disabled]="apiKeySaving || !apiKeyInput.trim()">
+                {{ apiKeySaving ? 'Guardando…' : 'Guardar' }}
+              </button>
+            </div>
+            @if (apiKeyError) { <p class="error-text">{{ apiKeyError }}</p> }
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ── Status bar ───────────────────────────────────────────────────── -->
+  @if (lineage$ | async; as lvm) {
+    @if (lvm.state !== 'idle') {
+      <div [class]="'status-bar status-' + (lvm.state === 'loading' ? 'translating' : lvm.state === 'done' ? 'valid' : 'error')">
+        <span class="status-dot"></span>
+        <span class="status-label">{{ getLineageStateLabel(lvm.state) }}</span>
+        @if (lvm.state === 'done') {
+          <span class="status-meta">{{ lvm.totalNodes }} nodos · {{ lvm.processingTime | number:'1.1-1' }}s</span>
+        }
+      </div>
+      @if (lvm.state === 'done' && lvm.truncated) {
+        <p class="muted truncated-hint">⚠ Grafo truncado a 30 nodos. Reduce la profundidad para obtener resultados más precisos.</p>
+      }
+      @if (lvm.state === 'error') {
+        <p class="error-text server-error">{{ lvm.error }}</p>
+      }
+    }
+  }
+
+  <!-- ── Main two-panel layout ────────────────────────────────────────── -->
+  @if (visibleNodes.length > 0) {
+    <div class="lineage-layout" [style.--shell-width.px]="shellWidth">
+
+      <!-- ── Graph panel ── -->
+      <section class="graph-section">
+        <div class="graph-header">
+          <span class="graph-tip">Drag para mover nodo · rueda para zoom · click para ver .lean</span>
+          <button class="btn-ghost btn-sm" (click)="resetGraphTransform()">Reset vista</button>
+        </div>
+        <div class="graph-canvas-wrap">
+          <svg #graphSvg
+            class="graph-svg"
+            (wheel)="onGraphWheel($event)"
+            (mousedown)="onGraphMouseDown($event)"
+            (mousemove)="onGraphMouseMove($event)"
+            (mouseleave)="stopGraphPan()"
+            [class.panning]="isGraphPanning">
+            <g [attr.transform]="transform">
+
+              @for (link of renderedLinks; track $index) {
+                <line class="graph-link"
+                  [attr.x1]="link.x1" [attr.y1]="link.y1"
+                  [attr.x2]="link.x2" [attr.y2]="link.y2">
+                </line>
+              }
+
+              @for (node of visibleNodes; track node.id) {
+                <g class="graph-node"
+                  [class.selected]="selectedNode?.id === node.id"
+                  [class.not-found]="!node.found"
+                  (mousedown)="onNodeMouseDown($event, node.id)"
+                  (click)="selectNode(node)">
+                  <circle [attr.cx]="node.x" [attr.cy]="node.y" r="26"></circle>
+                  <text [attr.x]="node.x" [attr.y]="node.y + 42" class="node-label">
+                    {{ node.name.length > 18 ? node.name.slice(node.name.lastIndexOf('.') + 1) : node.name }}
+                  </text>
+                </g>
+              }
+
+            </g>
+          </svg>
+        </div>
+      </section>
+
+      <!-- ── Resize handle ── -->
+      <div class="resize-handle"
+        (pointerdown)="startResize($event)"
+        (pointermove)="onResizeMove($event)"
+        (pointerup)="stopResize()"
+        (pointercancel)="stopResize()">
+      </div>
+
+      <!-- ── Shell panel ── -->
+      <aside class="shell-panel" [style.width.px]="shellWidth">
+        @if (!selectedNode) {
+          <div class="shell-empty">
+            <span class="shell-empty-icon">⬡</span>
+            <p>Selecciona un nodo del grafo para ver su declaración Lean.</p>
+          </div>
+        }
+
+        @if (selectedNode) {
+          <div class="shell-header">
+            <span class="shell-name">{{ selectedNode.name }}</span>
+            <span class="depth-badge">nivel {{ selectedNode.depth_level }}</span>
+            @if (!selectedNode.found) {
+              <span class="not-found-badge">no encontrado</span>
+            }
+          </div>
+
+          @if (selectedNode.found && selectedNode.lean_source) {
+            <pre class="lean-block">{{ selectedNode.lean_source }}</pre>
+
+            @if (isLoggedIn) {
+              <div class="shell-actions">
+                <button class="btn-primary btn-sm"
+                  (click)="translateToNL()"
+                  [disabled]="!selectedModelId">
+                  Traducir a NL (.tex)
+                </button>
+                @if (!selectedModelId) {
+                  <span class="muted">Selecciona un modelo en ⚙.</span>
+                }
+              </div>
+            }
+          }
+
+          @if (!selectedNode.found || !selectedNode.lean_source) {
+            <p class="muted shell-not-found">
+              Fuente no disponible en el worker. Puede que Mathlib no esté compilado o el nombre sea interno.
+            </p>
+          }
+
+          <!-- FL → NL output -->
+          @if (fl2nl$ | async; as fvm) {
+            @if (fvm.state !== 'idle') {
+              <div [class]="'status-bar status-' + (fvm.state === 'translating' ? 'translating' : fvm.state === 'done' ? 'done' : 'error')" style="margin-top:12px">
+                <span class="status-dot"></span>
+                <span class="status-label">{{ getFl2NlStateLabel(fvm.state) }}</span>
+                @if (fvm.state === 'done') {
+                  <span class="status-meta">{{ fvm.processingTime | number:'1.1-1' }}s</span>
+                }
+              </div>
+
+              @if (fvm.state === 'translating') {
+                <div class="shell-loading">
+                  <div class="spinner"></div>
+                  <span>Consultando al modelo…</span>
+                </div>
+              }
+
+              @if (fvm.state === 'done') {
+                <div class="tex-preview-pane" [innerHTML]="fvm.renderedHtml"></div>
+                <button class="btn-ghost btn-sm" (click)="resetFl2nl()" style="margin-top:8px">Cerrar traducción</button>
+              }
+
+              @if (fvm.state === 'error') {
+                <p class="error-text server-error">{{ fvm.error }}</p>
+              }
+            }
+          }
+        }
+      </aside>
+
+    </div>
+  }
+
+  <!-- Empty state when no graph yet and idle -->
+  @if (visibleNodes.length === 0) {
+    @if (lineage$ | async; as lvm) {
+      @if (lvm.state === 'idle') {
+        <div class="empty-state">
+          <span class="empty-icon">⬡</span>
+          <p>Escribe el nombre de una declaración Mathlib4 y haz clic en <strong>Buscar Linaje</strong>.</p>
+          <p class="muted">Ejemplo: <code>Nat.exists_infinite_primes</code>, <code>Real.sqrt_sq</code></p>
+        </div>
+      }
+    }
+  }
+
+</div>

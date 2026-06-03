@@ -46,6 +46,9 @@
 20. [TCD-20 — Agents Worker: Functional Suggestion Flow](#tcd-20--agents-worker-functional-suggestion-flow)
 21. [TCD-21 — Cluster Computation: Functional Polling Flow](#tcd-21--cluster-computation-functional-polling-flow)
 22. [TCD-22 — Web API + PostgreSQL: Functional Integration](#tcd-22--web-api--postgresql-functional-integration)
+23. [TCD-23 — Lean Worker: All Entry Points — Correctness](#tcd-23--lean-worker-all-entry-points--correctness)
+24. [TCD-24 — Lean Worker: Performance Benchmarks & Load](#tcd-24--lean-worker-performance-benchmarks--load)
+25. [TCD-25 — Lean Worker: Real-World Mathlib Scenario Tests](#tcd-25--lean-worker-real-world-mathlib-scenario-tests)
 
 ---
 
@@ -2400,6 +2403,356 @@ mocks; only GitHub REST calls are stubbed.
 
 ---
 
+## TCD-23 — Lean Worker: All Entry Points — Correctness
+
+**Module:** `lean/lean_service.py` — `to_compiler_snippet_response()`, `to_compiler_project_response()`, `get_mathlib_info()`, `get_mathlib_lineage()`  
+**Tool:** `pytest` (real Lean 4 compiler — no subprocess mocking)  
+**Status:** ⬜ Not yet implemented  
+**Run:** `docker compose cp lean/tests lean-worker:/app/tests && docker compose exec lean-worker bash -c "pip3 install pytest --quiet && cd /app && pytest -v tests/tcd23_lean_correctness/"`
+
+**Infrastructure notes:**
+- TC-23-01 through TC-23-06 require only the Lean 4 executable; no Mathlib build needed.
+- TC-23-07 through TC-23-10 additionally require `LEAN_PATH` to be set (pre-built Mathlib .olean files). This is satisfied inside the `lean-worker` container via its Dockerfile `ENV LEAN_PATH=...`.
+- `to_compiler_snippet_response` and `to_compiler_project_response` are the functions exposed directly to the Celery tasks `verify_snippet` and `verify_project_files`. Their response shape (`valid`, `errors`, `return_code`, `message_count`, `theorem_count`) is the contract consumed by the rest of the platform.
+- For TC-23-03 (sorry): `sorry` produces a warning, not an error. `to_compiler_snippet_response` filters messages for `severity=="error"`, so `errors` is empty but `message_count >= 1`.
+- For TC-23-06 (missing entry file): `verify_lean_project` returns an `"Entry file not found"` error before spawning any subprocess.
+
+**Description:**  
+Correctness tests for all four lean-worker entry points, covering valid inputs,
+diagnostic filtering, multi-file projects, Mathlib declaration lookup, and the
+lineage dependency-graph builder.
+
+---
+
+### TC-23-01 — `to_compiler_snippet_response`: valid snippet
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. Call `to_compiler_snippet_response("theorem hello : True := trivial")` |
+| **Expected** | `valid == True`; `errors == []`; `theorem_count == 1`; `return_code == 0` |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-23-02 — `to_compiler_snippet_response`: invalid snippet
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. Call `to_compiler_snippet_response("theorem bad : True := (42 : Nat)")` |
+| **Expected** | `valid == False`; `len(errors) >= 1`; `errors[0]["line"] > 0`; `errors[0]["message"] != ""` |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-23-03 — `to_compiler_snippet_response`: sorry proof
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. Call `to_compiler_snippet_response("theorem sorry_ex : 1 = 2 := by sorry")` |
+| **Expected** | `valid == True` (sorry is a warning); `errors == []`; `message_count >= 1` (warning captured) |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-23-04 — `to_compiler_snippet_response`: multi-theorem snippet
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. Call with a snippet containing `theorem alpha : True := trivial` and `theorem beta : True := trivial` |
+| **Expected** | `valid == True`; `theorem_count == 2` |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-23-05 — `to_compiler_project_response`: single-file project
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. Call `to_compiler_project_response({"main.lean": "theorem hello : True := trivial"}, "main.lean")` |
+| **Expected** | `valid == True`; `errors == []`; `return_code == 0` |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-23-06 — `to_compiler_project_response`: missing entry file
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. Call `to_compiler_project_response({"other.lean": "..."}, "main.lean")` |
+| **Expected** | `valid == False`; `len(errors) >= 1`; `errors[0]["message"]` contains `"not found"` |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-23-07 — `get_mathlib_info`: known Mathlib declaration
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 + Mathlib build available (`LEAN_PATH` set) |
+| **Steps** | 1. Call `get_mathlib_info("Nat.add_comm")` |
+| **Expected** | `found == True`; `lean_source != ""`; `declaration_name == "Nat.add_comm"`; `error_message == ""` |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-23-08 — `get_mathlib_info`: unknown declaration
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 + Mathlib build available |
+| **Steps** | 1. Call `get_mathlib_info("Fake.NonExistent.Declaration99999")` |
+| **Expected** | `found == False`; `error_message != ""`; `declaration_name` matches the input |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-23-09 — `get_mathlib_lineage`: known declaration at depth=1
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 + Mathlib build available |
+| **Steps** | 1. Call `get_mathlib_lineage("Nat.add_comm", depth=1)` |
+| **Expected** | `root == "Nat.add_comm"`; `total_nodes >= 1`; root node has `found == True` and `depth_level == 0`; `edges` is a list |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+### TC-23-10 — `get_mathlib_lineage`: unknown declaration
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 + Mathlib build available |
+| **Steps** | 1. Call `get_mathlib_lineage("Fake.NonExistent.Declaration99999", depth=1)` |
+| **Expected** | Root node exists with `found == False`; `edges == []` (no dependencies discovered) |
+| **Tool** | pytest, real `lean` subprocess |
+
+---
+
+## TCD-24 — Lean Worker: Performance Benchmarks & Load
+
+**Module:** `lean/lean_service.py` — all entry points  
+**Tools:** `pytest-benchmark` (latency statistics), `concurrent.futures.ThreadPoolExecutor` (concurrency), Celery `send_task` (E2E round-trip)  
+**Status:** ✅ Implemented & passing — 11/11 TCs pass  
+**Run (no benchmark stats):** `docker compose exec lean-worker bash -c "pip3 install pytest --quiet && cd /app && pytest -v tests/tcd24_lean_performance/"`  
+**Run (with stats):** `docker compose exec lean-worker bash -c "pip3 install pytest pytest-benchmark --quiet && cd /app && pytest -v tests/tcd24_lean_performance/ --benchmark-sort=mean"`
+
+**Infrastructure notes:**
+- A `conftest.py` in the test directory provides a no-op `benchmark` fallback when `pytest-benchmark` is not installed. Tests always run; statistics are only collected when the library is present.
+- TC-24-05 and TC-24-06 require `LEAN_PATH` (Mathlib build) and are skipped otherwise. Use `benchmark.pedantic(rounds=N)` to cap the number of Lean invocations.
+- Concurrency tests (TC-24-07 through TC-24-10): each `verify_lean_proof` call spawns its own `lean` subprocess in a unique `tempfile.TemporaryDirectory`. No shared state; no file conflicts.
+- TC-24-11 (Celery E2E): skipped when `REDIS_URL` is not set. Requires the full `docker compose up` stack (Redis + lean-worker Celery consumer) to be running. When invoked via `docker compose exec lean-worker`, the main Celery worker process is PID 1 in the same container, so tasks are processed immediately.
+
+**Description:**  
+Performance benchmarks measuring single-call latency for all entry points, plus
+concurrency load tests at 1/4/8/16 workers to verify that parallel Lean processes
+do not interfere with each other. Includes a full Celery broker round-trip measurement.
+
+---
+
+### TC-24-01 — Benchmark: `verify_lean_proof` — simple snippet (baseline)
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable; `pytest-benchmark` optional |
+| **Steps** | 1. `benchmark(verify_lean_proof, "theorem hello : True := trivial")` |
+| **Expected** | `result["verified"] == True`; latency statistics recorded (min/mean/max/OPS) |
+| **Tool** | pytest-benchmark or fallback |
+
+---
+
+### TC-24-02 — Benchmark: `verify_lean_proof` — 5-theorem snippet
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. `benchmark(verify_lean_proof, <5-theorem snippet>)` |
+| **Expected** | `verified == True`; `len(theorems) == 5`; latency higher than TC-24-01 baseline |
+| **Tool** | pytest-benchmark or fallback |
+
+---
+
+### TC-24-03 — Benchmark: `to_compiler_snippet_response` — simple snippet
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. `benchmark(to_compiler_snippet_response, "theorem hello : True := trivial")` |
+| **Expected** | `valid == True`; latency comparable to TC-24-01 (wrapper overhead is negligible) |
+| **Tool** | pytest-benchmark or fallback |
+
+---
+
+### TC-24-04 — Benchmark: `to_compiler_project_response` — single-file project
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. `benchmark.pedantic(to_compiler_project_response, args=({"main.lean": snippet}, "main.lean"), rounds=5)` |
+| **Expected** | `valid == True`; latency statistics recorded |
+| **Tool** | pytest-benchmark or fallback |
+
+---
+
+### TC-24-05 — Benchmark: `get_mathlib_info` — Nat.add_comm
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 + Mathlib build available (`LEAN_PATH` set) |
+| **Steps** | 1. `benchmark.pedantic(get_mathlib_info, args=("Nat.add_comm",), iterations=1, rounds=3)` |
+| **Expected** | `found == True`; latency statistics reflect Mathlib `.olean` load cost |
+| **Tool** | pytest-benchmark or fallback |
+
+---
+
+### TC-24-06 — Benchmark: `get_mathlib_lineage` — Nat.add_comm depth=1
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 + Mathlib build available |
+| **Steps** | 1. `benchmark.pedantic(get_mathlib_lineage, args=("Nat.add_comm", 1), iterations=1, rounds=2)` |
+| **Expected** | `total_nodes >= 1`; latency statistics reflect one BFS level (one Lean batch call) |
+| **Tool** | pytest-benchmark or fallback |
+
+---
+
+### TC-24-07 — Concurrent load: 1 worker × 4 calls
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. Submit 4 `verify_lean_proof` calls via `ThreadPoolExecutor(max_workers=1)` |
+| **Expected** | All 4 results have `verified == True`; throughput and avg/call printed |
+| **Tool** | pytest, `concurrent.futures` |
+
+---
+
+### TC-24-08 — Concurrent load: 4 workers × 8 calls
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. Submit 8 calls via `ThreadPoolExecutor(max_workers=4)` |
+| **Expected** | All 8 results have `verified == True` |
+| **Tool** | pytest, `concurrent.futures` |
+
+---
+
+### TC-24-09 — Concurrent load: 8 workers × 12 calls
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. Submit 12 calls via `ThreadPoolExecutor(max_workers=8)` |
+| **Expected** | All 12 results have `verified == True` |
+| **Tool** | pytest, `concurrent.futures` |
+
+---
+
+### TC-24-10 — Concurrent load: 16 workers × 16 calls
+
+| Field | Detail |
+|---|---|
+| **Pre** | Lean 4 executable reachable |
+| **Steps** | 1. Submit 16 calls via `ThreadPoolExecutor(max_workers=16)` |
+| **Expected** | All 16 results have `verified == True` |
+| **Tool** | pytest, `concurrent.futures` |
+
+---
+
+### TC-24-11 — Celery E2E: `verify_snippet` task round-trip
+
+| Field | Detail |
+|---|---|
+| **Pre** | `REDIS_URL` set; full `docker compose up` stack running (Redis + lean-worker Celery consumer) |
+| **Steps** | 1. `app.send_task("tasks.verify_snippet", args=["theorem hello : True := trivial"])` then `result.get(timeout=30)` |
+| **Expected** | `valid == True`; `processing_time_seconds >= 0`; broker round-trip time printed |
+| **Tool** | pytest, `celery.Celery.send_task` |
+
+---
+
+## TCD-25 — Lean Worker: Real-World Mathlib Scenario Tests
+
+**Module:** `lean/lean_service.py` — `to_compiler_snippet_response`  
+**Tools:** `pytest-benchmark`, `concurrent.futures.ThreadPoolExecutor`, `sys.stderr` timing  
+**Status:** ✅ Implemented & passing — 5/5 TCs pass  
+**Run command (inside lean-worker container):**
+```
+docker compose cp lean/tests lean-worker:/app/tests
+docker compose exec lean-worker bash -c \
+  "pip3 install pytest pytest-benchmark --quiet && \
+   cd /app && pytest -v -s tests/tcd25_lean_realworld/ --benchmark-sort=mean"
+```
+
+**Description:**  
+Exhaustive real-world scenario tests using Lean 4 + Mathlib snippets derived from
+`lean/benchmark/val.json` theorem categories (Nat arithmetic, List, Integer, Ring,
+Set, Finset, Order theory). Unlike TCD-24 smoke tests (stdlib-only, ~100 ms), all
+TCD-25 snippets use `import Mathlib` (realistic use case, ~5–15 s per call). Tests
+measure sequential latency, concurrent speedup, and verifier accuracy on intentionally
+invalid code. Timing metrics are printed to stderr for visibility without the `-s` flag.
+
+**Design notes:**
+- 10 handcrafted Lean 4 + Mathlib snippets as inline fixtures (no GitHub fetches).
+- 8 valid snippets: NAT-01, NAT-02, LIST-01, LIST-02, INT-01, RING-01, SET-01, FIN-01.
+- 2 intentionally invalid snippets: ORD-01 (wrong conclusion type), REAL-01 (syntax error).
+- Concurrent tests cycle through valid snippets to fill the requested call count.
+- Concurrent metrics (wall-clock, speedup, throughput) printed to `sys.stderr`.
+
+**Test file:** `lean/tests/tcd25_lean_realworld/test_tcd25_lean_realworld.py`
+
+### TC-25-01 — Benchmark: Mathlib snippet — Nat arithmetic (import Mathlib baseline)
+
+| | |
+|---|---|
+| **Pre** | `lean-worker` container running; `LEAN_PATH` set to Mathlib .olean build |
+| **Steps** | 1. Run `pytest-benchmark.pedantic(to_compiler_snippet_response, rounds=3)` with `NAT-01` snippet (`import Mathlib; theorem custom_nat_zero_add ...`) |
+| **Expected** | `valid == True`; `benchmark.extra_info["import_mathlib"] == True`; per-round latency ~5–15 s |
+| **Tool** | `pytest-benchmark` |
+
+### TC-25-02 — Sequential: 10 real-world Mathlib snippets with latency table
+
+| | |
+|---|---|
+| **Pre** | Same as TC-25-01 |
+| **Steps** | 1. For each of 10 snippets, call `to_compiler_snippet_response(code)` sequentially. 2. Record elapsed time per call. 3. Print table to stderr. |
+| **Expected** | 8 return `valid=True`; 2 return `valid=False` (ORD-01, REAL-01); printed table shows ID/Category/Time/Got/Expected/Status for all 10 |
+| **Tool** | `pytest`, `sys.stderr` |
+
+### TC-25-03 — Concurrent: 4 workers × 10 valid snippets vs sequential baseline
+
+| | |
+|---|---|
+| **Pre** | Same as TC-25-01 |
+| **Steps** | 1. Run 1 sequential call to estimate per-call time. 2. Submit 10 calls across `ThreadPoolExecutor(max_workers=4)`. 3. Collect results. 4. Print wall-clock, estimated sequential total, speedup ratio, and throughput to stderr. |
+| **Expected** | All 10 results `valid=True`; speedup ratio > 1×; printed summary visible on stderr |
+| **Tool** | `pytest`, `concurrent.futures.ThreadPoolExecutor`, `sys.stderr` |
+
+### TC-25-04 — Concurrent: 8 workers × 20 calls — throughput measurement
+
+| | |
+|---|---|
+| **Pre** | Same as TC-25-01 |
+| **Steps** | 1. Submit 20 calls (cycling through 8 valid snippets) across `ThreadPoolExecutor(max_workers=8)`. 2. Collect processing_time_seconds from each result. 3. Print wall-clock, throughput, mean Lean processing time to stderr. |
+| **Expected** | All 20 results `valid=True`; throughput > 0.5 verifications/s; printed summary on stderr |
+| **Tool** | `pytest`, `concurrent.futures.ThreadPoolExecutor`, `sys.stderr` |
+
+### TC-25-05 — Mixed validity: 8 valid + 2 invalid Mathlib snippets
+
+| | |
+|---|---|
+| **Pre** | Same as TC-25-01 |
+| **Steps** | 1. Run all 10 snippets sequentially. 2. For each, assert `result["valid"] == expected_valid`. 3. Print classification table to stderr. |
+| **Expected** | 8/8 valid snippets classified as `valid=True`; 2/2 invalid snippets classified as `valid=False`; no false positives from Mathlib import |
+| **Tool** | `pytest`, `sys.stderr` |
+
+---
+
 ## Summary Table
 
 | TCD | Microservice / Module | # TCs | Status | Primary Tool |
@@ -2426,4 +2779,7 @@ mocks; only GitHub REST calls are stubbed.
 | TCD-20 | `agents-worker` — Functional | 4 | ⬜ | `pytest`, `responses`, real routing |
 | TCD-21 | `cluster-computation-worker` — Functional | 5 | ⬜ | `pytest`, `responses`, real poll loop |
 | TCD-22 | `web` — API + PostgreSQL Functional | 6 | ⬜ | `pytest-flask`, real PostgreSQL, `responses` |
-| **Total** | | **329** | **309/329** | |
+| TCD-23 | `lean-worker` — All Entry Points: Correctness | 10 | ⬜ | `pytest`, real `lean` subprocess |
+| TCD-24 | `lean-worker` — Performance Benchmarks & Load | 11 | ✅ 11/11 | `pytest-benchmark`, `concurrent.futures`, Celery |
+| TCD-25 | `lean-worker` — Real-World Mathlib Scenarios | 5 | ✅ 5/5 | `pytest-benchmark`, `concurrent.futures`, `sys.stderr` |
+| **Total** | | **355** | **325/355** | |

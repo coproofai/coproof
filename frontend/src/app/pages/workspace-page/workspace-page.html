@@ -139,12 +139,6 @@
                   <span class="action-icon">+</span>
                   <span>Nodo Computación</span>
                 </button>
-                <!-- Row 3: full-width -->
-                <button class="action-btn actions-full" [class.action-active]="activeAction === 'ai-auto'"
-                  [disabled]="isBlocked" (click)="setActiveAction('ai-auto')">
-                  <span class="action-icon">✦</span>
-                  <span>IA Auto</span>
-                </button>
               </div>
 
               <!-- ── Computation-node action ── -->
@@ -206,7 +200,7 @@
                 <div class="submenu-tabs">
                   <button class="submenu-tab" [class.submenu-tab-active]="actionMode === 'nl'" (click)="actionMode = 'nl'">Lenguaje Natural</button>
                   <button class="submenu-tab" [class.submenu-tab-active]="actionMode === 'fl'" (click)="actionMode = 'fl'">Lenguaje Formal</button>
-                  <button class="submenu-tab" [class.submenu-tab-active]="actionMode === 'ai'" (click)="actionMode = 'ai'">IA Automático</button>
+                  <button *ngIf="activeAction !== 'compute'" class="submenu-tab" [class.submenu-tab-active]="actionMode === 'ai'" (click)="actionMode = 'ai'">IA Automático</button>
                 </div>
 
                 <!-- NL tab -->
@@ -386,7 +380,14 @@
                     </ng-container>
                     <ng-container *ngIf="activeAction !== 'compute'">
                     <p class="submenu-hint">Edita el código Lean y confirma para enviar la acción.</p>
-                    <textarea class="submenu-input" rows="8" [(ngModel)]="actionLeanCode" name="actionLeanCode" placeholder="theorem …"></textarea>
+                    <div class="code-with-lines">
+                      <div class="line-nums" #leanCodeGutter>
+                        <div *ngFor="let n of linesOf(actionLeanCode)">{{ n }}</div>
+                      </div>
+                      <textarea class="submenu-input code-textarea" rows="8" [(ngModel)]="actionLeanCode"
+                        name="actionLeanCode" placeholder="theorem …" spellcheck="false"
+                        (scroll)="syncScroll($event, leanCodeGutter)"></textarea>
+                    </div>
 
                     <!-- Model selector — required for Resolver (solve) FL→NL tex generation -->
                     <ng-container *ngIf="activeAction === 'solve'">
@@ -596,9 +597,15 @@
                 <textarea [(ngModel)]="computationInputJson" name="computationInputJson" rows="3"
                   [placeholder]="compInputPlaceholder"></textarea>
 
-                <label class="field-label">{{ compCodeLabel }}</label>
-                <textarea [(ngModel)]="computationCode" name="computationCode" rows="8"
-                  [placeholder]="compCodePlaceholder"></textarea>
+                    <label class="field-label">{{ compCodeLabel }}</label>
+                    <div class="code-with-lines">
+                      <div class="line-nums" #compCodeGutter>
+                        <div *ngFor="let n of linesOf(computationCode)">{{ n }}</div>
+                      </div>
+                      <textarea [(ngModel)]="computationCode" name="computationCode" rows="8" spellcheck="false"
+                        [placeholder]="compCodePlaceholder" class="code-textarea"
+                        (scroll)="syncScroll($event, compCodeGutter)"></textarea>
+                    </div>
 
                 <div class="inline-fields">
                   <label class="field-label timeout-label">Timeout (s)</label>
@@ -633,6 +640,7 @@
                   <span *ngIf="isActionRunning" class="action-spinner action-spinner-sm"></span>
                   <span>{{ isActionRunning ? 'Ejecutando…' : 'Submit Compute' }}</span>
                 </button>
+                <p *ngIf="isActionRunning && computePhase" class="ai-auto-phase">⟳ {{ computePhase }}</p>
               </div><!-- /computation-box -->
             </div><!-- /sectionActions body -->
           </div><!-- /collapsible-section actions -->

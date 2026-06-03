@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-253 -174 1372 1372">
+  <!-- Arms drawn first so rings render on top for clean joints.
+       Inner endpoint: r=96.  Outer endpoint: r=534 (4× prior excess beyond outer ring edge).
+       Octagon vertices, missing 0° (right) and 45° (bottom-right). -->
+  <!-- 90° — down -->
+  <line x1="512" y1="608" x2="512" y2="1046" stroke="#0c1c3d" stroke-width="64" stroke-linecap="butt"/>
+  <!-- 135° — bottom-left -->
+  <line x1="444.12" y1="579.88" x2="134.41" y2="889.59" stroke="#0c1c3d" stroke-width="64" stroke-linecap="butt"/>
+  <!-- 180° — left -->
+  <line x1="416" y1="512" x2="-22" y2="512" stroke="#0c1c3d" stroke-width="64" stroke-linecap="butt"/>
+  <!-- 225° — top-left -->
+  <line x1="444.12" y1="444.12" x2="134.41" y2="134.41" stroke="#0c1c3d" stroke-width="64" stroke-linecap="butt"/>
+  <!-- 270° — up -->
+  <line x1="512" y1="416" x2="512" y2="-22" stroke="#0c1c3d" stroke-width="64" stroke-linecap="butt"/>
+  <!-- 315° — top-right -->
+  <line x1="579.88" y1="444.12" x2="889.59" y2="134.41" stroke="#0c1c3d" stroke-width="64" stroke-linecap="butt"/>
+  <!-- Filled end circles, r=72 (75% of inner ring's inner radius 96), drawn on top -->
+  <circle cx="512"    cy="1046"  r="72" fill="#0c1c3d"/>
+  <circle cx="134.41" cy="889.59" r="72" fill="#0c1c3d"/>
+  <circle cx="-22"    cy="512"   r="72" fill="#0c1c3d"/>
+  <circle cx="134.41" cy="134.41" r="72" fill="#0c1c3d"/>
+  <circle cx="512"    cy="-22"   r="72" fill="#0c1c3d"/>
+  <circle cx="889.59" cy="134.41" r="72" fill="#0c1c3d"/>
+  <!-- Rings rendered on top to mask arm endpoints cleanly -->
+  <!-- Outer ring as open arc: 90° (down) → 315° (top-right) clockwise, 225°, large-arc -->
+  <path d="M 512 862 A 350 350 0 1 1 759.49 264.51"
+        fill="none" stroke="#0c1c3d" stroke-width="64" stroke-linecap="butt"/>
+  <circle cx="512" cy="512" r="128" fill="none" stroke="#0c1c3d" stroke-width="64"/>
+</svg>

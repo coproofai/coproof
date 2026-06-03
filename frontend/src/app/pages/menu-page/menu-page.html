@@ -1,24 +1,7 @@
 <div class="home-hero">
-  <h1 class="hero-title">CoProof</h1>
+  <img class="hero-logo" src="logo_bright_bg_text.svg" alt="CoProof" />
   <p class="hero-sub">Plataforma colaborativa de demostraciones formales con Lean 4</p>
 </div>
-
-<section class="card-section">
-  <h2 class="section-heading">Herramientas</h2>
-  <div class="card-grid">
-    <ng-container *ngFor="let item of publicItems">
-      <a *ngIf="!item.protected || (isLoggedIn$ | async)" [routerLink]="item.route" class="card">
-        <span class="card-title">{{ item.title }}</span>
-        <span class="card-desc">{{ item.description }}</span>
-      </a>
-      <div *ngIf="item.protected && !(isLoggedIn$ | async)" class="card card-locked">
-        <span class="card-title">{{ item.title }}</span>
-        <span class="card-desc">{{ item.description }}</span>
-        <span class="card-lock-label">Auth</span>
-      </div>
-    </ng-container>
-  </div>
-</section>
 
 <section class="card-section">
   <h2 class="section-heading">Workspace
@@ -31,6 +14,23 @@
         <span class="card-desc">{{ item.description }}</span>
       </a>
       <div *ngIf="!(isLoggedIn$ | async)" class="card card-locked">
+        <span class="card-title">{{ item.title }}</span>
+        <span class="card-desc">{{ item.description }}</span>
+        <span class="card-lock-label">Auth</span>
+      </div>
+    </ng-container>
+  </div>
+</section>
+
+<section class="card-section">
+  <h2 class="section-heading">Herramientas</h2>
+  <div class="card-grid">
+    <ng-container *ngFor="let item of publicItems">
+      <a *ngIf="!item.protected || (isLoggedIn$ | async)" [routerLink]="item.route" class="card">
+        <span class="card-title">{{ item.title }}</span>
+        <span class="card-desc">{{ item.description }}</span>
+      </a>
+      <div *ngIf="item.protected && !(isLoggedIn$ | async)" class="card card-locked">
         <span class="card-title">{{ item.title }}</span>
         <span class="card-desc">{{ item.description }}</span>
         <span class="card-lock-label">Auth</span>

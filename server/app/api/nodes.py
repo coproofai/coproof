@@ -714,6 +714,26 @@ def compute_node(project_id, node_id):
     api_key_body = (data.get('api_key') or '').strip()
 
     request_data = ComputationService.normalize_execution_request(data)
+
+    # Inject user-saved cluster config so the worker uses the correct endpoint.
+    if request_data.get('language') == 'mpi':
+        cluster_url_rec = UserApiKey.query.filter_by(user_id=user_id, model_id='cluster/url').first()
+        cluster_key_rec = UserApiKey.query.filter_by(user_id=user_id, model_id='cluster/key').first()
+        if cluster_url_rec:
+            try:
+                saved_url = cluster_url_rec.decrypt_key().strip()
+                if saved_url:
+                    request_data['cluster_api_url'] = saved_url
+            except Exception:
+                pass
+        if cluster_key_rec:
+            try:
+                saved_key = cluster_key_rec.decrypt_key().strip()
+                if saved_key:
+                    request_data['cluster_api_key'] = saved_key
+            except Exception:
+                pass
+
     computation_result = ComputationClient.run_computation(request_data)
     computation_summary = ComputationService.summarize_computation_result(computation_result)
     node.computation_spec = ComputationService.build_persisted_spec(request_data)

@@ -446,6 +446,46 @@
       resize: vertical;
       box-sizing: border-box;
     }
+    /* ── Code editor with line-number gutter ── */
+    .code-with-lines {
+      display: flex;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      overflow: hidden;
+      max-height: 220px;
+      background: #f9fafb;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+    .line-nums {
+      min-width: 36px;
+      padding: 8px 4px 8px 0;
+      background: #f3f4f6;
+      border-right: 1px solid #e5e7eb;
+      color: #9ca3af;
+      text-align: right;
+      overflow: hidden;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .line-nums div {
+      line-height: 1.5;
+      padding-right: 6px;
+    }
+    .code-with-lines .code-textarea {
+      flex: 1;
+      border: none;
+      border-radius: 0;
+      resize: vertical;
+      font-family: inherit;
+      font-size: inherit;
+      line-height: 1.5;
+      padding: 8px;
+      background: transparent;
+      box-sizing: border-box;
+      outline: none;
+    }
     .submenu-confirm {
       align-self: flex-end;
       display: flex;

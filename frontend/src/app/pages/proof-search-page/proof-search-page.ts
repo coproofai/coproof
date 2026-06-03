@@ -23,6 +23,7 @@ import {
   Fl2NlResult,
   SuggestPayload,
 } from '../../task.models';
+import { UserPreferencesService } from '../../user-preferences.service';
 
 type SearchMode = 'byName' | 'byNL';
 type LookupState = 'idle' | 'loading' | 'found' | 'notFound' | 'error';
@@ -170,7 +171,7 @@ export class ProofSearchPageComponent {
       const payload: SuggestPayload = {
         prompt: req.nlText,
         model_id: req.modelId,
-        system_prompt: MATHLIB_SUGGEST_SYSTEM_PROMPT,
+        system_prompt: this.userPrefs.getSystemPrompt('mathlib_suggest', MATHLIB_SUGGEST_SYSTEM_PROMPT),
         ...(req.apiKey ? { api_key: req.apiKey } : {}),
       };
 
@@ -180,7 +181,7 @@ export class ProofSearchPageComponent {
             switchMap(() => this.taskService.getSuggestResult(task_id)),
             filter((res: any) => res?.status !== 'pending'),
             take(1),
-            timeout(60_000),
+            timeout(120_000),
           )
         ),
         switchMap((res: any): Observable<SuggestVm> => {
@@ -229,7 +230,7 @@ export class ProofSearchPageComponent {
       const payload: Fl2NlPayload = {
         lean_code: req.leanCode,
         model_id: req.modelId,
-        system_prompt: FL2NL_SYSTEM_PROMPT,
+        system_prompt: this.userPrefs.getSystemPrompt('fl2nl', FL2NL_SYSTEM_PROMPT),
         ...(req.apiKey ? { api_key: req.apiKey } : {}),
       };
 
@@ -273,7 +274,11 @@ export class ProofSearchPageComponent {
   constructor(
     private readonly taskService: TaskService,
     private readonly sanitizer: DomSanitizer,
-  ) {}
+    private readonly userPrefs: UserPreferencesService,
+  ) {
+    const defaultModel = this.userPrefs.getDefaultModelId();
+    if (defaultModel) this.selectedModelId = defaultModel;
+  }
 
   // ── Mode A: lookup by Mathlib name ───────────────────────────────────
 
@@ -470,8 +475,6 @@ export class ProofSearchPageComponent {
       });
 
       body = this._escapeHtml(body);
-      inlinePlaceholders.forEach((html, i) => { body = body.replace(`\x00INLN${i}\x00`, html); });
-      displayPlaceholders.forEach((html, i) => { body = body.replace(`\x00DISP${i}\x00`, html); });
 
       body = body.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
       body = body.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
@@ -480,6 +483,10 @@ export class ProofSearchPageComponent {
       body = paragraphs
         .map(p => (/^<(div|h[1-6])/.test(p) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`))
         .join('\n');
+
+      // Substitute KaTeX HTML back LAST so SVG path data is never mangled.
+      inlinePlaceholders.forEach((html, i) => { body = body.replace(`\x00INLN${i}\x00`, html); });
+      displayPlaceholders.forEach((html, i) => { body = body.replace(`\x00DISP${i}\x00`, html); });
 
       return this.sanitizer.bypassSecurityTrustHtml(body);
     } catch {

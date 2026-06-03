@@ -1,0 +1,33 @@
+\frametitle{Informal vs.\ Formal: La Brecha}
+\transduration{15}
+  \begin{columns}[T]
+    \begin{column}{0.46\textwidth}
+      \textbf{\color{cpGray}En lenguaje natural}
+      \vspace{0.2cm}
+      \begin{itemize}\small
+        \item Un humano puede \emph{saltarse} pasos
+        \item La validez depende de intuici\'{o}n compartida
+        \item En colaboraci\'{o}n as\'{i}ncrona: los pasos omitidos son donde viven los desacuerdos
+      \end{itemize}
+      \vspace{0.3cm}
+      {\footnotesize\color{cpGray}\textit{\textquotedblleft{}...y por lo tanto,
+      combinando ambos lemas, se sigue el resultado.\textquotedblright{}}}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      \textbf{\color{leanpurple}En Lean~4}
+      \vspace{0.2cm}
+\begin{lstlisting}[style=lean]
+theorem sum_formula (n : Nat) :
+    Finset.sum (Finset.range (n+1)) id
+    = n * (n + 1) / 2 := by
+  induction n with
+  | zero => simp
+  | succ k ih =>
+    rw [Finset.sum_range_succ, ih]
+    ring
+\end{lstlisting}
+      \vspace{0.2cm}
+      {\small\color{cpBlue}\textbf{Si hay un error l\'{o}gico, no compila.}\\
+      No hay ambig\"{u}edad. No hay debate.}
+    \end{column}
+  \end{columns}

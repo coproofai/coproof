@@ -132,3 +132,85 @@ def test_tc18_05_unsupported_language():
     assert result["completed"] is False
     assert result["error"] is not None
     assert "Unsupported" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# TC-18-06 — register_record() accumulates per-case evidence in records
+# ---------------------------------------------------------------------------
+
+
+def test_tc18_06_register_record():
+    """register_record() calls inside user code produce entries in result['records']."""
+    code = (
+        "def compute(data, target):\n"
+        "    for n in range(1, 4):\n"
+        "        register_record(n=n, square=n*n)\n"
+        "    return {'evidence': 'done', 'sufficient': True, 'records': []}\n"
+    )
+    result = run_computation_job({
+        "source_code": code,
+        "entrypoint": "compute",
+        "input_data": None,
+        "target": None,
+    })
+
+    assert result["completed"] is True
+    records = result.get("records", [])
+    assert len(records) == 3
+    assert records[0] == {"n": 1, "square": 1}
+    assert records[1] == {"n": 2, "square": 4}
+    assert records[2] == {"n": 3, "square": 9}
+
+
+# ---------------------------------------------------------------------------
+# TC-18-07 — register_record() merges with explicitly returned records
+# ---------------------------------------------------------------------------
+
+
+def test_tc18_07_register_record_merged_with_returned_records():
+    """register_record() calls are prepended to any records returned in the dict."""
+    code = (
+        "def compute(data, target):\n"
+        "    register_record(step='before')\n"
+        "    return {'evidence': 'ok', 'sufficient': True, 'records': [{'step': 'returned'}]}\n"
+    )
+    result = run_computation_job({
+        "source_code": code,
+        "entrypoint": "compute",
+        "input_data": None,
+        "target": None,
+    })
+
+    assert result["completed"] is True
+    records = result.get("records", [])
+    assert len(records) == 2
+    assert records[0] == {"step": "before"}
+    assert records[1] == {"step": "returned"}
+
+
+# ---------------------------------------------------------------------------
+# TC-18-08 — register_record() records are preserved on exception
+# ---------------------------------------------------------------------------
+
+
+def test_tc18_08_register_record_preserved_on_exception():
+    """Records collected before an exception are returned in the error result."""
+    code = (
+        "def compute(data, target):\n"
+        "    register_record(n=1)\n"
+        "    register_record(n=2)\n"
+        "    raise RuntimeError('abort')\n"
+    )
+    result = run_computation_job({
+        "source_code": code,
+        "entrypoint": "compute",
+        "input_data": None,
+        "target": None,
+    })
+
+    assert result["completed"] is False
+    records = result.get("records", [])
+    assert len(records) == 2
+    assert records[0] == {"n": 1}
+    assert records[1] == {"n": 2}
+

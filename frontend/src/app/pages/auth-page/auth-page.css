@@ -19,6 +19,12 @@
   gap: 12px;
   align-items: center;
 }
+.auth-logo-img {
+  width: 290px;
+  height: auto;
+  display: block;
+  margin: 0 auto 4px;
+}
 .auth-logo {
   font-size: 1.6rem;
   font-weight: 800;

@@ -232,6 +232,12 @@ class ComputationService:
         )
         child_program_template = (
             "def run(input_data, target):\n"
+            "    # register_record(**kwargs) is available automatically — call it inside\n"
+            "    # your loop to accumulate per-case evidence in evidence_full.json.gz.b64.\n"
+            "    # Example:\n"
+            "    #   for n in range(1, upper + 1):\n"
+            "    #       value = compute(n)\n"
+            "    #       register_record(n=n, value=value, verdict=(value == n))\n"
             "    return {\n"
             "        \"evidence\": {\n"
             "            \"input_data\": input_data,\n"

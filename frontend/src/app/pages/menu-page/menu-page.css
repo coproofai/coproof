@@ -3,6 +3,12 @@
       padding: 52px 0 40px;
       text-align: center;
     }
+    .hero-logo {
+      height: 190px;
+      width: auto;
+      display: block;
+      margin: 0 auto 14px;
+    }
     .hero-title {
       margin: 0 0 10px;
       font-size: 2.4rem;

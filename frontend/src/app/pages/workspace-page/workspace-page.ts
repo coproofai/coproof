@@ -20,6 +20,29 @@ import {
   VerifyCompilerResult,
   VerifyNodeResponse
 } from '../../task.models';
+import { UserPreferencesService } from '../../user-preferences.service';
+
+// ── Default system prompts (used as fallback when no custom prompt is saved) ──
+
+const DEFAULT_PROOF_SUGGEST_PROMPT =
+  'You are a mathematical proof assistant. ' +
+  'Given a theorem (provided as context), describe ONE direct proof strategy in no more than 5 sentences. ' +
+  'Write only the mathematical argument itself — no Lean or Mathlib references, ' +
+  'no alternative approaches, no historical background, no notation explanations.';
+
+const DEFAULT_LATEX_EXPORT_PROMPT =
+  'You are a LaTeX document formatter. Given raw LaTeX theorem content from multiple proof nodes, ' +
+  'produce a single, well-structured LaTeX document. Requirements:\n' +
+  '1. Add a proper preamble: \\documentclass{article}, \\usepackage{amsmath,amssymb,amsthm}, ' +
+  '\\newtheorem{theorem}{Theorem}, \\newtheorem{lemma}{Lemma}, \\newtheorem{definition}{Definition}, ' +
+  '\\begin{document}, and \\end{document}.\n' +
+  '2. For every \\begin{theorem}, \\begin{lemma}, \\begin{definition} environment, ' +
+  'ensure the optional label in square brackets contains the Lean theorem name in parentheses ' +
+  '(e.g. \\begin{theorem}[Commutativity (MyTheoremName)]).\n' +
+  '3. Preserve all mathematical content. The order is: leaf lemmas first, root theorem last.\n' +
+  '4. Add \\section{Lemmas} before leaf lemmas and \\section{Main Result} before the root theorem.\n' +
+  '5. Remove separator comment lines (lines starting with %).' +
+  'Reply ONLY with the complete LaTeX source. No markdown, no explanations.';
 
 interface ViewNode extends NewNodeDto {
   x: number;
@@ -103,6 +126,8 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   computationEntrypoint = 'run';
   computationTimeoutSeconds = 120;
   computationLanguage: 'python' | 'mpi' = 'python';
+  computePhase = '';
+  private _computePhaseTimers: ReturnType<typeof setTimeout>[] = [];
 
   activeTab: 'node' | 'tex' | 'prs' | 'defs' | 'export' = 'node';
   sidebarCollapsed = false;
@@ -207,6 +232,17 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
            this.exportTexRawState === 'loading' ||
            this.exportPdfRawState === 'loading';
   }
+  /** Lines array for code-with-lines gutter. */
+  linesOf(text: string): number[] {
+    const count = (text || '').split('\n').length;
+    return Array.from({ length: count }, (_, i) => i + 1);
+  }
+
+  /** Sync line-number gutter scroll with the textarea. */
+  syncScroll(event: Event, gutter: HTMLElement): void {
+    gutter.scrollTop = (event.target as HTMLTextAreaElement).scrollTop;
+  }
+
   get isBlocked(): boolean { return this.isVerifying || this.isActionRunning; }
 
   /** 0-100 percentage driven by current phase strings / status. */
@@ -251,6 +287,13 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     }
     // Create computation node
     if (this.createComputePhase) return 35;
+    // Direct computation
+    if (this.computePhase) {
+      if (this.computePhase.includes('Ejecutando')) return 30;
+      if (this.computePhase.includes('Compilando')) return 62;
+      if (this.computePhase.includes('tex')) return 80;
+      return 25;
+    }
     // Verify
     if (this.isVerifying) return 30;
     // FL Solve / Split (status-driven, two-phase)
@@ -299,10 +342,25 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   constructor(
     private readonly route: ActivatedRoute,
     private readonly taskService: TaskService,
-    private readonly sanitizer: DomSanitizer
+    private readonly sanitizer: DomSanitizer,
+    private readonly userPrefs: UserPreferencesService,
   ) {}
 
   ngOnInit(): void {
+    // Pre-fill all model selectors from the user's saved default
+    const defaultModel = this.userPrefs.getDefaultModelId();
+    if (defaultModel) {
+      this.solveModelId = defaultModel;
+      this.splitModelId = defaultModel;
+      this.nlSolveModelId = defaultModel;
+      this.nlSplitModelId = defaultModel;
+      this.aiAutoModelId = defaultModel;
+      this.nlComputeModelId = defaultModel;
+      this.createComputeModelId = defaultModel;
+      this.computeModelId = defaultModel;
+      this.exportModelId = defaultModel;
+    }
+
     this.route.queryParamMap.subscribe((params) => {
       this.projectId = params.get('projectId') || '';
       this.projectName = params.get('projectName') || '';
@@ -807,6 +865,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.isActionRunning = true;
     this.lastResultSource = 'Ejecutar Computación';
     this.status = 'Enviando computacion...';
+    this._startComputePhaseTimer();
     const computeApiKey = !this.computeMaskedKey ? (this.computeApiKeyInput.trim() || undefined) : undefined;
     this.taskService.computeNode(this.projectId, this.selectedNode.id, {
       language: this.computationLanguage,
@@ -821,6 +880,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     }).subscribe({
       next: (response) => {
         this.isActionRunning = false;
+        this._stopComputePhaseTimers();
         this.lastResponse = this.compactUiResponse(response);
         const backendStatus = (response as { status?: string } | null)?.status;
         if (backendStatus === 'insufficient_evidence') {
@@ -839,6 +899,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
       },
       error: (error) => {
         this.isActionRunning = false;
+        this._stopComputePhaseTimers();
         if (this.handleAuthError(error)) {
           this.lastResponse = this.compactUiResponse(error?.error || error);
           return;
@@ -1338,7 +1399,8 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
       const systemPrompt =
         'You are a scientific computing expert. Given a natural language description of a numerical computation experiment, ' +
         'generate a JSON object for a computation node validation payload. The JSON MUST have exactly these fields:\n' +
-        '- "language": "python" or "mpi". Use "mpi" when the user explicitly requests distributed or MPI execution.\n' +
+        '- "language": MUST be "mpi" when the description mentions MPI, cluster, parallel, distributed, ranks, or multi-node execution. ' +
+        'Otherwise use "python" for single-node computation.\n' +
         '- "code": a Python string with ONLY a function `def run(input_data, target):` that performs the computation ' +
         'and returns {"evidence": <list or dict>, "sufficient": <bool>, "summary": <str>, "records": <list>}.\n' +
         '- "entrypoint": "run"\n' +
@@ -1348,20 +1410,24 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
         '- "target": a validation target object with parameters the run() function uses for checking.\n' +
         '- "lean_statement": the Lean theorem/definition name this computation validates (use "GoalDef" if not specified)\n' +
         '- "timeout_seconds": integer timeout (default 120)\n\n' +
-        'CRITICAL ARCHITECTURE CONSTRAINT — READ CAREFULLY:\n' +
+        'CRITICAL ARCHITECTURE CONSTRAINT - READ CAREFULLY:\n' +
         'The MPI framework is handled ENTIRELY by the runner. Your `run(input_data, target)` function:\n' +
-        '- Receives input_data as a LIST (a sub-slice of the original input_data array). ' +
-        'Even if that slice contains only one element, it is still a list. ' +
-        'ALWAYS extract the work descriptor with `chunk = input_data[0]` before accessing any keys.\n' +
+        '- Receives input_data as a LIST slice (one or more work descriptors from the original array).\n' +
+        '  The runner distributes the input_data array across ranks; your rank may receive MORE THAN ONE descriptor.\n' +
+        '  You MUST iterate over ALL elements in input_data, not just index [0].\n' +
         '- Must NEVER import or use mpi4py, MPI, comm, gather, scatter, or any MPI primitives.\n' +
         '- Must NEVER do its own rank/size detection or data partitioning.\n' +
-        '- Must ONLY process its local chunk and return a local result.\n' +
+        '- Must process all descriptors in its slice and return a combined local result.\n' +
         'The runner handles: importing mpi4py, distributing slices to ranks, gathering results, and merging.\n\n' +
-        'EXAMPLE of correct access pattern for MPI:\n' +
+        'CORRECT access pattern for MPI (iterate over the full slice):\n' +
         '  def run(input_data, target):\n' +
-        '      chunk = input_data[0]  # always index [0] — runner passes a list slice\n' +
-        '      start, end = chunk["start"], chunk["end"]\n' +
-        '      ...\n\n' +
+        '      import math\n' +
+        '      results = []\n' +
+        '      for chunk in input_data:  # iterate ALL descriptors in this rank slice\n' +
+        '          start, end = chunk["start"], chunk["end"]\n' +
+        '          # ... process range [start, end] ...\n' +
+        '          results.extend(local_hits)\n' +
+        '      return {"evidence": results, "sufficient": ..., "summary": ...}\n\n' +
         'LIBRARY CONSTRAINTS:\n' +
         '- Use ONLY Python standard library modules (math, itertools, etc.).\n' +
         '- Do NOT import numpy, scipy, pandas, or any third-party library — they are NOT installed.\n\n' +
@@ -1443,7 +1509,10 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
         'describe in plain English a concrete numerical experiment that would validate the theorem computationally. ' +
         'Include: what function or operation to compute, what range of input values to use, ' +
         'how many sample points, and what mathematical property to verify. ' +
-        'Be specific and concise (3–5 sentences). Do not write code or JSON.';
+        'Be specific and concise (3-5 sentences). Do not write code or JSON.\n' +
+        'IMPORTANT: Do NOT add any notes, caveats, or disclaimers about your own capabilities, ' +
+        'network access, or whether you can connect to clusters. ' +
+        'Write only the experiment description as if you are documenting a plan to be executed by an external system.';
 
       const suggestPayload: SuggestPayload = {
         prompt: this.aiAutoPrompt.trim() || 'Design a numerical experiment to validate this theorem computationally.',
@@ -1477,19 +1546,43 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     const systemPrompt =
       'You are a scientific computing expert. Given a natural language description of a numerical computation experiment, ' +
       'generate a JSON object for a computation node validation payload. The JSON MUST have exactly these fields:\n' +
-      '- "language": "python" (use "mpi" only if explicitly requested for distributed computation)\n' +
-      '- "code": a Python string with a function `def run(input_data, target):` that performs the computation ' +
+      '- "language": MUST be "mpi" when the description mentions MPI, cluster, parallel, distributed, ranks, or multi-node execution. ' +
+      'Otherwise use "python" for single-node computation.\n' +
+      '- "code": a Python string with ONLY a function `def run(input_data, target):` that performs the computation ' +
       'and returns {"evidence": <list or dict>, "sufficient": <bool>, "summary": <str>}\n' +
       '- "entrypoint": "run"\n' +
-      '- "input_data": the numeric input data for the computation (array or object)\n' +
-      '- "target": a validation target object with a "kind" field (e.g. "range_check") and relevant parameters\n' +
+      '- "input_data": for "python": array or object; ' +
+      'for "mpi": a JSON ARRAY with exactly one work-descriptor object per MPI rank ' +
+      '(e.g. 3 ranks -> [{"lo":1,"hi":846720},{"lo":846721,"hi":1693440},{"lo":1693441,"hi":2540160}])\n' +
+      '- "target": a validation target object with a "kind" field and relevant parameters\n' +
       '- "lean_statement": the Lean theorem/definition name this computation validates (use "GoalDef" if not specified)\n' +
-      '- "timeout_seconds": integer timeout (default 120)\n' +
-      'CRITICAL CONSTRAINTS for the "code" field:\n' +
-      '- Use ONLY Python standard library modules (math, itertools, statistics, etc.). ' +
-      'Do NOT import numpy, scipy, pandas, or any other third-party library — they are NOT installed.\n' +
-      '- For MPI code, only mpi4py is available beyond the standard library; do NOT use numpy or any other package.\n' +
-      'Reply ONLY with a single valid JSON object. Do NOT include markdown code blocks, explanations, or any other text.';
+      '- "timeout_seconds": integer timeout (default 120, use 300 for large MPI jobs)\n\n' +
+      'LIBRARY CONSTRAINTS:\n' +
+      '- Use ONLY Python standard library modules (math, itertools, statistics, etc.).\n' +
+      '- Do NOT import numpy, scipy, pandas, mpi4py, or any third-party library.\n\n' +
+      'CRITICAL MPI ARCHITECTURE - THE MOST IMPORTANT RULE:\n' +
+      'The MPI runner on the cluster is already set up. It reads your input_data array, ' +
+      'distributes slices to ranks (each rank may get MORE THAN ONE descriptor), then gathers results.\n' +
+      'Your run() function is called ONCE per rank with its assigned slice. It MUST:\n' +
+      '  1. Iterate over ALL descriptors in input_data (NOT just index [0]).\n' +
+      '  2. Process each chunk using plain Python loops (no MPI, no parallel code).\n' +
+      '  3. Return a combined LOCAL result dict {evidence, sufficient, summary}.\n' +
+      'NEVER call mpi4py, MPI.COMM_WORLD, comm.gather, comm.Get_rank(), or any MPI primitive.\n' +
+      'NEVER try to coordinate across ranks. NEVER do your own data partitioning.\n' +
+      'CORRECT MPI example (digit-factorial search, iterates all chunks in slice):\n' +
+      '  def run(input_data, target):\n' +
+      '      import math\n' +
+      '      FACT = [math.factorial(d) for d in range(10)]\n' +
+      '      found = []\n' +
+      '      for chunk in input_data:  # iterate ALL descriptors assigned to this rank\n' +
+      '          lo, hi = chunk["lo"], chunk["hi"]\n' +
+      '          for n in range(lo, hi + 1):\n' +
+      '              s, tmp = 0, n\n' +
+      '              while tmp > 0: s += FACT[tmp % 10]; tmp //= 10\n' +
+      '              if s == n: found.append(n)\n' +
+      '      ok = all(x in set(target["expected_set"]) for x in found)\n' +
+      '      return {"evidence": found, "sufficient": ok, "summary": f"{len(input_data)} chunk(s), found {found}"}\n\n' +
+      'Reply ONLY with a single valid JSON object. Do NOT include markdown code blocks or explanations.';
 
     const fullPrompt = context
       ? `${nlDesc}\n\n=== Theorem context ===\n${context}`
@@ -1556,12 +1649,34 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
       if (p['target'] !== undefined && typeof p['target'] === 'object' && !Array.isArray(p['target'])) {
         this.computationTargetJson = JSON.stringify(p['target'], null, 2);
       }
-      if (typeof p['lean_statement'] === 'string') this.computationLeanStatement = p['lean_statement'];
+      if (typeof p['lean_statement'] === 'string') {
+        // Only overwrite lean_statement from AI if user hasn't already extracted
+        // a real theorem signature from the node's Lean code (i.e. still default).
+        if (this.computationLeanStatement === 'GoalDef' && p['lean_statement'] !== 'GoalDef') {
+          this.computationLeanStatement = p['lean_statement'];
+        }
+      }
       if (typeof p['timeout_seconds'] === 'number') this.computationTimeoutSeconds = p['timeout_seconds'];
       return true;
     } catch {
       return false;
     }
+  }
+
+  private _startComputePhaseTimer(): void {
+    this._stopComputePhaseTimers();
+    const timeout = this.computationTimeoutSeconds || 120;
+    this.computePhase = 'Ejecutando cómputo en cluster…';
+    this._computePhaseTimers.push(
+      setTimeout(() => { this.computePhase = 'Compilando resultado con Lean…'; }, Math.round(timeout * 0.45) * 1000),
+      setTimeout(() => { this.computePhase = 'Generando .tex con resultados…'; }, Math.round(timeout * 0.8) * 1000),
+    );
+  }
+
+  private _stopComputePhaseTimers(): void {
+    this._computePhaseTimers.forEach(t => clearTimeout(t));
+    this._computePhaseTimers = [];
+    this.computePhase = '';
   }
 
   private _runCompute(modelId: string, apiKey: string | undefined, source: string, onError: (err: any) => void): void {
@@ -1574,6 +1689,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     }
     const parsedInput = this.safeParseJson(this.computationInputJson);
     this.lastResultSource = source;
+    this._startComputePhaseTimer();
     this.status = 'Enviando computacion…';
     this.taskService.computeNode(this.projectId, this.selectedNode.id, {
       language: this.computationLanguage,
@@ -1588,6 +1704,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     }).subscribe({
       next: (response) => {
         this.isActionRunning = false;
+        this._stopComputePhaseTimers();
         this.lastResponse = this.compactUiResponse(response);
         const backendStatus = (response as { status?: string } | null)?.status;
         if (backendStatus === 'insufficient_evidence') {
@@ -1605,6 +1722,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
         this.loadOpenPulls();
       },
       error: (error) => {
+        this._stopComputePhaseTimers();
         if (this.handleAuthError(error)) {
           this.lastResponse = this.compactUiResponse(error?.error || error);
           onError(error);
@@ -1785,11 +1903,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
       // Agent gets the .tex as context so its suggestion is theorem-aware
       const agentContext = texContent || leanContent;
 
-      const systemPrompt =
-        'You are a mathematical proof assistant. ' +
-        'Given a theorem (provided as context), describe ONE direct proof strategy in no more than 5 sentences. ' +
-        'Write only the mathematical argument itself — no Lean or Mathlib references, ' +
-        'no alternative approaches, no historical background, no notation explanations.';
+      const systemPrompt = this.userPrefs.getSystemPrompt('proof_suggest', DEFAULT_PROOF_SUGGEST_PROMPT);
 
       const suggestPayload: SuggestPayload = {
         prompt: this.aiAutoPrompt.trim() || 'Suggest a proof strategy for this theorem.',
@@ -2285,8 +2399,6 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
         return `\x00INLN${idx}\x00`;
       });
       body = this.escapeHtml(body);
-      inlinePlaceholders.forEach((html, i) => { body = body.replace(`\x00INLN${i}\x00`, html); });
-      displayPlaceholders.forEach((html, i) => { body = body.replace(`\x00DISP${i}\x00`, html); });
       // Bold/italic Markdown — applied after HTML escaping
       body = body.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
       body = body.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
@@ -2314,6 +2426,10 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
         if (/^<(h[1-6]|div|ul|ol)/.test(p)) return p;
         return `<p>${p.replace(/\n/g, ' ')}</p>`;
       }).join('\n');
+      // Substitute KaTeX HTML back LAST — after all text manipulation — so that
+      // newlines inside SVG <path d="..."> are never converted to spaces or <br>.
+      inlinePlaceholders.forEach((html, i) => { body = body.replace(`\x00INLN${i}\x00`, html); });
+      displayPlaceholders.forEach((html, i) => { body = body.replace(`\x00DISP${i}\x00`, html); });
       return this.sanitizer.bypassSecurityTrustHtml(body);
     } catch {
       return this.sanitizer.bypassSecurityTrustHtml('<p>Error al renderizar el TeX.</p>');
@@ -2562,19 +2678,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   }
 
   private _formatAndDownloadTex(rawTex: string, apiKey: string | undefined, asPdf: boolean): void {
-    const systemPrompt =
-      'You are a LaTeX document formatter. Given raw LaTeX theorem content from multiple proof nodes, ' +
-      'produce a single, well-structured LaTeX document. Requirements:\n' +
-      '1. Add a proper preamble: \\documentclass{article}, \\usepackage{amsmath,amssymb,amsthm}, ' +
-      '\\newtheorem{theorem}{Theorem}, \\newtheorem{lemma}{Lemma}, \\newtheorem{definition}{Definition}, ' +
-      '\\begin{document}, and \\end{document}.\n' +
-      '2. For every \\begin{theorem}, \\begin{lemma}, \\begin{definition} environment, ' +
-      'ensure the optional label in square brackets contains the Lean theorem name in parentheses ' +
-      '(e.g. \\begin{theorem}[Commutativity (MyTheoremName)]).\n' +
-      '3. Preserve all mathematical content. The order is: leaf lemmas first, root theorem last.\n' +
-      '4. Add \\section{Lemmas} before leaf lemmas and \\section{Main Result} before the root theorem.\n' +
-      '5. Remove separator comment lines (lines starting with %).' +
-      'Reply ONLY with the complete LaTeX source. No markdown, no explanations.';
+    const systemPrompt = this.userPrefs.getSystemPrompt('latex_export', DEFAULT_LATEX_EXPORT_PROMPT);
 
     const payload: SuggestPayload = {
       prompt: rawTex,

@@ -95,9 +95,15 @@ def main():
     local_stderr = ""
     local_error = None
     local_traceback_text = ""
+    local_registered_records = []
 
     if local_data is not None or rank == 0:
-        global_scope = {"__name__": "__main__"}
+        # register_record(**kwargs) accumulates per-case intermediate evidence.
+        _collector = []
+        def register_record(**kwargs):
+            _collector.append(dict(kwargs))
+
+        global_scope = {"__name__": "__main__", "register_record": register_record}
         stdout_buf = io.StringIO()
         stderr_buf = io.StringIO()
 
@@ -114,9 +120,14 @@ def main():
                     )
                 raw = fn(local_data, target)
                 local_result = normalize_result(raw)
+                # Merge register_record() calls into records
+                returned_records = list(local_result.get("records") or [])
+                local_result["records"] = list(_collector) + returned_records
+                local_registered_records = local_result["records"]
         except Exception as exc:
             local_error = str(exc)
             local_traceback_text = traceback.format_exc()
+            local_registered_records = list(_collector)
         finally:
             local_stdout = stdout_buf.getvalue()
             local_stderr = stderr_buf.getvalue()
@@ -130,6 +141,7 @@ def main():
             "error": local_error,
             "traceback": local_traceback_text,
             "hostname": hostname,
+            "registered_records": local_registered_records,
         },
         root=0,
     )
@@ -153,12 +165,16 @@ def main():
     )
 
     if errors:
+        # Include any records collected before the error on each rank
+        merged_err_records: list = []
+        for p in partial:
+            merged_err_records.extend(p.get("registered_records") or [])
         final = {
             "completed": False,
             "sufficient": False,
             "evidence": None,
             "summary": None,
-            "records": [],
+            "records": merged_err_records,
             "stdout": merged_stdout,
             "stderr": merged_stderr,
             "error": "; ".join(errors),
@@ -170,6 +186,7 @@ def main():
         results = [p["result"] for p in partial if p["result"] is not None]
         all_sufficient = all(r["sufficient"] for r in results) if results else False
         all_evidence = [r["evidence"] for r in results]
+        # records are already merged into each result["records"] in the execute block
         merged_records: list = []
         for r in results:
             merged_records.extend(r.get("records") or [])

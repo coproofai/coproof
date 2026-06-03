@@ -3,6 +3,7 @@ from lean_service import (
     to_compiler_snippet_response,
     to_compiler_project_response,
     get_mathlib_info,
+    get_mathlib_lineage,
 )
 
 
@@ -19,4 +20,9 @@ def verify_project_files(file_map: dict, entry_file: str):
 @celery.task(name="tasks.get_mathlib_info")
 def get_mathlib_info_task(declaration_name: str):
     return get_mathlib_info(declaration_name)
+
+
+@celery.task(name="tasks.get_mathlib_lineage")
+def get_mathlib_lineage_task(declaration_name: str, depth: int):
+    return get_mathlib_lineage(declaration_name, depth)
 

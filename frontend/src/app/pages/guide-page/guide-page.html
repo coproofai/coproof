@@ -1,0 +1,1747 @@
+﻿<div class="guide-page">
+
+  <!-- ── Barra lateral ── -->
+  <nav class="guide-sidebar">
+    <div class="sidebar-title">Guía de Uso</div>
+    <button
+      class="nav-item"
+      [ngClass]="{ active: activeSection === 'verificación' }"
+      (click)="activeSection = 'verificación'"
+    >Verificación</button>
+    <button
+      class="nav-item"
+      [ngClass]="{ active: activeSection === 'traducción' }"
+      (click)="activeSection = 'traducción'"
+    >Traducción</button>
+    <button
+      class="nav-item"
+      [ngClass]="{ active: activeSection === 'buscar-demostración' }"
+      (click)="activeSection = 'buscar-demostración'"
+    >Buscar Demostración</button>
+    <button
+      class="nav-item"
+      [ngClass]="{ active: activeSection === 'buscar-linaje' }"
+      (click)="activeSection = 'buscar-linaje'"
+    >Buscar Linaje</button>
+    <button
+      class="nav-item"
+      [ngClass]="{ active: activeSection === 'buscar-proyectos' }"
+      (click)="activeSection = 'buscar-proyectos'"
+    >Buscar Proyectos</button>
+    <button
+      class="nav-item"
+      [ngClass]="{ active: activeSection === 'crear-proyecto' }"
+      (click)="activeSection = 'crear-proyecto'"
+    >Crear Proyecto</button>
+
+    <div class="sidebar-group-label">Workspace</div>
+    <button class="nav-item" [ngClass]="{ active: activeSection === 'ws-general' }"     (click)="activeSection = 'ws-general'">Vista General</button>
+    <button class="nav-item" [ngClass]="{ active: activeSection === 'ws-verificar' }"   (click)="activeSection = 'ws-verificar'">Verificar</button>
+    <button class="nav-item" [ngClass]="{ active: activeSection === 'ws-resolver' }"    (click)="activeSection = 'ws-resolver'">Resolver</button>
+    <button class="nav-item" [ngClass]="{ active: activeSection === 'ws-dividir' }"     (click)="activeSection = 'ws-dividir'">Dividir</button>
+    <button class="nav-item" [ngClass]="{ active: activeSection === 'ws-computación' }" (click)="activeSection = 'ws-computación'">Nodo de Computación</button>
+    <button class="nav-item" [ngClass]="{ active: activeSection === 'ws-prs' }"         (click)="activeSection = 'ws-prs'">PRs y Axiomas</button>
+    <button class="nav-item" [ngClass]="{ active: activeSection === 'ws-exportar' }"    (click)="activeSection = 'ws-exportar'">Exportar</button>
+  </nav>
+
+  <!-- ── Contenido ── -->
+  <div class="guide-content">
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- Verificación                                               -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'verificación'">
+      <h2 class="card-heading">Verificación de Demostraciones</h2>
+      <p class="card-intro">
+        La pestaña <strong>Validar Demostración</strong> permite comprobar si un fragmento de código
+        Lean 4 es correcto. El sistema lo envía al servicio de verificación formal y devuelve
+        el resultado junto con los mensajes del compilador.
+      </p>
+
+      <!-- Paso 1 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">1</span>
+          <span class="step-title">Escribe o pega el código Lean 4</span>
+        </div>
+        <p class="step-body">
+          En el campo de texto principal introduce el teorema o la prueba que quieres verificar.
+          Puedes escribirlo directamente o pegarlo desde otro editor.
+          El campo acepta cualquier fragmento válido de Lean 4, incluyendo
+          <code>import Mathlib</code> y definiciones auxiliares.
+        </p>
+        <div class="example-block">
+          <div class="example-label">Ejemplo</div>
+          <pre class="example-code">theorem add_comm' (a b : Nat) : a + b = b + a := by
+  induction a with
+  | zero      => simp
+  | succ n ih => simp [Nat.succ_add, ih]</pre>
+        </div>
+      </div>
+
+      <!-- Paso 2 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">2</span>
+          <span class="step-title">Haz clic en "Verificar"</span>
+        </div>
+        <p class="step-body">
+          El botón <strong>Verificar</strong> envía el código al servidor. El proceso puede tardar
+          unos segundos mientras el kernel de Lean compila el fragmento.
+          Un indicador de carga aparece durante la espera.
+        </p>
+      </div>
+
+      <!-- Paso 3 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">3</span>
+          <span class="step-title">Interpreta el resultado</span>
+        </div>
+        <p class="step-body">
+          El panel de resultado muestra uno de los siguientes estados:
+        </p>
+        <div class="result-table">
+          <div class="result-row result-ok">
+            <span class="result-badge badge-ok">Válida</span>
+            <span class="result-desc">
+              El código compiló sin errores. La demostración es formalmente correcta.
+            </span>
+          </div>
+          <div class="result-row result-error">
+            <span class="result-badge badge-error">Con errores</span>
+            <span class="result-desc">
+              Lean reportó uno o más errores. El detalle aparece en el bloque de mensajes
+              del compilador, con número de línea y descripción del problema.
+            </span>
+          </div>
+          <div class="result-row result-warn">
+            <span class="result-badge badge-warn">Con advertencias</span>
+            <span class="result-desc">
+              El código compiló pero Lean emitió advertencias (por ejemplo, sorries o
+              axiomas adicionales). La prueba se acepta con observaciones.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Consejos -->
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>
+            Si el código depende de <code>Mathlib</code>, asegúrate de incluir
+            <code>import Mathlib</code> al inicio del fragmento.
+          </li>
+          <li>
+            Los errores de tipo <em>"unknown identifier"</em> suelen indicar que falta
+            un import o que el nombre está escrito de forma distinta a la definición en Mathlib.
+          </li>
+          <li>
+            El botón <strong>Limpiar</strong> borra el código y el resultado para empezar
+            una nueva verificación desde cero.
+          </li>
+        </ul>
+      </div>
+
+      <!-- Preguntas frecuentes -->
+      <h3 class="faq-heading">Preguntas frecuentes</h3>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Cuánto tiempo tarda la verificación?</div>
+        <div class="faq-a">
+          Normalmente entre 5 y 30 segundos, dependiendo de la complejidad del código
+          y del número de imports. Fragmentos con <code>import Mathlib</code> completo
+          pueden tardar más la primera vez por la carga del entorno.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Puedo verificar múltiples teoremas a la vez?</div>
+        <div class="faq-a">
+          Si. Puedes incluir varios <code>theorem</code>, <code>lemma</code> o
+          <code>def</code> en el mismo fragmento. Lean los compilará en orden y
+          reportará errores en cada uno de forma independiente.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Los resultados se guardan?</div>
+        <div class="faq-a">
+          Las verificaciones realizadas desde la pestaña independiente no se almacenan.
+          Si trabajas dentro de un proyecto en el <em>Workspace</em>, los nodos de
+          verificación sí quedan registrados en el grafo del proyecto.
+        </div>
+      </div>
+
+    </div>
+    <!-- /verificación -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- Traducción                                                          -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'traducción'">
+      <h2 class="card-heading">Traducción de Demostraciones</h2>
+      <p class="card-intro">
+        La pestaña <strong>Traducir a Lean</strong> permite convertir enunciados matemáticos
+        escritos en lenguaje natural a código Lean 4 verificado, o bien traducir código Lean 4
+        a una descripción en lenguaje natural. El proceso usa un modelo de lenguaje (LLM)
+        y verifica automáticamente el código generado con el compilador de Lean.
+      </p>
+
+      <!-- Configuración previa -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">1</span>
+          <span class="step-title">Configura el modelo y la clave de API</span>
+        </div>
+        <p class="step-body">
+          Haz clic en el botón <strong>Configuración</strong> (parte superior de la página)
+          para desplegar el panel de ajustes. Ahí encontraras:
+        </p>
+        <div class="result-table" style="margin: 0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Modelo LLM</span>
+            <span class="result-desc">
+              Selecciona el proveedor y modelo de lenguaje que realizará la traducción.
+              Si la lista está vacía, configura un modelo en <em>Cuenta → IA y Modelos</em>.
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">API Key</span>
+            <span class="result-desc">
+              Introduce tu clave de OpenRouter (<code>sk-or-…</code>). Solo aparece este campo
+              si has iniciado sesión. La clave se guarda en tu cuenta y no es necesario
+              ingresarla cada vez.
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">System Prompt</span>
+            <span class="result-desc">
+              Instrucción base que guia al modelo. Puedes dejarla como esta o adaptarla
+              si necesitas un estilo de traducción diferente.
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Reintentos max.</span>
+            <span class="result-desc">
+              Número de veces que el sistema volverá a pedirle al modelo una corrección
+              si el código Lean generado no compila. Solo disponible en modo NL → Lean.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dirección -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">2</span>
+          <span class="step-title">Elige la dirección de la traducción</span>
+        </div>
+        <p class="step-body">
+          El selector central muestra la dirección activa. Usa el botón de intercambio
+          para alternar entre los dos modos:
+        </p>
+        <div class="result-table" style="margin: 0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">NL → Lean</span>
+            <span class="result-desc">
+              Escribe un teorema o proposición en español o ingles y el sistema genera
+              el código Lean 4 correspondiente, verificandolo automáticamente.
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Lean → NL</span>
+            <span class="result-desc">
+              Pega código Lean 4 y el sistema produce una descripción en lenguaje natural
+              del teorema o la prueba.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modo NL → Lean -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">3</span>
+          <span class="step-title">Modo NL → Lean: escribe el enunciado y traduce</span>
+        </div>
+        <p class="step-body">
+          En la primera columna encontraras el campo de entrada. Puedes alternar entre la
+          vista de texto plano (<em>Entrada</em>) y la vista renderizada en LaTeX
+          (<em>Vista LaTeX</em>) para comprobar como queda el enunciado.
+          Una vez listo, haz clic en <strong>Traducir a Lean</strong>.
+        </p>
+        <div class="example-block">
+          <div class="example-label">Ejemplo de entrada</div>
+          <pre class="example-code">Para todo natural n, la suma n + 0 es igual a n.</pre>
+        </div>
+        <p class="step-body" style="margin-top: 10px;">
+          El proceso puede tomar varios segundos. El sistema llama al LLM, obtiene código Lean,
+          lo verifica y, si hay errores, reintenta automáticamente hasta alcanzar el límite
+          de reintentos configurado.
+        </p>
+      </div>
+
+      <!-- Columnas de resultado -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">4</span>
+          <span class="step-title">Interpreta las columnas de resultado</span>
+        </div>
+        <p class="step-body">
+          Al finalizar la traducción se muestran tres columnas:
+        </p>
+        <div class="result-table" style="margin: 0 0 0 40px;">
+          <div class="result-row result-ok">
+            <span class="result-badge badge-ok" style="white-space:nowrap;">Código Lean</span>
+            <span class="result-desc">
+              El código Lean 4 final generado. Si el borde es verde, compiló sin errores;
+              si es rojo, el máximo de reintentos se agotó sin exito.
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Historial</span>
+            <span class="result-desc">
+              Lista de intentos del LLM. Cada uno muestra el código propuesto y los errores
+              de Lean que lo descartaron. Haz clic en un intento para expandirlo.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modo Lean → NL -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">5</span>
+          <span class="step-title">Modo Lean → NL: pega el código y obtiene la descripción</span>
+        </div>
+        <p class="step-body">
+          Cambia la dirección al modo <em>Lean → NL</em>, pega el código Lean 4 en el campo
+          de entrada y haz clic en <strong>Traducir a texto</strong>. El resultado aparecerá
+          en la columna central como texto en lenguaje natural.
+        </p>
+      </div>
+
+      <!-- Tips -->
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>
+            Escribe el enunciado de forma precisa: incluye cuantificadores
+            (<em>para todo</em>, <em>existe</em>) y el tipo de los objetos
+            (<em>entero</em>, <em>natural</em>, <em>real</em>).
+          </li>
+          <li>
+            Si la traducción falla repetidamente, aumenta el número de reintentos
+            o reformula el enunciado con más detalle.
+          </li>
+          <li>
+            La vista <em>Vista LaTeX</em> renderiza la notación matemática del texto
+            de entrada para que puedas verificar que las expresiones estan bien escritas
+            antes de traducir.
+          </li>
+          <li>
+            La pestaña <strong>Traducir a Lean</strong> requiere autenticación.
+            Si ves el acceso restringido, inicia sesión desde el menú principal.
+          </li>
+        </ul>
+      </div>
+
+      <!-- FAQ -->
+      <h3 class="faq-heading">Preguntas frecuentes</h3>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Por qué el botón "Traducir a Lean" está desactivado?</div>
+        <div class="faq-a">
+          El botón requiere que el campo de texto no este vacío y que haya un modelo
+          seleccionado. Abre el panel de <em>Configuración</em> y elige un modelo LLM.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Qué significa que el código sea "inválido" despues de varios intentos?</div>
+        <div class="faq-a">
+          El LLM generó código Lean pero ninguno de los intentos compiló correctamente.
+          Puedes ver los errores en el historial para entender que parte del enunciado
+          está causando problemas y reformular la entrada.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿El código Lean generado queda guardado?</div>
+        <div class="faq-a">
+          Desde la pestaña independiente no se guarda automáticamente. Si trabajas dentro
+          de un proyecto en el <em>Workspace</em>, puedes copiar el código generado y
+          pegarlo en un nodo de traducción del grafo.
+        </div>
+      </div>
+
+    </div>
+    <!-- /traducción -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- Buscar Demostración                                                -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'buscar-demostración'">
+      <h2 class="card-heading">Buscar Demostración en Mathlib</h2>
+      <p class="card-intro">
+        La pestaña <strong>Buscar Demostración</strong> permite recuperar el código fuente Lean 4
+        de cualquier declaración de Mathlib4, ya sea buscando directamente por su nombre
+        o describiendo el teorema en lenguaje natural para que el sistema sugiera candidatos.
+        El resultado puede enviarse directamente al traductor de NL.
+      </p>
+
+      <!-- Paso 1 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">1</span>
+          <span class="step-title">Elige el modo de búsqueda</span>
+        </div>
+        <p class="step-body">
+          Las pestañas superiores permiten cambiar entre los dos modos disponibles:
+        </p>
+        <div class="result-table" style="margin: 0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Por nombre</span>
+            <span class="result-desc">
+              Introduce el nombre exacto de la declaración en Mathlib4
+              (por ejemplo <code>Nat.succ_pos</code>, <code>Real.sqrt_sq</code>)
+              y el sistema recupera su código fuente directamente.
+              Este modo no requiere autenticación.
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Por lenguaje natural</span>
+            <span class="result-desc">
+              Describe el teorema en texto libre y el modelo sugiere una lista de nombres
+              de declaraciones en Mathlib4 que podrían coincidir.
+              Requiere iniciar sesión y tener un modelo LLM configurado.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Paso 2 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">2</span>
+          <span class="step-title">Modo "Por nombre": busca la declaración</span>
+        </div>
+        <p class="step-body">
+          Escribe el nombre exacto de la declaración en el campo de texto y haz clic en
+          <strong>Buscar</strong>. El nombre debe coincidir con el identificador de Mathlib4,
+          respetando mayusculas, puntos y guiones bajos.
+        </p>
+        <div class="example-block">
+          <div class="example-label">Ejemplos de nombres válidos</div>
+          <pre class="example-code">Nat.succ_pos
+Real.sqrt_sq
+Finset.sum_comm
+List.length_append</pre>
+        </div>
+      </div>
+
+      <!-- Paso 3 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">3</span>
+          <span class="step-title">Modo "Por lenguaje natural": obtiene sugerencias</span>
+        </div>
+        <p class="step-body">
+          Escribe una descripción del teorema en el área de texto y haz clic en
+          <strong>Buscar Sugerencias</strong>. El sistema usa el modelo LLM configurado
+          para generar una lista de candidatos.
+          Haz clic en <strong>Cargar .lean</strong> junto al candidato que desees
+          para recuperar su código fuente.
+        </p>
+        <div class="example-block">
+          <div class="example-label">Ejemplo de descripción</div>
+          <pre class="example-code">The successor of any natural number is positive</pre>
+        </div>
+        <p class="step-body" style="margin-top: 10px;">
+          Para usar este modo debes haber iniciado sesión y tener un modelo LLM
+          seleccionado en el panel de <em>Configuración del modelo</em>.
+        </p>
+      </div>
+
+      <!-- Paso 4 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">4</span>
+          <span class="step-title">Interpreta el resultado y traduce a NL</span>
+        </div>
+        <p class="step-body">
+          Cuando se encuentra la declaración, su código fuente Lean 4 aparece en un
+          bloque de código debajo. Si iniciaste sesión y tienes un modelo configurado,
+          el botón <strong>Traducir a NL (.tex)</strong> envía ese código al traductor
+          Lean → NL y produce una descripción en lenguaje natural lista para copiar.
+        </p>
+        <div class="result-table" style="margin: 0 0 0 40px;">
+          <div class="result-row result-ok">
+            <span class="result-badge badge-ok" style="white-space:nowrap;">Encontrada</span>
+            <span class="result-desc">
+              Se muestra el código Lean 4 de la declaración con nombre y tiempo de consulta.
+            </span>
+          </div>
+          <div class="result-row result-error">
+            <span class="result-badge badge-error" style="white-space:nowrap;">No encontrada</span>
+            <span class="result-desc">
+              El nombre no existe en Mathlib o el worker de Lean no pudo resolverlo.
+              Verifica la ortografia exacta del identificador.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tips -->
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>
+            Los nombres en Mathlib4 son sensibles a mayusculas y minusculas:
+            <code>nat.succ_pos</code> no es lo mismo que <code>Nat.succ_pos</code>.
+          </li>
+          <li>
+            Si no recuerdas el nombre exacto, usa el modo de lenguaje natural
+            para obtener sugerencias y luego carga el <code>.lean</code> del candidato correcto.
+          </li>
+          <li>
+            El botón <strong>Limpiar</strong> borra tanto la entrada como el resultado
+            para iniciar una nueva búsqueda.
+          </li>
+          <li>
+            El modo de lenguaje natural requiere autenticación. Si el botón aparece
+            desactivado, abre <em>Configuración del modelo</em> y selecciona un LLM.
+          </li>
+        </ul>
+      </div>
+
+      <!-- FAQ -->
+      <h3 class="faq-heading">Preguntas frecuentes</h3>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Qué es Mathlib4?</div>
+        <div class="faq-a">
+          Mathlib4 es la biblioteca matemática principal del ecosistema Lean 4.
+          Contiene miles de teoremas, definiciones y estructuras algebraicas formalmente verificadas,
+          desde aritmética básica hasta topología y álgebra abstracta.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Por qué el modo por nombre dice "no encontrada" si el nombre parece correcto?</div>
+        <div class="faq-a">
+          Puede ocurrir por tres razones: el nombre tiene una letra en mayuscula o minuscula
+          incorrecta, la declaración existe en Mathlib pero bajo un módulo diferente al esperado,
+          o el worker de Lean tiene una versión de Mathlib que no incluye esa declaración aun.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Puedo buscar definiciones o solo teoremas?</div>
+        <div class="faq-a">
+          El buscador recupera cualquier declaración de Mathlib4: teoremas (<code>theorem</code>),
+          lemas (<code>lemma</code>), definiciones (<code>def</code>) e instancias (<code>instance</code>).
+        </div>
+      </div>
+
+    </div>
+    <!-- /buscar-demostración -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- Buscar Linaje                                                       -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'buscar-linaje'">
+      <h2 class="card-heading">Buscar Linaje de Dependencias</h2>
+      <p class="card-intro">
+        La pestaña <strong>Buscar Linaje</strong> construye el grafo de dependencias de una
+        declaración de Mathlib4: muestra de qué otros teoremas y definiciones depende,
+        nivel por nivel, hasta la profundidad elegida. Cada nodo del grafo es interactivo
+        y permite consultar el código fuente de la declaración y traducirlo a lenguaje natural.
+      </p>
+
+      <!-- Paso 1 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">1</span>
+          <span class="step-title">Introduce el nombre y la profundidad</span>
+        </div>
+        <p class="step-body">
+          Escribe el nombre exacto de la declaración de Mathlib4 en el campo de texto.
+          A continuacion ajusta el campo <strong>Profundidad</strong> (valores entre 1 y 4)
+          para controlar cuantos niveles de dependencias se exploraran.
+          Haz clic en <strong>Buscar Linaje</strong> o presiona Enter para iniciar.
+        </p>
+        <div class="example-block">
+          <div class="example-label">Ejemplo</div>
+          <pre class="example-code">Nombre:      Nat.exists_infinite_primes
+Profundidad: 2</pre>
+        </div>
+        <p class="step-body" style="margin-top:10px;">
+          Una profundidad mayor devuelve más nodos pero puede truncarse a 30 si el grafo
+          es demasiado grande. En ese caso aparece un aviso para reducir la profundidad.
+        </p>
+      </div>
+
+      <!-- Paso 2 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">2</span>
+          <span class="step-title">Navega el grafo interactivo</span>
+        </div>
+        <p class="step-body">
+          El resultado se muestra cómo un grafo SVG con los siguientes controles:
+        </p>
+        <div class="result-table" style="margin: 0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Arrastrar nodo</span>
+            <span class="result-desc">Mantén presionado y mueve un nodo para reposicionarlo en el canvas.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Rueda del ratón</span>
+            <span class="result-desc">Acerca o aleja la vista del grafo completo.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Click en nodo</span>
+            <span class="result-desc">Selecciona el nodo y muestra su declaración Lean en el panel lateral.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Reset vista</span>
+            <span class="result-desc">Restaura el zoom y la posición originales del grafo.</span>
+          </div>
+        </div>
+        <p class="step-body" style="margin-top:10px;">
+          Los nodos que no pudieron resolverse en Mathlib aparecen con un estilo diferente
+          (gris o atenuado) e incluyen la etiqueta <em>no encontrado</em> en el panel lateral.
+        </p>
+      </div>
+
+      <!-- Paso 3 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">3</span>
+          <span class="step-title">Consulta el código fuente de un nodo</span>
+        </div>
+        <p class="step-body">
+          Al hacer clic en un nodo, el panel lateral derecho muestra:
+        </p>
+        <div class="result-table" style="margin: 0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Nombre</span>
+            <span class="result-desc">Identificador completo de la declaración y su nivel de profundidad en el grafo.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Código Lean</span>
+            <span class="result-desc">
+              Fuente Lean 4 de la declaración recuperada de Mathlib.
+              Si el nodo aparece como "no encontrado", la fuente no esta disponible en el worker.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Paso 4 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">4</span>
+          <span class="step-title">Traduce la declaración a lenguaje natural (opcional)</span>
+        </div>
+        <p class="step-body">
+          Si iniciaste sesión y tienes un modelo LLM configurado en el panel de
+          <em>Configuración del modelo</em>, el botón <strong>Traducir a NL (.tex)</strong>
+          envía el código del nodo seleccionado al traductor Lean → NL.
+          El resultado aparece renderizado en el propio panel lateral.
+        </p>
+      </div>
+
+      <!-- Tips -->
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>
+            Empieza con profundidad 1 o 2 para tener una visión general rápida.
+            Aumenta la profundidad solo si necesitas rastrear dependencias más profundas.
+          </li>
+          <li>
+            Si el grafo se trunca a 30 nodos, reduce la profundidad o busca
+            directamente una de las dependencias de interés.
+          </li>
+          <li>
+            El panel lateral se puede redimensionar arrastrando la barra divisoria
+            entre el grafo y el panel para ver el código Lean con más comodidad.
+          </li>
+          <li>
+            El botón <strong>Limpiar</strong> reinicia la búsqueda y borra el grafo actual.
+          </li>
+        </ul>
+      </div>
+
+      <!-- FAQ -->
+      <h3 class="faq-heading">Preguntas frecuentes</h3>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Qué significa la profundidad del grafo?</div>
+        <div class="faq-a">
+          La profundidad 1 muestra solo las dependencias directas de la declaración buscada.
+          La profundidad 2 muestra también las dependencias de esas dependencias, y asi
+          sucesivamente. A mayor profundidad, el grafo puede crecer exponencialmente.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Por qué algunos nodos aparecen como "no encontrado"?</div>
+        <div class="faq-a">
+          Algunas declaraciones son axiomas internos, primitivas del kernel de Lean o pertenecen
+          a módulos que el worker no tiene compilados. Aún así se muestran en el grafo
+          para que la estructura de dependencias sea completa.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Necesito iniciar sesión para buscar linajes?</div>
+        <div class="faq-a">
+          No. La búsqueda de linaje y la visualización del grafo están disponibles
+          sin autenticación. Solo necesitas iniciar sesión si quieres traducir
+          una declaración a lenguaje natural desde el panel lateral.
+        </div>
+      </div>
+
+    </div>
+    <!-- /buscar-linaje -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- Buscar Proyectos                                                     -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'buscar-proyectos'">
+      <h2 class="card-heading">Buscar Proyectos de Formalización</h2>
+      <p class="card-intro">
+        La pestaña <strong>Buscar Proyectos</strong> permite explorar los proyectos de
+        formalización matemática registrados en la plataforma. Puedes consultar proyectos
+        públicos de cualquier usuario y ver su progreso de verificación, o revisar
+        tus propios proyectos privados si has iniciado sesión.
+      </p>
+
+      <!-- Paso 1 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">1</span>
+          <span class="step-title">Elige la pestaña: Públicos o Privados</span>
+        </div>
+        <p class="step-body">
+          Las dos pestañas superiores dividen la vista en dos modos:
+        </p>
+        <div class="result-table" style="margin: 0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Proyectos Públicos</span>
+            <span class="result-desc">
+              Muestra todos los proyectos marcados como públicos en la plataforma.
+              Disponible sin autenticación.
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Mis Proyectos Privados</span>
+            <span class="result-desc">
+              Muestra los proyectos privados en los que participas como autor o colaborador.
+              Requiere iniciar sesión. El botón aparece bloqueado si no estás autenticado.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Paso 2 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">2</span>
+          <span class="step-title">Filtra y selecciona un proyecto</span>
+        </div>
+        <p class="step-body">
+          El panel izquierdo muestra la lista de proyectos con un campo de búsqueda
+          para filtrar por nombre. Haz clic en cualquier proyecto de la lista para
+          seleccionarlo y ver su detalle en el panel derecho.
+        </p>
+      </div>
+
+      <!-- Paso 3 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">3</span>
+          <span class="step-title">Revisa el detalle del proyecto (Públicos)</span>
+        </div>
+        <p class="step-body">
+          Al seleccionar un proyecto público, el panel derecho muestra:
+        </p>
+        <div class="result-table" style="margin: 0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Nombre y descripción</span>
+            <span class="result-desc">Titulo, descripción y etiquetas del proyecto.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Colaboradores</span>
+            <span class="result-desc">Autor principal y lista de colaboradores adicionales.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Cobertura de nodos</span>
+            <span class="result-desc">
+              Barra de progreso que indica cuantos nodos del grafo han sido verificados
+              sobre el total de nodos del proyecto.
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Cobertura de hojas</span>
+            <span class="result-desc">
+              Barra de progreso específica para los nodos hoja (sin hijos), que representan
+              los objetivos finales del proyecto.
+            </span>
+          </div>
+        </div>
+        <p class="step-body" style="margin-top:10px;">
+          Si has iniciado sesión, aparece el botón <strong>+ Seguir</strong> para
+          suscribirte al proyecto y encontrarlo fácilmente despues.
+          Si ya lo sigues, el botón cambia a <strong>Dejar de seguir</strong>.
+        </p>
+      </div>
+
+      <!-- Paso 4 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">4</span>
+          <span class="step-title">Proyectos privados: ver y abrir en Workspace</span>
+        </div>
+        <p class="step-body">
+          En la pestaña de proyectos privados, la lista muestra cada proyecto con
+          una insignia que indica si eres <em>Autor</em> o <em>Colaborador</em>.
+          El panel de detalle muestra nombre, descripción y etiquetas.
+          Para acceder al grafo interactivo del proyecto, utiliza la opcion
+          <strong>Abrir Workspace</strong> desde el menú principal.
+        </p>
+      </div>
+
+      <!-- Tips -->
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>
+            La cobertura de nodos al 100% indica que todos los enunciados del proyecto
+            tienen una demostración formal verificada en Lean 4.
+          </li>
+          <li>
+            La cobertura de hojas es el indicador más representativo del avance real,
+            ya que los nodos hoja son los objetivos que aún no tienen subdemostraciones.
+          </li>
+          <li>
+            Usa el campo de búsqueda para encontrar proyectos por palabra clave en el nombre.
+            La búsqueda es en tiempo real y filtra a medida que escribes.
+          </li>
+          <li>
+            Para crear tu propio proyecto, usa la opcion <strong>Crear Proyecto</strong>
+            en la sección Workspace del menú principal (requiere autenticación).
+          </li>
+        </ul>
+      </div>
+
+      <!-- FAQ -->
+      <h3 class="faq-heading">Preguntas frecuentes</h3>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Qué es un nodo hoja en el contexto de un proyecto?</div>
+        <div class="faq-a">
+          Un nodo hoja es un objetivo de demostración que no tiene sub-objetivos dependientes.
+          Generalmente son los lemas o proposiciones auxiliares más básicos que sustentan
+          el teorema principal del proyecto.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Puedo editar un proyecto desde esta pestaña?</div>
+        <div class="faq-a">
+          No. La pestaña de búsqueda es solo de consulta. Para editar el grafo,
+          agregar nodos o verificar enunciados, abre el proyecto desde
+          <em>Abrir Workspace</em> en el menú principal.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Qué diferencia hay entre seguir un proyecto y ser colaborador?</div>
+        <div class="faq-a">
+          Seguir un proyecto es una marca personal para encontrarlo fácilmente;
+          no otorga permisos de edicion. Ser colaborador significa que el autor
+          te invitó a trabajar en el proyecto y puedes modificar su grafo desde el Workspace.
+        </div>
+      </div>
+
+    </div>
+    <!-- /buscar-proyectos -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- Crear Proyecto                                                       -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'crear-proyecto'">
+      <h2 class="card-heading">Crear Nuevo Proyecto de Formalización</h2>
+      <p class="card-intro">
+        La sección <strong>Crear Proyecto</strong> permite iniciar un nuevo proyecto de
+        formalización matemática. Requiere autenticación. El formulario guia el proceso
+        desde definir el objetivo del teorema hasta confirmar su enunciado y elegir
+        la visibilidad del proyecto.
+      </p>
+
+      <!-- Paso 1 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">1</span>
+          <span class="step-title">Escribe el nombre del proyecto</span>
+        </div>
+        <p class="step-body">
+          El campo <strong>Nombre del Proyecto</strong> es obligatorio. Elige un nombre
+          descriptivo que identifique el teorema o área matemática que vas a formalizar.
+        </p>
+        <div class="example-block">
+          <div class="example-label">Ejemplo</div>
+          <pre class="example-code">Fundamentos de la Teoría de Conjuntos</pre>
+        </div>
+      </div>
+
+      <!-- Paso 2 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">2</span>
+          <span class="step-title">Define el objetivo del teorema</span>
+        </div>
+        <p class="step-body">
+          El formulario ofrece dos modos para definir el objetivo (goal) del proyecto.
+          Puedes alternar entre ellos con las pestañas <em>Lenguaje Natural</em> y <em>Manual</em>:
+        </p>
+        <div class="result-table" style="margin: 0 0 12px 40px;">
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Lenguaje Natural</span>
+            <span class="result-desc">
+              Describe el teorema en texto libre (soporta notación LaTeX). Selecciona un modelo
+              LLM y haz clic en <strong>Traducir a Lean</strong>. El sistema genera
+              automáticamente el goal, los imports y las definiciones auxiliares, y los
+              transfiere a la pestaña Manual.
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Manual</span>
+            <span class="result-desc">
+              Escribe directamente el <em>objetivo lógico</em> en Lean 4
+              (campo obligatorio), los <em>imports de Mathlib</em> necesarios
+              (uno por línea) y las <em>definiciones auxiliares</em> que el goal requiera
+              (ambos opcionales).
+            </span>
+          </div>
+        </div>
+        <div class="example-block">
+          <div class="example-label">Ejemplo — pestaña Manual</div>
+          <pre class="example-code">Objetivo:  ∀ a b : Nat, a + b = b + a
+Imports:   Mathlib.Data.Nat.Basic
+Defs:      (vacío)</pre>
+        </div>
+      </div>
+
+      <!-- Paso 3 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">3</span>
+          <span class="step-title">Confirma el enunciado del teorema</span>
+        </div>
+        <p class="step-body">
+          En cuanto el campo de objetivo tenga contenido, aparece la sección
+          <strong>Confirmar Enunciado del Teorema</strong>. Selecciona un modelo LLM
+          y haz clic en <strong>Generar vista previa del enunciado</strong>.
+          El sistema produce una descripción en lenguaje natural y su renderizado LaTeX
+          para que puedas verificar que el goal captura exactamente el teorema deseado.
+        </p>
+        <div class="result-table" style="margin: 0 0 0 40px;">
+          <div class="result-row result-ok">
+            <span class="result-badge badge-ok" style="white-space:nowrap;">Confirmar</span>
+            <span class="result-desc">
+              Si la descripción es correcta, haz clic en
+              <em>"Sí, este es el teorema que quiero probar"</em> para marcar
+              el enunciado como confirmado. El botón <strong>Crear Proyecto</strong>
+              se habilitará.
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Regenerar</span>
+            <span class="result-desc">
+              Si la descripción no es la esperada, usa <em>Regenerar</em> para solicitar
+              una nueva interpretación al modelo, o ajusta el goal en la pestaña Manual
+              y vuelve a generar la vista previa.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Paso 4 -->
+      <div class="step">
+        <div class="step-header">
+          <span class="step-number">4</span>
+          <span class="step-title">Completa los campos adicionales y crea el proyecto</span>
+        </div>
+        <p class="step-body">
+          Una vez confirmado el enunciado, rellena los campos finales:
+        </p>
+        <div class="result-table" style="margin: 0 0 12px 40px;">
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Descripción</span>
+            <span class="result-desc">Texto libre opcional que resume el propósito o contexto del proyecto.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc; border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb; color:#374151; white-space:nowrap;">Visibilidad</span>
+            <span class="result-desc">
+              <em>Público</em>: cualquier usuario puede ver el proyecto en la sección Buscar Proyectos.<br/>
+              <em>Privado</em>: solo tu y tus colaboradores pueden acceder a el.
+            </span>
+          </div>
+        </div>
+        <p class="step-body">
+          Haz clic en <strong>Crear Proyecto</strong> para finalizar. El botón permanece
+          desactivado si el goal tiene contenido pero no ha sido confirmado.
+          Al crearse correctamente, el sistema muestra un mensaje de confirmación.
+        </p>
+      </div>
+
+      <!-- Tips -->
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>
+            Si usas el modo de lenguaje natural y la traducción falla, aumenta el número
+            de reintentos o reformula la descripción con mayor precisión matemática.
+          </li>
+          <li>
+            La pestaña <em>Vista LaTeX</em> en el campo de descripción NL renderiza
+            la notación matemática para que puedas verificar las expresiones antes de traducir.
+          </li>
+          <li>
+            Si el goal no requiere confirmación (campo vacío), el botón <strong>Crear Proyecto</strong>
+            se habilita directamente. Sin embargo, se recomienda siempre definir un goal
+            para que el Workspace pueda generar la estructura inicial del grafo.
+          </li>
+          <li>
+            Puedes cambiar la visibilidad de un proyecto despues de crearlo desde
+            la configuración del Workspace.
+          </li>
+        </ul>
+      </div>
+
+      <!-- FAQ -->
+      <h3 class="faq-heading">Preguntas frecuentes</h3>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Por qué el botón "Crear Proyecto" permanece desactivado?</div>
+        <div class="faq-a">
+          El botón se desactiva cuando el campo de objetivo tiene contenido pero el enunciado
+          aún no fue confirmado. Completa el paso de confirmación del enunciado
+          o borra el campo de objetivo si no deseas definir un goal inicial.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Qué diferencia hay entre el goal, los imports y las definiciones?</div>
+        <div class="faq-a">
+          El <em>goal</em> es el enunciado Lean 4 que el proyecto busca demostrar.
+          Los <em>imports</em> son los módulos de Mathlib que el goal necesita para compilar.
+          Las <em>definiciones</em> son tipos, funciones o abreviaciones auxiliares
+          que el goal usa pero que no están en Mathlib.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">¿Puedo invitar colaboradores al crear el proyecto?</div>
+        <div class="faq-a">
+          No directamente desde el formulario de creación. Una vez creado el proyecto,
+          los colaboradores pueden ser agregados desde la configuración del Workspace.
+        </div>
+      </div>
+
+    </div>
+    <!-- /crear-proyecto -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- WS — Vista General                                                  -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'ws-general'">
+      <h2 class="card-heading">Workspace — Vista General</h2>
+      <p class="card-intro">
+        El <strong>Workspace</strong> es el editor interactivo de proyectos de formalización matemática.
+        Cada proyecto se representa como un grafo de dependencias donde cada nodo es un teorema,
+        lema o resultado que debe ser probado formalmente en Lean 4. Puedes navegar el grafo,
+        seleccionar nodos y aplicar acciones sobre ellos desde el panel lateral.
+        Requiere autenticación.
+      </p>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">1</span><span class="step-title">Layout de la pantalla</span></div>
+        <p class="step-body">La pantalla se divide en dos zonas principales:</p>
+        <div class="result-table" style="margin:0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Panel del Grafo</span>
+            <span class="result-desc">Ocupa la parte izquierda. Muestra el grafo SVG con todos los nodos y aristas del proyecto. Tiene controles para hacer zoom (rueda del ratón), desplazar la vista (arrastrar el fondo) y reposicionar nodos (arrastrar un nodo).</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Panel Lateral</span>
+            <span class="result-desc">Ocupa la parte derecha. Contiene cinco pestañas: <em>Nodo</em>, <em>TeX</em>, <em>PRs</em>, <em>Defs</em> y <em>Exportar</em>. Se puede redimensionar arrastrando la barra divisoria central.</span>
+          </div>
+        </div>
+        <p class="step-body" style="margin-top:10px;">
+          Ambos paneles pueden ocultarse individualmente con los botones
+          <em>Grafo</em> y <em>Panel</em> de la cabecera. Si ambos estan ocultos,
+          aparece una barra superior para restaurarlos.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">2</span><span class="step-title">Estados de los nodos</span></div>
+        <p class="step-body">Cada nodo del grafo tiene un estado visual que indica su progreso de formalización:</p>
+        <div class="result-table" style="margin:0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;">open</span>
+            <span class="result-desc">El nodo existe pero aún no tiene una prueba formal. Es el estado inicial.</span>
+          </div>
+          <div class="result-row result-error">
+            <span class="result-badge badge-error">sorry</span>
+            <span class="result-desc">El código Lean compila pero contiene <code>sorry</code> (marcador de prueba incompleta) o tiene errores de compilación.</span>
+          </div>
+          <div class="result-row result-ok">
+            <span class="result-badge badge-ok">validated</span>
+            <span class="result-desc">El código Lean compila limpiamente sin errores ni sorrys. La prueba es formalmente correcta.</span>
+          </div>
+          <div class="result-row result-warn">
+            <span class="result-badge badge-warn">axiom</span>
+            <span class="result-desc">El resultado fue respaldado por evidencia computacional (nodo de computación) y el PR correspondiente fue aprobado por el autor del proyecto.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">3</span><span class="step-title">Pestaña Nodo</span></div>
+        <p class="step-body">
+          Al hacer clic en un nodo del grafo, la pestaña <em>Nodo</em> muestra su nombre,
+          estado, tipo y archivo <code>.lean</code> asociado. Desde ahí se accede
+          a la sección <strong>Acciones</strong> (para nodos de prueba) o
+          <strong>Computación</strong> (para nodos de computación), y a la sección
+          <strong>Resultados</strong> con el último resultado de verificación o acción.
+          En la parte inferior aparece el visor del archivo <code>.lean</code> del nodo (solo lectura).
+        </p>
+      </div>
+
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>Usa el botón <strong>Reset</strong> en la cabecera del grafo para restaurar la posición y zoom originales.</li>
+          <li>El botón <strong>Recargar</strong> en la cabecera superior sincroniza el grafo y los PRs con el estado más reciente del servidor.</li>
+          <li>Mientras una acción está en curso (verificación, resolver, dividir, computar), todos los botones de acción quedan bloqueados para evitar conflictos.</li>
+        </ul>
+      </div>
+    </div>
+    <!-- /ws-general -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- WS — Verificar                                                      -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'ws-verificar'">
+      <h2 class="card-heading">Workspace — Verificar</h2>
+      <p class="card-intro">
+        La acción <strong>Verificar</strong> envía el archivo <code>.lean</code> del nodo
+        seleccionado al compilador de Lean 4 y reporta si la prueba es formalmente correcta.
+        Es la acción más directa y no requiere modelo de IA.
+      </p>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">1</span><span class="step-title">Selecciona el nodo y haz clic en Verificar</span></div>
+        <p class="step-body">
+          Haz clic en cualquier nodo de prueba del grafo (no en un nodo de computación).
+          En la sección <em>Acciones</em> del panel lateral, haz clic en
+          <strong>Verificar</strong>. El botón muestra un spinner y el texto
+          <em>Verificando…</em> mientras espera la respuesta del servidor.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">2</span><span class="step-title">Interpreta el resultado</span></div>
+        <p class="step-body">Los posibles resultados aparecen en la sección <em>Resultados</em>:</p>
+        <div class="result-table" style="margin:0 0 0 40px;">
+          <div class="result-row result-ok">
+            <span class="result-badge badge-ok" style="white-space:nowrap;">Exitosa</span>
+            <span class="result-desc">
+              <strong>Compilación exitosa y sin sorry.</strong> El nodo pasa a estado <em>validated</em>
+              (verde en el grafo). La prueba es formalmente correcta.
+            </span>
+          </div>
+          <div class="result-row result-warn">
+            <span class="result-badge badge-warn" style="white-space:nowrap;">Con sorry</span>
+            <span class="result-desc">
+              <strong>Compila pero contiene sorry.</strong> El nodo pasa a estado <em>sorry</em>.
+              La sección de resultados lista cada sorry con su archivo y línea.
+              Debes completar la prueba y volver a verificar.
+            </span>
+          </div>
+          <div class="result-row result-error">
+            <span class="result-badge badge-error" style="white-space:nowrap;">Con errores</span>
+            <span class="result-desc">
+              <strong>Fallo de compilación.</strong> El nodo permanece en estado <em>sorry</em>.
+              La lista de errores muestra cada problema con su número de línea, columna
+              y mensaje del compilador Lean.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">3</span><span class="step-title">Revisa el archivo .lean del nodo</span></div>
+        <p class="step-body">
+          El visor de <code>.lean</code> (parte inferior de la pestaña Nodo) muestra el
+          código actual del nodo con resaltado de palabras clave de Lean. Puedes usarlo
+          como referencia para identificar los errores antes de corregirlos
+          con la acción <em>Resolver</em>.
+        </p>
+      </div>
+
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>Verificar solo lee el archivo <code>.lean</code> actual del nodo. Si quieres proponer una prueba nueva, usa la acción <strong>Resolver</strong>.</li>
+          <li>Un nodo <em>validated</em> puede ser reverificado en cualquier momento si sospechas que el estado del repositorio cambió.</li>
+          <li>Los errores de tipo <em>"unknown identifier"</em> suelen indicar que falta un import en el archivo de definiciones del proyecto (<em>Defs</em>).</li>
+        </ul>
+      </div>
+    </div>
+    <!-- /ws-verificar -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- WS — Resolver                                                       -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'ws-resolver'">
+      <h2 class="card-heading">Workspace — Resolver</h2>
+      <p class="card-intro">
+        La acción <strong>Resolver</strong> proporciona una prueba formal completa para el
+        teorema del nodo seleccionado. El código Lean enviado es verificado por el compilador
+        y, si es correcto, el sistema genera el archivo <code>.tex</code> del nodo y abre
+        un Pull Request en el repositorio del proyecto para que el autor lo apruebe.
+      </p>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">1</span><span class="step-title">Haz clic en "Resolver" y elige el modo</span></div>
+        <p class="step-body">
+          Selecciona el nodo y haz clic en el botón <strong>Resolver</strong>.
+          Aparece un submenú con tres pestañas:
+        </p>
+        <div class="result-table" style="margin:0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Lenguaje Formal</span>
+            <span class="result-desc">Escribe directamente el código Lean 4 de la prueba en el editor con numeración de lineas.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Lenguaje Natural</span>
+            <span class="result-desc">Describe el enunciado en texto (con soporte LaTeX). La IA lo traduce a Lean 4, verifica el resultado y crea el PR.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">IA Automático</span>
+            <span class="result-desc">La IA lee el <code>.tex</code> del nodo, propone una estrategia de prueba, la traduce a Lean 4, la verifica y crea el PR — todo sin intervencion manual. Se puede dar una sugerencia inicial opcional.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">2</span><span class="step-title">Modo Lenguaje Formal (FL)</span></div>
+        <p class="step-body">
+          Edita el código Lean en el editor. Selecciona un <strong>Modelo LLM</strong>
+          (obligatorio para generar el <code>.tex</code> del nodo a partir del Lean verificado)
+          y guarda la API key si aún no lo has hecho. Haz clic en <strong>Confirmar</strong>.
+        </p>
+        <p class="step-body">
+          El sistema primero verifica el código Lean con el compilador (~10-20 s).
+          Si compila sin errores, llama al modelo para generar el archivo <code>.tex</code>
+          (~30-120 s). Al finalizar, se crea un PR con los cambios.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">3</span><span class="step-title">Modo Lenguaje Natural (NL)</span></div>
+        <p class="step-body">
+          Escribe la descripción del enunciado en el área de texto. Puedes alternar entre
+          la vista fuente y la vista renderizada en LaTeX para comprobar la notación.
+          Selecciona el modelo, guarda la key si aplica, y haz clic en
+          <strong>Resolver desde NL</strong>.
+        </p>
+        <p class="step-body">
+          La barra de progreso y el indicador de fase muestran en que etapa se encuentra:
+          <em>Traduciendo NL → Lean</em>, <em>Verificando</em>, <em>Compilación correcta, generando .tex</em>.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">4</span><span class="step-title">Modo IA Automático</span></div>
+        <p class="step-body">
+          Escribe una sugerencia inicial opcional (estrategia de prueba preferida, lemas a usar, etc.)
+          o dejala en blanco para que la IA proponga libremente. Selecciona el modelo y haz clic
+          en <strong>Ejecutar IA Auto</strong>.
+        </p>
+        <p class="step-body">
+          El pipeline completo es: la IA consulta el <code>.tex</code> del nodo → genera una
+          estrategia en lenguaje natural → traduce la estrategia a Lean 4 → verifica con el
+          compilador → si compila, genera el <code>.tex</code> → crea el PR. Si la verificación
+          falla, el sistema reporta el error sin crear PR.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">5</span><span class="step-title">Resultado: PR creado</span></div>
+        <p class="step-body">
+          Al completarse exitosamente, se crea un Pull Request en el repositorio del proyecto.
+          El PR contiene los archivos <code>.lean</code> y <code>.tex</code> modificados.
+          Ve a la pestaña <strong>PRs</strong> del panel lateral para revisarlo y aprobarlo
+          (ver sección <em>PRs y Axiomas</em> de esta guia).
+        </p>
+      </div>
+
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>El modo <em>Lenguaje Formal</em> es el más rápido si ya tienes el código Lean listo. Los modos NL e IA son útiles cuando aún no sabes cómo escribir la prueba.</li>
+          <li>Si el modo NL falla repetidamente, intenta reformular la descripción con mayor precisión matemática o aumenta el número de reintentos en la configuración del traductor.</li>
+          <li>El modo IA Automático es completamente autonomo pero puede tardar varios minutos dependiendo del modelo y la complejidad del teorema.</li>
+          <li>Si el PR ya existe (la prueba no cambio), el sistema reporta <em>"Solve válidado. No hubo cambios"</em> y actualiza el estado del nodo directamente.</li>
+        </ul>
+      </div>
+    </div>
+    <!-- /ws-resolver -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- WS — Dividir                                                        -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'ws-dividir'">
+      <h2 class="card-heading">Workspace — Dividir</h2>
+      <p class="card-intro">
+        La acción <strong>Dividir</strong> descompone el teorema de un nodo en
+        sub-objetivos más simples (nodos hijo). El nodo padre recibe un código Lean
+        que lo reduce a los sub-objetivos, y cada hijo se convierte en un nuevo nodo
+        <em>open</em> del grafo que debera ser resuelto de forma independiente.
+        Al igual que Resolver, genera archivos <code>.tex</code> para el padre y todos
+        los hijos, y crea un Pull Request con todos los cambios.
+      </p>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">1</span><span class="step-title">Haz clic en "Dividir" y elige el modo</span></div>
+        <p class="step-body">
+          Selecciona el nodo y haz clic en <strong>Dividir</strong>. El submenú tiene
+          las mismas tres pestañas que Resolver: <em>Lenguaje Formal</em>,
+          <em>Lenguaje Natural</em> e <em>IA Automático</em>.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">2</span><span class="step-title">Modo Lenguaje Formal (FL)</span></div>
+        <p class="step-body">
+          Escribe el código Lean que divide el teorema padre en sub-metas.
+          El código debe compilar correctamente con Lean (sin errores ni sorry).
+          Selecciona el modelo LLM (obligatorio) y haz clic en <strong>Confirmar</strong>.
+        </p>
+        <p class="step-body">
+          El servidor verifica el Lean, genera los <code>.tex</code> del nodo padre y de
+          cada nodo hijo, y crea un PR con todos los archivos. El mensaje de confirmación
+          indica cuantos hijos se crearon.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">3</span><span class="step-title">Modo Lenguaje Natural (NL)</span></div>
+        <p class="step-body">
+          Describe cómo quieres dividir el teorema. Por ejemplo: qué lemas auxiliares
+          necesitas, o qué casos quieres separar. La IA genera las sub-metas en Lean 4,
+          verifica la estructura de división y crea el PR con el padre e hijos.
+        </p>
+        <div class="example-block">
+          <div class="example-label">Ejemplo de descripción</div>
+          <pre class="example-code">Divide usando un lema que acota el valor de n
+y otro que verifica todos los casos hasta ese límite.</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">4</span><span class="step-title">Modo IA Automático</span></div>
+        <p class="step-body">
+          La IA lee el <code>.tex</code> del nodo, propone por si sola una estrategia
+          de división (con sub-metas concretas), traduce el plan a Lean 4, verifica
+          la estructura y crea el PR. Puedes dar una sugerencia opcional, por ejemplo
+          indicar que tipo de división prefieres.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">5</span><span class="step-title">Resultado en el grafo</span></div>
+        <p class="step-body">
+          Tras hacer merge del PR (pestaña PRs), el grafo se actualiza: el nodo padre
+          muestra el código de división y los nuevos nodos hijo aparecen con estado
+          <em>open</em>, listos para ser resueltos. El proyecto avanza en profundidad
+          hasta que todos los nodos hoja estén en estado <em>validated</em> o <em>axiom</em>.
+        </p>
+      </div>
+
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>Dividir es útil cuando el teorema principal es demasiado complejo para probarse directamente. Crea una jerarquía de lemas más manejables.</li>
+          <li>En el modo FL, el código Lean debe expresar la reducción del padre a los hijos usando <code>have</code>, <code>suffices</code> u otras tacticas de descomposición.</li>
+          <li>Tras el merge del PR, recarga el workspace con el botón <strong>Recargar</strong> para ver los nuevos nodos en el grafo.</li>
+        </ul>
+      </div>
+    </div>
+    <!-- /ws-dividir -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- WS — Nodo de Computación                                            -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'ws-computación'">
+      <h2 class="card-heading">Workspace — Nodo de Computación</h2>
+      <p class="card-intro">
+        Los <strong>nodos de computación</strong> son un tipo especial de nodo hijo que respalda
+        un enunciado Lean mediante evidencia numerica o experimental en lugar de una prueba
+        formal pura. Son útiles para propiedades que son difíciles de demostrar
+        formalmente pero pueden verificarse computacionalmente, como rangos de funciones,
+        propiedades estadisticas o resultados de búsqueda exhaustiva. La evidencia
+        puede ejecutarse en el worker local (Python) o en el cluster de computo
+        distribuido (MPI sobre Raspberry Pi).
+      </p>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">1</span><span class="step-title">Crear un nodo de computación hijo</span></div>
+        <p class="step-body">
+          Selecciona el nodo de prueba al que quieres agregar evidencia computacional.
+          En la sección <em>Acciones</em> haz clic en <strong>Nodo Computación</strong>.
+          El submenú solicita un <strong>modelo LLM</strong> (necesario para generar
+          el archivo <code>.tex</code> del nodo hijo). Haz clic en
+          <strong>Crear Nodo de Computación</strong>.
+        </p>
+        <p class="step-body">
+          El sistema crea un nodo hijo de tipo <em>computation</em> en el grafo y genera
+          su archivo <code>.tex</code>. El nuevo nodo aparece en estado <em>open</em>.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">2</span><span class="step-title">Selecciona el nodo hijo y abre "Ejecutar Computación"</span></div>
+        <p class="step-body">
+          Haz clic en el nodo de computación recien creado en el grafo. En el panel lateral
+          la sección cambia a <em>Computación</em> y aparece el boton
+          <strong>Ejecutar Computación</strong>. Haz clic en el para abrir el formulario.
+        </p>
+        <p class="step-body">
+          El submenú tiene tres pestañas: <em>Lenguaje Formal</em> (formulario manual),
+          <em>Lenguaje Natural</em> (IA genera el payload) e (no disponible IA Auto para compute en este modo).
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">3</span><span class="step-title">Modo Lenguaje Formal: configura el payload manualmente</span></div>
+        <p class="step-body">El formulario tiene los siguientes campos:</p>
+        <div class="result-table" style="margin:0 0 12px 40px;">
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Backend</span>
+            <span class="result-desc">
+              <strong>Python (worker local)</strong>: ejecuta el código en el servidor de la plataforma.
+              <strong>MPI (cluster RPI)</strong>: distribuye la computación entre los nodos del cluster
+              Raspberry Pi (2-3 nodos con Slurm + OpenMPI).
+            </span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Entrypoint</span>
+            <span class="result-desc">Nombre de la función Python que sera invocada. Por defecto <code>run</code>.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Lean Statement</span>
+            <span class="result-desc">Nombre del enunciado Lean que esta evidencia respalda (por defecto <code>GoalDef</code>).</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Target JSON</span>
+            <span class="result-desc">Objeto JSON que describe la propiedad a verificar (límites, condiciones esperadas, etc.). Tu función lo recibe como parámetro <code>target</code>.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Input Data JSON</span>
+            <span class="result-desc">Lista o valor JSON de los datos de entrada que tu función debe procesar. Tu función lo recibe como parámetro <code>input_data</code>.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Código Python</span>
+            <span class="result-desc">Implementacion de la función. Debe retornar un diccionario con las claves: <code>evidence</code> (datos de la evidencia), <code>sufficient</code> (bool: <em>True</em> si la evidencia es satisfactoria), <code>summary</code> (texto descriptivo), y opcionalmente <code>records</code>.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Timeout (s)</span>
+            <span class="result-desc">Tiempo máximo de ejecución en segundos (1-900).</span>
+          </div>
+        </div>
+        <div class="example-block">
+          <div class="example-label">Ejemplo de función Python</div>
+          <pre class="example-code">def run(input_data, target):
+    lo, hi = target["lo"], target["hi"]
+    records = [&#123;"x": x, "fx": x**2, "ok": lo &lt;= x**2 &lt;= hi&#125;
+               for x in (input_data or [])]
+    sufficient = bool(records) and all(r["ok"] for r in records)
+    return &#123;
+        "evidence": records,
+        "sufficient": sufficient,
+        "summary": f"&#123;len(records)&#125; samples, ok=&#123;sufficient&#125;",
+        "records": records
+    &#125;</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">4</span><span class="step-title">Backend MPI: computación en el cluster</span></div>
+        <p class="step-body">
+          Al seleccionar <strong>MPI (cluster RPI)</strong>, el sistema envía el job al
+          cluster de Raspberry Pi a traves de Slurm. El runner distribuye
+          automáticamente la lista <code>input_data</code> en partes iguales entre los
+          nodos del cluster. Cada nodo ejecuta la función con su porcion local de datos
+          usando la misma firma <code>run(input_data, target)</code>, donde
+          <code>input_data</code> es la porcion asignada a ese rango.
+          Los resultados parciales de todos los rangos se combinan en el coordinador
+          antes de evaluar <code>sufficient</code>.
+        </p>
+        <p class="step-body">
+          El cluster actualmente tiene 2 nodos de computo activos.
+          Los jobs MPI pueden tardar más que Python local dependiendo de la carga.
+          Usa un timeout generoso (120-300 s) para computaciones distribuidas.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">5</span><span class="step-title">Modo Lenguaje Natural: la IA genera el payload</span></div>
+        <p class="step-body">
+          Describe el experimento en texto libre. La IA lee la descripción, infiere
+          los campos <code>target</code>, <code>input_data</code> y el código Python,
+          y envía el payload automáticamente. Es útil cuando no tienes claro como
+          estructurar los datos pero si el objetivo del experimento.
+        </p>
+        <div class="example-block">
+          <div class="example-label">Ejemplo de descripción NL</div>
+          <pre class="example-code">Verificar que f(x) = x² permanece en [0, 1] para x
+en [0, 1] usando 100 puntos de muestra uniformes.</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">6</span><span class="step-title">Resultado de la computación</span></div>
+        <p class="step-body">El resultado depende del valor de <code>sufficient</code> devuelto por la función:</p>
+        <div class="result-table" style="margin:0 0 0 40px;">
+          <div class="result-row result-ok">
+            <span class="result-badge badge-ok" style="white-space:nowrap;">sufficient = True</span>
+            <span class="result-desc">
+              La evidencia es satisfactoria. El sistema crea un PR con los resultados.
+              Una vez que el autor del proyecto apruebe el PR (hace merge), el nodo de
+              computación pasa a estado <em>axiom</em>. El enunciado Lean queda
+              respaldado por evidencia empirica en el proyecto.
+            </span>
+          </div>
+          <div class="result-row result-error">
+            <span class="result-badge badge-error" style="white-space:nowrap;">sufficient = False</span>
+            <span class="result-desc">
+              La evidencia es insuficiente. No se crea PR. El nodo permanece en estado
+              <em>open</em>. Revisa la lógica de tu función o ajusta los parámetros
+              y vuelve a ejecutar.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>La clave de <code>sufficient</code> es que tu función verifique la propiedad real, no simplemente retornar <code>True</code>. El revisor humano (el autor del proyecto) evalua la calidad de la evidencia antes de hacer merge del PR.</li>
+          <li>Para MPI, asegúrate de que <code>input_data</code> sea una lista. El runner la divide automáticamente. Si envias un escalar, todos los rangos reciben el mismo valor.</li>
+          <li>Puedes agregar un modelo LLM opcional para generar un archivo <code>.tex</code> enriquecido con la descripción del experimento. Si no seleccionas modelo, se usa el <code>.tex</code> base del nodo.</li>
+          <li>Usa el campo <em>Timeout</em> con precaución: un timeout muy corto puede cancelar computaciones legítimas en el cluster.</li>
+        </ul>
+      </div>
+    </div>
+    <!-- /ws-computación -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- WS — PRs y Axiomas                                                  -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'ws-prs'">
+      <h2 class="card-heading">Workspace — Pull Requests y Axiomas</h2>
+      <p class="card-intro">
+        Las acciones <em>Resolver</em>, <em>Dividir</em> y <em>Ejecutar Computación</em>
+        no modifican el repositorio directamente: en su lugar crean un
+        <strong>Pull Request (PR)</strong> en GitHub con los archivos propuestos.
+        El autor del proyecto revisa el PR y decide si aprobarlo (merge) o descartarlo.
+        Este mecanismo garantiza que todos los cambios en el proyecto pasen por una
+        revisión antes de volverse oficiales.
+      </p>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">1</span><span class="step-title">Accede a la pestaña PRs</span></div>
+        <p class="step-body">
+          Haz clic en la pestaña <strong>PRs</strong> del panel lateral. El número
+          junto al nombre indica cuantos PRs estan abiertos actualmente.
+          Cada PR muestra: número, titulo, rama de origen y destino, y autor.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">2</span><span class="step-title">Inspecciona los archivos del PR</span></div>
+        <p class="step-body">
+          Haz clic en el botón <strong>▼</strong> de un PR para expandirlo y ver
+          sus archivos. Cada archivo muestra:
+        </p>
+        <div class="result-table" style="margin:0 0 0 40px;">
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Nombre y estado</span>
+            <span class="result-desc">Ruta del archivo y si fue agregado, modificado o eliminado.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Diff</span>
+            <span class="result-desc">Lineas agregadas (+) y eliminadas (-) respecto al estado actual del repositorio.</span>
+          </div>
+          <div class="result-row" style="background:#f8fafc;border-color:#e5e7eb;">
+            <span class="result-badge" style="background:#e5e7eb;color:#374151;white-space:nowrap;">Contenido</span>
+            <span class="result-desc">Para archivos <code>.tex</code>, puedes alternar entre vista de fuente LaTeX y vista renderizada haciendo clic en <em>Renderizado / Fuente</em>.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">3</span><span class="step-title">Hacer merge (aprobar) un PR</span></div>
+        <p class="step-body">
+          Solo el autor del proyecto (propietario) puede hacer merge. Haz clic en
+          <strong>Merge</strong> junto al PR. El sistema fusiona los cambios en la rama
+          principal del repositorio y actualiza el grafo del workspace.
+        </p>
+        <p class="step-body">
+          Los efectos del merge dependen del tipo de acción que creo el PR:
+        </p>
+        <div class="result-table" style="margin:0 0 0 40px;">
+          <div class="result-row result-ok">
+            <span class="result-badge badge-ok" style="white-space:nowrap;">Resolver</span>
+            <span class="result-desc">El <code>.lean</code> del nodo se actualiza con la prueba propuesta. El nodo pasa a estado <em>validated</em> si la prueba compila limpiamente.</span>
+          </div>
+          <div class="result-row result-ok">
+            <span class="result-badge badge-ok" style="white-space:nowrap;">Dividir</span>
+            <span class="result-desc">Se agregan los nodos hijo al grafo con estado <em>open</em> y el padre recibe el código de division. El grafo se actualiza con la nueva estructura.</span>
+          </div>
+          <div class="result-row result-warn">
+            <span class="result-badge badge-warn" style="white-space:nowrap;">Computación</span>
+            <span class="result-desc">
+              El nodo de computación pasa a estado <strong>axiom</strong>. Esto significa que
+              el enunciado Lean asociado queda registrado como respaldado por evidencia
+              empirica en el proyecto. El autor acepta que la evidencia computacional
+              es suficiente para validar la propiedad.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">4</span><span class="step-title">Descartar un PR</span></div>
+        <p class="step-body">
+          Si el resultado propuesto no es correcto o no es el deseado, haz clic en
+          <strong>Descartar</strong>. El PR se cierra sin fusionar cambios y desaparece
+          de la lista. El nodo permanece en su estado anterior. Puedes volver a
+          ejecutar la acción con parámetros diferentes para generar un nuevo PR.
+        </p>
+      </div>
+
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>Revisa siempre el contenido del PR antes de hacer merge, especialmente el código Lean, para asegurarte de que la prueba es la esperada y no introduce errores sútiles.</li>
+          <li>Para PRs de computación, evalua la calidad de la evidencia: verifica que el campo <code>evidence</code> contiene datos representativos y que <code>sufficient</code> es <em>True</em> por razones solidas.</li>
+          <li>El botón <strong>Abrir</strong> junto a cada PR abre el PR directamente en GitHub para una revisión más detallada con el diff completo.</li>
+          <li>Tras hacer merge o descartar, haz clic en <strong>Recargar</strong> en la cabecera del workspace para refrescar el grafo.</li>
+        </ul>
+      </div>
+
+      <div class="faq-heading" style="margin-top:0;">Preguntas frecuentes</div>
+      <div class="faq-item">
+        <div class="faq-q">¿Qué diferencia hay entre <em>validated</em> y <em>axiom</em>?</div>
+        <div class="faq-a">
+          <em>Validated</em> significa que existe una prueba formal completa en Lean 4 que el compilador acepta sin errores. <em>Axiom</em> significa que el resultado fue aceptado por el autor del proyecto basado en evidencia computacional (el código retornó <code>sufficient = True</code> y el PR fue aprobado), pero no necesariamente existe una prueba formal en Lean. Los axiomas son útiles para hipótesis experimentales o resultados que son computacionalmente verificables pero formalmente difíciles de probar.
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">¿Puede un colaborador hacer merge de un PR?</div>
+        <div class="faq-a">
+          No. Solo el autor (propietario) del proyecto puede hacer merge o descartar PRs desde el workspace. Los colaboradores pueden crear PRs (ejecutando acciones) pero la aprobación final es exclusiva del propietario.
+        </div>
+      </div>
+    </div>
+    <!-- /ws-prs -->
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- WS — Exportar                                                       -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="card" *ngIf="activeSection === 'ws-exportar'">
+      <h2 class="card-heading">Workspace — Exportar</h2>
+      <p class="card-intro">
+        La pestaña <strong>Exportar</strong> permite generar una versión ensamblada del
+        proyecto completo: todos los nodos ordenados (hojas primero, raíz al final)
+        en un único archivo <code>.lean</code> verificado, un documento <code>.tex</code>
+        formateado por IA o un PDF listo para compartir.
+      </p>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">1</span><span class="step-title">Selecciona el modelo para el formato .tex / PDF</span></div>
+        <p class="step-body">
+          El panel <em>Modelo IA para formato .tex / PDF</em> al inicio de la pestaña
+          Exportar requiere un modelo LLM con su API key. El modelo formatea el contenido
+          LaTeX de todos los nodos en un documento estructurado con preámbulo, secciones
+          y entornos de teorema correctos. Es obligatorio para la exportación <code>.tex</code>
+          formateada y el PDF; no se necesita para la exportación Lean.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">2</span><span class="step-title">Exportar Lean</span></div>
+        <p class="step-body">
+          La exportación Lean ensambla los archivos <code>.lean</code> de todos los nodos
+          en orden (lemas hoja primero, teorema raíz al final) y verifica que el conjunto
+          compila correctamente con Lean 4. El resultado es un archivo <code>.lean</code>
+          descargable con el proyecto completo.
+        </p>
+        <p class="step-body">
+          El proceso pasa por las fases: <em>Generando</em> → <em>Verificando</em>.
+          Si hay errores de compilación en el ensamblado, se muestran en la lista de errores.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">3</span><span class="step-title">Exportar .tex</span></div>
+        <p class="step-body">
+          Genera un documento LaTeX completo usando el modelo IA para dar formato
+          al contenido matemático de todos los nodos. El documento incluye preámbulo,
+          secciones <em>Lemmas</em> y <em>Main Result</em>, y entornos
+          <code>\begin&#123;theorem&#125;</code> / <code>\begin&#123;lemma&#125;</code> con
+          el nombre del teorema Lean en el label.
+        </p>
+        <p class="step-body">
+          Puedes descargar el <code>.tex</code> resultante para compilarlo localmente
+          con LaTeX o compartirlo directamente.
+        </p>
+      </div>
+
+      <div class="step">
+        <div class="step-header"><span class="step-number">4</span><span class="step-title">Exportar PDF</span></div>
+        <p class="step-body">
+          La exportación PDF genera primero el <code>.tex</code> formateado y luego
+          lo compila en el servidor para producir un archivo PDF descargable.
+          Requiere el mismo modelo que la exportación <code>.tex</code>.
+        </p>
+      </div>
+
+      <div class="tips-block">
+        <div class="tips-label">Consejos útiles</div>
+        <ul class="tips-list">
+          <li>Exporta el proyecto Lean primero para verificar que todos los nodos compilan en conjunto antes de generar el documento .tex.</li>
+          <li>Si la exportación Lean reporta errores, revisa que los nodos dependientes estén todos en estado <em>validated</em> o <em>axiom</em> antes de exportar.</li>
+          <li>El orden de exportación (hojas primero, raíz al final) garantiza que los lemas auxiliares estén definidos antes de ser usados en el teorema principal.</li>
+        </ul>
+      </div>
+    </div>
+    <!-- /ws-exportar -->
+
+  </div>
+  <!-- /guide-content -->
+
+</div>

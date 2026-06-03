@@ -1,4 +1,5 @@
 import os
+import subprocess
 import time
 from functools import wraps
 
@@ -64,6 +65,72 @@ def get_job_status(job_id):
         response["result"] = entry["result"]
 
     return jsonify(response)
+
+
+@app.get("/nodes")
+@require_api_key
+def get_nodes():
+    """Return Slurm node states via `sinfo`."""
+    try:
+        out = subprocess.check_output(
+            ["sinfo", "--noheader", "--format=%n|%T|%c|%m|%e|%O"],
+            text=True, timeout=10,
+        )
+    except FileNotFoundError:
+        return jsonify({"error": "sinfo not found — is Slurm installed?"}), 503
+    except subprocess.CalledProcessError as exc:
+        return jsonify({"error": exc.stderr or str(exc)}), 503
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "sinfo timed out"}), 503
+
+    nodes = []
+    for line in out.strip().splitlines():
+        parts = line.split("|")
+        if len(parts) >= 6:
+            nodes.append({
+                "node": parts[0].strip(),
+                "state": parts[1].strip(),
+                "cpus": parts[2].strip(),
+                "memory_mb": parts[3].strip(),
+                "free_memory_mb": parts[4].strip(),
+                "cpu_load": parts[5].strip(),
+            })
+    return jsonify({"nodes": nodes, "timestamp": time.time()})
+
+
+@app.get("/queue")
+@require_api_key
+def get_queue():
+    """Return Slurm job queue via `squeue`."""
+    try:
+        out = subprocess.check_output(
+            ["squeue", "--noheader", "--format=%i|%j|%T|%M|%l|%C|%R|%u"],
+            text=True, timeout=10,
+        )
+    except FileNotFoundError:
+        return jsonify({"error": "squeue not found — is Slurm installed?"}), 503
+    except subprocess.CalledProcessError as exc:
+        return jsonify({"error": exc.stderr or str(exc)}), 503
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "squeue timed out"}), 503
+
+    jobs = []
+    for line in out.strip().splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        if len(parts) >= 8:
+            jobs.append({
+                "job_id": parts[0].strip(),
+                "name": parts[1].strip(),
+                "state": parts[2].strip(),
+                "time": parts[3].strip(),
+                "time_limit": parts[4].strip(),
+                "cpus": parts[5].strip(),
+                "reason": parts[6].strip(),
+                "user": parts[7].strip(),
+            })
+    return jsonify({"jobs": jobs, "timestamp": time.time()})
 
 
 if __name__ == "__main__":

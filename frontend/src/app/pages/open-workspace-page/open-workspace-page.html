@@ -25,12 +25,6 @@
           <small *ngIf="loading">Cargando proyectos...</small>
         </div>
 
-        <div class="field">
-          <label>Tipo de Sesión</label>
-          <label class="option"><input type="radio" name="sessionType" value="individual" [(ngModel)]="sessionType" /> Individual</label>
-          <label class="option"><input type="radio" name="sessionType" value="collaborative" [(ngModel)]="sessionType" /> Nueva Sesión Colaborativa</label>
-        </div>
-
         <button (click)="openWorkspace()">Abrir Workspace</button>
 
         <p *ngIf="message" class="message">{{ message }}</p>

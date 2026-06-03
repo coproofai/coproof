@@ -64,6 +64,7 @@ def create_app(config_class=None):
     from app.api.webhooks import webhooks_bp
     from app.api.translate import translate_bp
     from app.api.lean import lean_bp
+    from app.api.cluster_config import cluster_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(projects_bp)
@@ -72,6 +73,7 @@ def create_app(config_class=None):
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(translate_bp)
     app.register_blueprint(lean_bp)
+    app.register_blueprint(cluster_bp)
 
     return app
 

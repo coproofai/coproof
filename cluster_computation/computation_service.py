@@ -43,12 +43,23 @@ def run_cluster_job(payload: dict) -> dict:
     start = time.perf_counter()
     timeout_seconds = int(payload.get("timeout_seconds") or 120)
 
+    # Prefer per-request cluster config (set by the server from user account settings)
+    # over the container-level environment variable defaults.
+    api_url = (payload.get("cluster_api_url") or CLUSTER_API_URL).rstrip("/")
+    api_key = payload.get("cluster_api_key") or CLUSTER_API_KEY
+
+    def _req_headers() -> dict:
+        h = {"Content-Type": "application/json"}
+        if api_key:
+            h["X-API-Key"] = api_key
+        return h
+
     # --- submit ----------------------------------------------------------
     try:
         resp = requests.post(
-            f"{CLUSTER_API_URL}/jobs",
+            f"{api_url}/jobs",
             json=payload,
-            headers=_headers(),
+            headers=_req_headers(),
             timeout=15,
         )
         resp.raise_for_status()
@@ -74,8 +85,8 @@ def run_cluster_job(payload: dict) -> dict:
 
         try:
             status_resp = requests.get(
-                f"{CLUSTER_API_URL}/jobs/{job_id}",
-                headers=_headers(),
+                f"{api_url}/jobs/{job_id}",
+                headers=_req_headers(),
                 timeout=15,
             )
             status_resp.raise_for_status()

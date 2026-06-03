@@ -40,7 +40,6 @@ LLM_TIMEOUT = 300  # seconds per HTTP request (5 minutes)
 # Base URL of the local Copilot FastAPI proxy (used by the 'mock' provider).
 # Inside Docker on Windows/macOS use host.docker.internal; override via env var.
 COPILOT_BASE_URL = os.environ.get('COPILOT_BASE_URL', 'http://host.docker.internal:8000')
-COPILOT_MODEL = 'claude-sonnet-4-6'  # model sent to the /copilot endpoint
 
 DEFAULT_SYSTEM_PROMPT = (
     'You are an expert Lean 4 theorem prover. '
@@ -210,7 +209,6 @@ def _call_llm(messages: list[dict], model_id: str, api_key: str) -> str:
             f'{base_url}/copilot',
             json={
                 'prompt': prompt,
-                'model': COPILOT_MODEL,
                 'system_prompt': system_prompt_text,
             },
             timeout=LLM_TIMEOUT,
