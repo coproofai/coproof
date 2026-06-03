@@ -23,7 +23,12 @@ SNIPPET = NL.join([
 def run_one(idx):
     t0 = time.perf_counter()
     result = verify_lean_proof(SNIPPET)
-    return idx, result.get("verified", False), (time.perf_counter() - t0) * 1000
+    elapsed = (time.perf_counter() - t0) * 1000
+    ok = result.get("verified", False)
+    if not ok and idx == 0:
+        # Print first failure detail so CI logs show the real error
+        print("  [debug] verify_lean_proof result: {}".format(result))
+    return idx, ok, elapsed
 
 
 batches = []

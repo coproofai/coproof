@@ -5,7 +5,13 @@ Copied from the Jenkins workspace via 'docker compose cp' and run as a file
 """
 import json
 import os
+import sys
 import time
+
+# /usr/src/app is the WORKDIR in the web container; add it so that
+# 'import celery_worker' (which lives at /usr/src/app/celery_worker.py) works
+# when the script itself is executed from /tmp/.
+sys.path.insert(0, '/usr/src/app')
 
 import redis
 
