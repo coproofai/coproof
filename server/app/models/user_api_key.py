@@ -3,10 +3,10 @@ import uuid
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
 from app.extensions import db
+from app.models.types import _UuidColumn
 
 
 def _get_kek() -> bytes:
@@ -33,9 +33,9 @@ class UserApiKey(db.Model):
     """
     __tablename__ = 'user_api_keys'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(_UuidColumn(), primary_key=True, default=uuid.uuid4)
     user_id = db.Column(
-        UUID(as_uuid=True),
+        _UuidColumn(),
         db.ForeignKey('users.id', ondelete='CASCADE'),
         nullable=False,
         index=True,

@@ -1,9 +1,10 @@
 # app/models/graph_index.py
 
 import uuid
-from sqlalchemy.dialects.postgresql import UUID, ENUM
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.sql import func
 from app.extensions import db
+from app.models.types import _UuidColumn
 
 node_type_enum = ENUM(
     'global_goal', 'theorem', 'lemma', 'corollary', 'definition', 'numerical_eval', 
@@ -12,8 +13,8 @@ node_type_enum = ENUM(
 )
 
 dependencies = db.Table('dependencies',
-    db.Column('source_id', UUID(as_uuid=True), db.ForeignKey('graph_index.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('target_id', UUID(as_uuid=True), db.ForeignKey('graph_index.id', ondelete='CASCADE'), primary_key=True)
+    db.Column('source_id', _UuidColumn(), db.ForeignKey('graph_index.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('target_id', _UuidColumn(), db.ForeignKey('graph_index.id', ondelete='CASCADE'), primary_key=True)
 )
 
 class GraphNode(db.Model):
@@ -28,20 +29,20 @@ class GraphNode(db.Model):
         db.UniqueConstraint('project_id', 'statement_id', name='uniq_project_statement_id'),
     )
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = db.Column(UUID(as_uuid=True), db.ForeignKey('new_projects.id', ondelete='CASCADE'), nullable=False)
+    id = db.Column(_UuidColumn(), primary_key=True, default=uuid.uuid4)
+    project_id = db.Column(_UuidColumn(), db.ForeignKey('new_projects.id', ondelete='CASCADE'), nullable=False)
     
     # Metadata
     title = db.Column(db.Text, nullable=False)
     node_type = db.Column(node_type_enum, nullable=False)
     
-    statement_id = db.Column(UUID(as_uuid=True), nullable=False, index=True)
+    statement_id = db.Column(_UuidColumn(), nullable=False, index=True)
     
-    parent_statement_id = db.Column(UUID(as_uuid=True), nullable=True)    
+    parent_statement_id = db.Column(_UuidColumn(), nullable=True)    
 
-    parent_id = db.Column(UUID(as_uuid=True), db.ForeignKey('graph_index.id'), nullable=True)
+    parent_id = db.Column(_UuidColumn(), db.ForeignKey('graph_index.id'), nullable=True)
     
-    proven_by_statement_id = db.Column(UUID(as_uuid=True), nullable=True)
+    proven_by_statement_id = db.Column(_UuidColumn(), nullable=True)
     is_resolved = db.Column(db.Boolean, default=False, nullable=False)
 
     lean_relative_path = db.Column(db.Text, nullable=False)

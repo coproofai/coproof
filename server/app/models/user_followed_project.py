@@ -1,21 +1,21 @@
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.extensions import db
+from app.models.types import _UuidColumn
 
 
 class UserFollowedProject(db.Model):
     __tablename__ = 'user_followed_projects'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(_UuidColumn(), primary_key=True, default=uuid.uuid4)
     user_id = db.Column(
-        UUID(as_uuid=True),
+        _UuidColumn(),
         db.ForeignKey('users.id', ondelete='CASCADE'),
         nullable=False,
         index=True,
     )
     project_id = db.Column(
-        UUID(as_uuid=True),
+        _UuidColumn(),
         db.ForeignKey('new_projects.id', ondelete='CASCADE'),
         nullable=False,
         index=True,

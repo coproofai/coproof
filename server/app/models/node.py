@@ -1,31 +1,9 @@
 import uuid
-from sqlalchemy import types as sa_types
 from sqlalchemy.ext.mutable import MutableDict
-from sqlalchemy.dialects.postgresql import ENUM, UUID
-from sqlalchemy.dialects import postgresql
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.sql import func
 from app.extensions import db
-
-
-class _JsonbColumn(sa_types.TypeDecorator):
-    """
-    Portable JSONB column.
-    Compiles to JSONB on PostgreSQL (production) and JSON on all other
-    dialects (SQLite for unit tests).
-    """
-    impl = sa_types.Text
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == 'postgresql':
-            return dialect.type_descriptor(postgresql.JSONB(astext_type=sa_types.Text()))
-        return dialect.type_descriptor(sa_types.JSON())
-
-    def process_bind_param(self, value, dialect):
-        return value
-
-    def process_result_value(self, value, dialect):
-        return value
+from app.models.types import _JsonbColumn, _UuidColumn
 
 
 node_state_enum = ENUM(
@@ -46,18 +24,18 @@ node_kind_enum = ENUM(
 class Node(db.Model):
     __tablename__ = 'new_nodes'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(_UuidColumn(), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.Text, nullable=False, default='root')
     url = db.Column(db.Text, nullable=False)
 
     project_id = db.Column(
-        UUID(as_uuid=True),
+        _UuidColumn(),
         db.ForeignKey('new_projects.id', ondelete='CASCADE'),
         nullable=False,
         index=True,
     )
     parent_node_id = db.Column(
-        UUID(as_uuid=True),
+        _UuidColumn(),
         db.ForeignKey('new_nodes.id', ondelete='SET NULL'),
         nullable=True,
         index=True,

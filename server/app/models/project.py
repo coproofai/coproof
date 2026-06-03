@@ -1,36 +1,8 @@
 import uuid
-from sqlalchemy import types as sa_types
-from sqlalchemy.dialects import postgresql as pg_types
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.sql import func
 from app.extensions import db
-
-
-class _ArrayColumn(sa_types.TypeDecorator):
-    """
-    Portable list column.
-    Compiles to ARRAY on PostgreSQL (production) and JSON on all other
-    dialects (SQLite for unit tests).  MutableList change-tracking works
-    transparently on both backends.
-    """
-    impl = sa_types.Text
-    cache_ok = True
-
-    def __init__(self, item_type=None):
-        super().__init__()
-        self._item_type = item_type or sa_types.Text()
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == 'postgresql':
-            return dialect.type_descriptor(pg_types.ARRAY(self._item_type))
-        return dialect.type_descriptor(sa_types.JSON())
-
-    def process_bind_param(self, value, dialect):
-        return value  # impl (ARRAY or JSON) handles serialisation
-
-    def process_result_value(self, value, dialect):
-        return value  # impl (ARRAY or JSON) handles deserialisation
+from app.models.types import _ArrayColumn, _UuidColumn
 
 
 project_visibility_enum = db.Enum(
@@ -44,7 +16,7 @@ project_visibility_enum = db.Enum(
 class Project(db.Model):
     __tablename__ = 'new_projects'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(_UuidColumn(), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.Text, nullable=False)
     description = db.Column(db.Text, nullable=True)
     goal = db.Column(db.Text, nullable=False)
@@ -58,7 +30,7 @@ class Project(db.Model):
     tags = db.Column(MutableList.as_mutable(_ArrayColumn(db.Text)), nullable=False, default=list)
 
     author_id = db.Column(
-        UUID(as_uuid=True),
+        _UuidColumn(),
         db.ForeignKey('users.id', ondelete='RESTRICT'),
         nullable=False,
         index=True,
