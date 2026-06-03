@@ -114,17 +114,33 @@ pipeline {
             } // parallel
         }
 
-        // ── Frontend Unit Tests (Vitest) ─────────────────────────────────────
-        // npm ci runs once; all three spec files are passed to a single Vitest
-        // invocation so there's no duplicate install overhead.
+        // ── Frontend Unit Tests (ng test via @angular/build:unit-test) ─────
+        // node_modules is stashed after the first install and restored on
+        // subsequent runs when package-lock.json has not changed, skipping
+        // the 3-minute npm ci step entirely.
         stage('Frontend Unit Tests') {
             steps {
                 dir('/workspace/frontend') {
-                    sh 'npm ci --prefer-offline'
-                    sh '''npx vitest run \
-                        src/app/tcd12-auth-service.spec.ts \
-                        src/app/tcd13-task-service.spec.ts \
-                        src/app/tcd14-auth-guard.spec.ts'''
+                    script {
+                        def lockHash = sh(
+                            script: 'md5sum package-lock.json | cut -d" " -f1',
+                            returnStdout: true
+                        ).trim()
+                        def stashKey = "npm-modules-${lockHash}"
+
+                        try {
+                            unstash stashKey
+                            echo "Restored node_modules from stash (${lockHash})"
+                        } catch (e) {
+                            echo "Stash miss — running npm ci"
+                            sh 'npm ci --prefer-offline'
+                            stash name: stashKey, includes: 'node_modules/**'
+                        }
+                    }
+                    sh '''npx ng test --configuration=ci \
+                        --include="src/app/tcd12-auth-service.spec.ts" \
+                        --include="src/app/tcd13-task-service.spec.ts" \
+                        --include="src/app/tcd14-auth-guard.spec.ts"'''
                 }
             }
         }
