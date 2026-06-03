@@ -225,13 +225,15 @@ export class CreateProjectPageComponent implements OnInit {
         return `\x00INLN${idx}\x00`;
       });
       body = this._escapeHtml(body);
-      inlinePlaceholders.forEach((html, i) => { body = body.replace(`\x00INLN${i}\x00`, html); });
-      dispPlaceholders.forEach((html, i) => { body = body.replace(`\x00DISP${i}\x00`, html); });
       // Basic Markdown: bold (**text**) and italic (*text*)
       body = body.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
       body = body.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
       const paragraphs = body.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
       body = paragraphs.map(p => (/^<(div|h[1-6])/.test(p) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`)).join('\n');
+      // Substitute KaTeX HTML back LAST — after all text manipulation — so that
+      // newlines inside SVG <path d="..."> are never converted to <br> or escaped.
+      inlinePlaceholders.forEach((html, i) => { body = body.replace(`\x00INLN${i}\x00`, html); });
+      dispPlaceholders.forEach((html, i) => { body = body.replace(`\x00DISP${i}\x00`, html); });
       return this.sanitizer.bypassSecurityTrustHtml(body);
     } catch {
       return this.sanitizer.bypassSecurityTrustHtml('<p>Error al renderizar el LaTeX.</p>');

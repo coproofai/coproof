@@ -14,7 +14,7 @@ from app.services.lean_service import LeanService
 class ComputationService:
     """Helpers for computation node request validation and artifact generation."""
 
-    SUPPORTED_LANGUAGES = {'python'}
+    SUPPORTED_LANGUAGES = {'python', 'mpi'}
     DEFAULT_TIMEOUT_SECONDS = 120
 
     @staticmethod
@@ -42,7 +42,15 @@ class ComputationService:
         if not normalized_signature:
             raise CoProofError('Lean declaration signature cannot be empty.', code=400)
 
-        if normalized_signature.startswith(('(', '{', '[')):
+        # Signatures extracted from source already include the leading ': type'
+        # so we only add ': ' ourselves when there is no leading colon or binder.
+        # NOTE: '{' that starts a set-builder expression like {n : ℕ | ...} must NOT
+        # be treated as an implicit binder — only treat '{' as a binder prefix when
+        # it does NOT contain a pipe ('|'), which is the set-builder separator.
+        is_binder_prefix = normalized_signature.startswith(('(', '[', ':')) or (
+            normalized_signature.startswith('{') and ' | ' not in normalized_signature
+        )
+        if is_binder_prefix:
             return f'{keyword} {name} {normalized_signature}'
 
         return f'{keyword} {name} : {normalized_signature}'
@@ -186,6 +194,7 @@ class ComputationService:
             'timing_source': computation_result.get('timing_source'),
             'records_count': records_count,
             'evidence_preview': evidence_preview,
+            'rank_hosts': computation_result.get('rank_hosts'),
         }
 
     @staticmethod
@@ -223,6 +232,12 @@ class ComputationService:
         )
         child_program_template = (
             "def run(input_data, target):\n"
+            "    # register_record(**kwargs) is available automatically — call it inside\n"
+            "    # your loop to accumulate per-case evidence in evidence_full.json.gz.b64.\n"
+            "    # Example:\n"
+            "    #   for n in range(1, upper + 1):\n"
+            "    #       value = compute(n)\n"
+            "    #       register_record(n=n, value=value, verdict=(value == n))\n"
             "    return {\n"
             "        \"evidence\": {\n"
             "            \"input_data\": input_data,\n"

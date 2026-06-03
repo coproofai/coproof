@@ -1,12 +1,12 @@
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.extensions import db
+from app.models.types import _UuidColumn
 
 class User(db.Model):
     __tablename__ = 'users'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(_UuidColumn(), primary_key=True, default=uuid.uuid4)
     full_name = db.Column(db.Text, nullable=False)
     email = db.Column(db.Text, unique=True, nullable=False, index=True)
     password_hash = db.Column(db.Text, nullable=False)

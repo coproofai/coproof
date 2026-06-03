@@ -35,6 +35,7 @@ RUNNER_SOURCE = textwrap.dedent(
                 'evidence': value[0],
                 'sufficient': value[1],
                 'summary': None,
+                'records': None,
             }
 
         raise ValueError(
@@ -44,7 +45,14 @@ RUNNER_SOURCE = textwrap.dedent(
     def main():
         payload = json.loads(Path('payload.json').read_text(encoding='utf-8'))
         source_code = Path('user_code.py').read_text(encoding='utf-8')
-        global_scope = {'__name__': '__main__'}
+
+        # register_record(**kwargs) is injected into user code scope so it can
+        # accumulate per-case intermediate evidence without building a list manually.
+        _collector = []
+        def register_record(**kwargs):
+            _collector.append(dict(kwargs))
+
+        global_scope = {'__name__': '__main__', 'register_record': register_record}
         stdout_buffer = io.StringIO()
         stderr_buffer = io.StringIO()
 
@@ -58,12 +66,16 @@ RUNNER_SOURCE = textwrap.dedent(
                 value = entrypoint(payload.get('input_data'), payload.get('target'))
                 normalized = normalize_result(value)
 
+            # Merge: register_record() calls first, then any records returned in the result dict.
+            returned_records = list(normalized.get('records') or [])
+            all_records = list(_collector) + returned_records
+
             response = {
                 'completed': True,
                 'sufficient': normalized['sufficient'],
                 'evidence': normalized['evidence'],
                 'summary': normalized.get('summary'),
-                'records': normalized.get('records') or [],
+                'records': all_records,
                 'stdout': stdout_buffer.getvalue(),
                 'stderr': stderr_buffer.getvalue(),
                 'error': None,
@@ -74,7 +86,7 @@ RUNNER_SOURCE = textwrap.dedent(
                 'sufficient': False,
                 'evidence': None,
                 'summary': None,
-                'records': [],
+                'records': list(_collector),
                 'stdout': stdout_buffer.getvalue(),
                 'stderr': stderr_buffer.getvalue(),
                 'error': str(error),

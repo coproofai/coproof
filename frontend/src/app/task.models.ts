@@ -45,6 +45,17 @@ export interface ProjectDto {
   updated_at?: string;
 }
 
+/** Extended DTO returned by GET /projects/public — includes node coverage stats and follow state. */
+export interface PublicProjectDto extends ProjectDto {
+  total_nodes: number;
+  validated_nodes: number;
+  total_leaves: number;
+  validated_leaves: number;
+  author_login: string | null;
+  contributor_logins: string[];
+  is_following: boolean;
+}
+
 export interface NodeDto {
   id: string;
   name: string;
@@ -211,6 +222,8 @@ export interface CreateComputationChildPayload {
   entrypoint?: string;
   target?: Record<string, unknown>;
   lean_statement?: string;
+  model_id?: string;
+  api_key?: string;
 }
 
 export interface ComputeNodePayload {
@@ -251,6 +264,43 @@ export interface ApiKeyStatus {
   has_key: boolean;
 }
 
+export interface ClusterConfig {
+  url: string;
+  has_key: boolean;
+  masked_key: string;
+}
+
+export interface ClusterHealthcheckResult {
+  ok: boolean;
+  step?: string;
+  error?: string | null;
+  health_response_ms?: number;
+  slurm_job_id?: string;
+  slurm_state?: string;
+  rank_hosts?: Record<string, string>;
+  records_count?: number;
+}
+
+export interface ClusterNodeInfo {
+  node: string;
+  state: string;
+  cpus: string;
+  memory_mb: string;
+  free_memory_mb: string;
+  cpu_load: string;
+}
+
+export interface ClusterQueueEntry {
+  job_id: string;
+  name: string;
+  state: string;
+  time: string;
+  time_limit: string;
+  cpus: string;
+  reason: string;
+  user: string;
+}
+
 export interface TranslatePayload {
   natural_text: string;
   model_id: string;
@@ -285,5 +335,44 @@ export interface SuggestPayload {
 export interface SuggestResult {
   suggestion: string;
   model_id: string;
+  processing_time_seconds: number;
+}
+
+// --- Mathlib Lookup ---
+
+export interface MathlibLookupPayload {
+  declaration_name: string;
+}
+
+export interface MathlibLookupResult {
+  declaration_name: string;
+  lean_source: string;
+  found: boolean;
+  error_message: string;
+  processing_time_seconds: number;
+}
+
+// --- Mathlib Lineage ---
+
+export interface MathlibLineageNode {
+  id: number;
+  name: string;
+  lean_source: string;
+  found: boolean;
+  depth_level: number;
+}
+
+export interface MathlibLineageEdge {
+  source: number;
+  target: number;
+}
+
+export interface MathlibLineageResult {
+  root: string;
+  nodes: MathlibLineageNode[];
+  edges: MathlibLineageEdge[];
+  total_nodes: number;
+  depth: number;
+  truncated: boolean;
   processing_time_seconds: number;
 }

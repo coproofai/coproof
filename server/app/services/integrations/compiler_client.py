@@ -115,3 +115,115 @@ class CompilerClient:
         except Exception as e:
             logger.error(f'Project verification failed: {e}')
             raise CoProofError(f'Compiler Service Unavailable: {str(e)}', code=503)
+
+    # ------------------------------------------------------------------
+    # Mathlib Declaration Lookup  (non-blocking, same pattern as AgentsClient)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def submit_mathlib_lookup(cls, declaration_name: str) -> str:
+        """
+        Dispatch a Mathlib declaration lookup job to the lean worker.
+
+        Returns the Celery task ID immediately (non-blocking).
+        Poll the result with get_mathlib_lookup_result().
+        """
+        if not declaration_name or not declaration_name.strip():
+            raise CoProofError('declaration_name is required', code=400)
+
+        try:
+            task = cls._get_celery().send_task(
+                'tasks.get_mathlib_info',
+                args=[declaration_name.strip()],
+                queue=cls.LEAN_QUEUE_NAME,
+            )
+            logger.info('CompilerClient: dispatched mathlib lookup task %s for %s',
+                        task.id, declaration_name)
+            return task.id
+        except Exception as e:
+            logger.error('CompilerClient: mathlib lookup dispatch error: %s', e)
+            raise CoProofError(f'Lean Worker Unavailable: {str(e)}', code=503)
+
+    @classmethod
+    def get_mathlib_lookup_result(cls, task_id: str) -> dict | None:
+        """
+        Check whether a Mathlib lookup task has completed.
+
+        Returns the result dict when done, or None if still pending.
+        Raises CoProofError if the task failed.
+        """
+        try:
+            async_result = cls._get_celery().AsyncResult(task_id)
+
+            if not async_result.ready():
+                return None
+
+            if async_result.successful():
+                return async_result.result
+
+            err = async_result.result
+            logger.error('CompilerClient: mathlib lookup task %s failed: %s', task_id, err)
+            raise CoProofError(f'Mathlib lookup task failed: {str(err)}', code=500)
+        except CoProofError:
+            raise
+        except Exception as e:
+            logger.error('CompilerClient: get_mathlib_lookup_result error for %s: %s', task_id, e)
+            raise CoProofError(f'Lean Worker Unavailable: {str(e)}', code=503)
+
+    # ------------------------------------------------------------------
+    # Mathlib Lineage (dependency graph)  — same non-blocking pattern
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def submit_mathlib_lineage(cls, declaration_name: str, depth: int) -> str:
+        """
+        Dispatch a Mathlib lineage (dependency graph) job to the lean worker.
+
+        Returns the Celery task ID immediately (non-blocking).
+        Poll the result with get_mathlib_lineage_result().
+        """
+        if not declaration_name or not declaration_name.strip():
+            raise CoProofError('declaration_name is required', code=400)
+
+        depth = max(1, min(4, int(depth)))
+
+        try:
+            task = cls._get_celery().send_task(
+                'tasks.get_mathlib_lineage',
+                args=[declaration_name.strip(), depth],
+                queue=cls.LEAN_QUEUE_NAME,
+            )
+            logger.info(
+                'CompilerClient: dispatched mathlib lineage task %s for %s (depth=%d)',
+                task.id, declaration_name, depth,
+            )
+            return task.id
+        except Exception as e:
+            logger.error('CompilerClient: mathlib lineage dispatch error: %s', e)
+            raise CoProofError(f'Lean Worker Unavailable: {str(e)}', code=503)
+
+    @classmethod
+    def get_mathlib_lineage_result(cls, task_id: str) -> dict | None:
+        """
+        Check whether a Mathlib lineage task has completed.
+
+        Returns the result dict when done, or None if still pending.
+        Raises CoProofError if the task failed.
+        """
+        try:
+            async_result = cls._get_celery().AsyncResult(task_id)
+
+            if not async_result.ready():
+                return None
+
+            if async_result.successful():
+                return async_result.result
+
+            err = async_result.result
+            logger.error('CompilerClient: mathlib lineage task %s failed: %s', task_id, err)
+            raise CoProofError(f'Mathlib lineage task failed: {str(err)}', code=500)
+        except CoProofError:
+            raise
+        except Exception as e:
+            logger.error('CompilerClient: get_mathlib_lineage_result error for %s: %s', task_id, e)
+            raise CoProofError(f'Lean Worker Unavailable: {str(e)}', code=503)

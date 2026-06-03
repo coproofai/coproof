@@ -18,7 +18,9 @@ interface NavItem {
     <div class="app-shell" [class.nav-open]="menuOpen">
       <header class="shell-header">
         <div class="shell-header-inner">
-          <a routerLink="/menu" class="shell-brand" (click)="menuOpen = false">CoProof</a>
+          <a routerLink="/menu" class="shell-brand" (click)="menuOpen = false">
+            <img src="logo_bright_bg.svg" alt="CoProof" class="brand-logo" />
+          </a>
 
           <div class="shell-header-right">
             <ng-container *ngIf="isLoggedIn$ | async; else loginLink">
@@ -98,10 +100,10 @@ interface NavItem {
       display: flex; align-items: center; justify-content: space-between;
     }
     .shell-brand {
-      font-size: 1.15rem; font-weight: 800; letter-spacing: -0.02em;
-      color: #111827; text-decoration: none;
+      display: flex; align-items: center;
+      text-decoration: none;
     }
-    .shell-brand:hover { color: #374151; }
+    .brand-logo { height: 44px; display: block; }
     .shell-header-right { display: flex; align-items: center; gap: 10px; }
     .user-label { font-size: 0.82rem; color: #6b7280; font-weight: 500; white-space: nowrap; }
     .btn-outline-sm {
@@ -202,16 +204,15 @@ export class ShellComponent {
   }
 
   navItems: NavItem[] = [
-    { label: 'Main Menu',              route: '/menu' },
-    { label: 'Validation',             route: '/validation' },
-    { label: 'Translation',            route: '/translation' },
-    { label: 'Proof Search',           route: '/proof-search' },
-    { label: 'Lineage Search',         route: '/lineage-search' },
-    { label: 'Project Search',         route: '/project-search' },
-    { label: 'Environment Config',     route: '/environment-config' },
-    { label: 'Debug Code Executors',   route: '/debug-executors' },
-    { label: 'Create Project',         route: '/create-project',  protected: true },
-    { label: 'Open Workspace',         route: '/open-workspace',  protected: true },
-    { label: 'Account Config',         route: '/account-config',  protected: true },
+    { label: 'Menú Principal',          route: '/menu' },
+    { label: 'Validar Demostración',    route: '/validation' },
+    { label: 'Traducir a Lean',         route: '/translation' },
+    { label: 'Buscar Demostración',     route: '/proof-search' },
+    { label: 'Buscar Linaje',           route: '/lineage-search' },
+    { label: 'Buscar Proyectos',        route: '/project-search' },
+    { label: 'Guia de Uso',             route: '/guide' },
+    { label: 'Crear Proyecto',          route: '/create-project',  protected: true },
+    { label: 'Abrir Workspace',         route: '/open-workspace',  protected: true },
+    { label: 'Cuenta',                  route: '/account-config',  protected: true },
   ];
 }

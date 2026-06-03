@@ -1,9 +1,9 @@
 import uuid
 from sqlalchemy.ext.mutable import MutableDict
-from sqlalchemy.dialects.postgresql import ENUM, UUID
-from sqlalchemy.dialects import postgresql
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.sql import func
 from app.extensions import db
+from app.models.types import _JsonbColumn, _UuidColumn
 
 
 node_state_enum = ENUM(
@@ -24,18 +24,18 @@ node_kind_enum = ENUM(
 class Node(db.Model):
     __tablename__ = 'new_nodes'
 
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(_UuidColumn(), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.Text, nullable=False, default='root')
     url = db.Column(db.Text, nullable=False)
 
     project_id = db.Column(
-        UUID(as_uuid=True),
+        _UuidColumn(),
         db.ForeignKey('new_projects.id', ondelete='CASCADE'),
         nullable=False,
         index=True,
     )
     parent_node_id = db.Column(
-        UUID(as_uuid=True),
+        _UuidColumn(),
         db.ForeignKey('new_nodes.id', ondelete='SET NULL'),
         nullable=True,
         index=True,
@@ -43,8 +43,8 @@ class Node(db.Model):
 
     state = db.Column(node_state_enum, nullable=False, default='sorry')
     node_kind = db.Column(node_kind_enum, nullable=False, default='proof')
-    computation_spec = db.Column(MutableDict.as_mutable(postgresql.JSONB(astext_type=db.Text())), nullable=True)
-    last_computation_result = db.Column(MutableDict.as_mutable(postgresql.JSONB(astext_type=db.Text())), nullable=True)
+    computation_spec = db.Column(MutableDict.as_mutable(_JsonbColumn()), nullable=True)
+    last_computation_result = db.Column(MutableDict.as_mutable(_JsonbColumn()), nullable=True)
 
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

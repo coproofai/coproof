@@ -14,6 +14,7 @@ import { WorkspacePageComponent } from './pages/workspace-page/workspace-page';
 import { AccountConfigPageComponent } from './pages/account-config-page/account-config-page';
 import { EnvironmentConfigPageComponent } from './pages/environment-config-page/environment-config-page';
 import { DebugExecutorsPageComponent } from './pages/debug-executors-page/debug-executors-page';
+import { GuidePageComponent } from './pages/guide-page/guide-page';
 
 export const routes: Routes = [
 	{ path: 'auth', component: AuthPageComponent },
@@ -28,8 +29,7 @@ export const routes: Routes = [
 			{ path: 'lineage-search', component: LineageSearchPageComponent },
 			{ path: 'project-search', component: ProjectSearchPageComponent },
 			{ path: 'environment-config', component: EnvironmentConfigPageComponent },
-			{ path: 'debug-executors', component: DebugExecutorsPageComponent },
-			// — Protected: require authentication —
+			{ path: 'debug-executors', component: DebugExecutorsPageComponent },			{ path: 'guide', component: GuidePageComponent },			// — Protected: require authentication —
 			{ path: 'create-project', component: CreateProjectPageComponent, canActivate: [authGuard] },
 			{ path: 'open-workspace', component: OpenWorkspacePageComponent, canActivate: [authGuard] },
 			{ path: 'workspace', component: WorkspacePageComponent, canActivate: [authGuard] },

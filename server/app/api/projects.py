@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from app.services.project_service import ProjectService
 from app.services.auth_service import AuthService
 from app.services.github_service import GitHubService
@@ -9,6 +9,7 @@ from app.models.graph_node import GraphNode
 from app.models.user import User
 from app.models.project import Project
 from app.models.node import Node
+from app.models.user_followed_project import UserFollowedProject
 from app.extensions import cache, db
 from app.exceptions import CoProofError
 
@@ -73,22 +74,73 @@ def create_project():
     return jsonify(schema.dump(project)), 201
 
 @projects_bp.route('/public', methods=['GET'])
-@cache.cached(timeout=60, query_string=True)
 def list_public_projects():
     """
-    Cached endpoint for public discovery.
+    Public project discovery with node coverage stats.
+    Optionally enriched with is_following when a valid JWT is present.
     """
+    # Resolve optional caller identity (no error if unauthenticated)
+    current_user_id = None
+    try:
+        verify_jwt_in_request(optional=True)
+        current_user_id = get_jwt_identity()
+    except Exception:
+        pass
+
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-    
-    pagination = ProjectService.get_public_projects(page, per_page)
-    
-    schema = ProjectSchema(many=True)
+    q = request.args.get('q', '', type=str).strip()
+
+    query = Project.query.filter_by(visibility='public')
+    if q:
+        query = query.filter(Project.name.ilike(f'%{q}%'))
+    pagination = query.order_by(Project.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    # Collect followed project ids for the caller (if authenticated)
+    followed_ids: set = set()
+    if current_user_id:
+        rows = UserFollowedProject.query.filter_by(user_id=current_user_id).all()
+        followed_ids = {str(r.project_id) for r in rows}
+
+    schema = ProjectSchema()
+    projects_data = []
+    for p in pagination.items:
+        item = schema.dump(p)
+        # Node coverage stats
+        all_nodes = Node.query.filter_by(project_id=p.id).all()
+        total_nodes = len(all_nodes)
+        validated_nodes = sum(1 for n in all_nodes if n.state == 'validated')
+        node_ids_with_children = {
+            str(n.parent_node_id) for n in all_nodes if n.parent_node_id is not None
+        }
+        leaf_nodes = [n for n in all_nodes if str(n.id) not in node_ids_with_children]
+        total_leaves = len(leaf_nodes)
+        validated_leaves = sum(1 for n in leaf_nodes if n.state == 'validated')
+        item['total_nodes'] = total_nodes
+        item['validated_nodes'] = validated_nodes
+        item['total_leaves'] = total_leaves
+        item['validated_leaves'] = validated_leaves
+        # Author username
+        author = User.query.get(p.author_id)
+        item['author_login'] = author.github_login if author else None
+        # Contributor logins
+        contributors = []
+        for cid in (p.contributor_ids or []):
+            u = User.query.get(cid)
+            if u:
+                contributors.append(u.github_login or u.full_name or str(cid))
+        item['contributor_logins'] = contributors
+        # Follow state
+        item['is_following'] = str(p.id) in followed_ids
+        projects_data.append(item)
+
     return jsonify({
-        "projects": schema.dump(pagination.items),
+        "projects": projects_data,
         "total": pagination.total,
         "pages": pagination.pages,
-        "current_page": page
+        "current_page": page,
     }), 200
 
 
@@ -103,6 +155,54 @@ def list_accessible_projects():
         "projects": schema.dump(projects),
         "total": len(projects),
     }), 200
+
+
+@projects_bp.route('/<uuid:project_id>/follow', methods=['POST'])
+@jwt_required()
+def follow_project(project_id):
+    """Mark a public project as followed by the current user."""
+    user_id = get_jwt_identity()
+    project = Project.query.get_or_404(project_id)
+    if project.visibility != 'public':
+        raise CoProofError("Only public projects can be followed.", code=400)
+    existing = UserFollowedProject.query.filter_by(
+        user_id=user_id, project_id=project_id
+    ).first()
+    if not existing:
+        db.session.add(UserFollowedProject(user_id=user_id, project_id=project_id))
+        db.session.commit()
+    return jsonify({"status": "following", "project_id": str(project_id)}), 200
+
+
+@projects_bp.route('/<uuid:project_id>/follow', methods=['DELETE'])
+@jwt_required()
+def unfollow_project(project_id):
+    """Remove a follow on a project."""
+    user_id = get_jwt_identity()
+    row = UserFollowedProject.query.filter_by(
+        user_id=user_id, project_id=project_id
+    ).first()
+    if row:
+        db.session.delete(row)
+        db.session.commit()
+    return jsonify({"status": "unfollowed", "project_id": str(project_id)}), 200
+
+
+@projects_bp.route('/followed', methods=['GET'])
+@jwt_required()
+def list_followed_projects():
+    """Return all public projects that the current user is following."""
+    user_id = get_jwt_identity()
+    rows = UserFollowedProject.query.filter_by(user_id=user_id).all()
+    project_ids = [r.project_id for r in rows]
+    if not project_ids:
+        return jsonify({"projects": [], "total": 0}), 200
+    projects = Project.query.filter(
+        Project.id.in_(project_ids),
+        Project.visibility == 'public',
+    ).order_by(Project.created_at.desc()).all()
+    schema = ProjectSchema(many=True)
+    return jsonify({"projects": schema.dump(projects), "total": len(projects)}), 200
 
 
 @projects_bp.route('/<uuid:project_id>/graph', methods=['GET'])

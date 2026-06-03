@@ -17,7 +17,6 @@ export class OpenWorkspacePageComponent {
   currentUserId = '';
 
   selectedProjectId = '';
-  sessionType: 'individual' | 'collaborative' = 'individual';
   message = '';
   loading = false;
 
@@ -111,7 +110,7 @@ export class OpenWorkspacePageComponent {
       queryParams: {
         projectId: selected.id,
         projectName: selected.name,
-        sessionType: this.sessionType
+        sessionType: 'individual'
       }
     });
   }

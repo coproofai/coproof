@@ -24,7 +24,10 @@ import {
   PullRequestFilesResponse,
   ContributorDto,
   UserProfileDto,
-  GitHubInvitationDto
+  GitHubInvitationDto,
+  PublicProjectDto,
+  MathlibLookupResult,
+  MathlibLineageResult,
 } from './task.models';
 
 @Injectable({
@@ -232,6 +235,29 @@ export class TaskService {
     });
   }
 
+  searchPublicProjects(q = '', page = 1, perPage = 40): Observable<{ projects: PublicProjectDto[]; total: number; pages: number; current_page: number }> {
+    const params: Record<string, string> = { page: String(page), per_page: String(perPage) };
+    if (q) params['q'] = q;
+    return this.http.get<{ projects: PublicProjectDto[]; total: number; pages: number; current_page: number }>(
+      `${this.apiBaseUrl}/projects/public`,
+      { headers: this.authHeaders(), params }
+    );
+  }
+
+  followProject(projectId: string): Observable<{ status: string; project_id: string }> {
+    return this.http.post<{ status: string; project_id: string }>(
+      `${this.apiBaseUrl}/projects/${projectId}/follow`, {},
+      { headers: this.authHeaders() }
+    );
+  }
+
+  unfollowProject(projectId: string): Observable<{ status: string; project_id: string }> {
+    return this.http.delete<{ status: string; project_id: string }>(
+      `${this.apiBaseUrl}/projects/${projectId}/follow`,
+      { headers: this.authHeaders() }
+    );
+  }
+
   getSimpleGraph(projectId: string): Observable<SimpleGraphResponse> {
     return this.http.get<SimpleGraphResponse>(`${this.apiBaseUrl}/projects/${projectId}/graph/simple`, {
       headers: this.authHeaders()
@@ -415,6 +441,51 @@ export class TaskService {
     );
   }
 
+  // --- Cluster config ---
+
+  getClusterConfig(): Observable<import('./task.models').ClusterConfig> {
+    return this.http.get<import('./task.models').ClusterConfig>(
+      `${this.apiBaseUrl}/cluster/config`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  saveClusterConfig(url: string, apiKey: string): Observable<{ status: string }> {
+    const body: Record<string, string> = {};
+    if (url) body['url'] = url;
+    if (apiKey) body['api_key'] = apiKey;
+    return this.http.put<{ status: string }>(
+      `${this.apiBaseUrl}/cluster/config`,
+      body,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  clusterHealthcheck(url?: string, apiKey?: string): Observable<import('./task.models').ClusterHealthcheckResult> {
+    const body: Record<string, string> = {};
+    if (url) body['url'] = url;
+    if (apiKey) body['api_key'] = apiKey;
+    return this.http.post<import('./task.models').ClusterHealthcheckResult>(
+      `${this.apiBaseUrl}/cluster/healthcheck`,
+      body,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  clusterNodes(): Observable<{ nodes: import('./task.models').ClusterNodeInfo[]; timestamp: number }> {
+    return this.http.get<{ nodes: import('./task.models').ClusterNodeInfo[]; timestamp: number }>(
+      `${this.apiBaseUrl}/cluster/nodes`,
+      { headers: this.authHeaders() }
+    );
+  }
+
+  clusterQueue(): Observable<{ jobs: import('./task.models').ClusterQueueEntry[]; timestamp: number }> {
+    return this.http.get<{ jobs: import('./task.models').ClusterQueueEntry[]; timestamp: number }>(
+      `${this.apiBaseUrl}/cluster/queue`,
+      { headers: this.authHeaders() }
+    );
+  }
+
   // --- FL → NL (converse translation) ---
 
   submitFl2nl(payload: import('./task.models').Fl2NlPayload): Observable<{ task_id: string }> {
@@ -444,6 +515,36 @@ export class TaskService {
   getSuggestResult(taskId: string): Observable<SuggestResult | { status: 'pending' }> {
     return this.http.get<SuggestResult | { status: 'pending' }>(
       `${this.apiBaseUrl}/agents/suggest/${taskId}/result`
+    );
+  }
+
+  // --- Mathlib Declaration Lookup ---
+
+  submitMathlibLookup(declarationName: string): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${this.apiBaseUrl}/lean/mathlib/lookup/submit`,
+      { declaration_name: declarationName }
+    );
+  }
+
+  getMathlibLookupResult(taskId: string): Observable<MathlibLookupResult | { status: 'pending' }> {
+    return this.http.get<MathlibLookupResult | { status: 'pending' }>(
+      `${this.apiBaseUrl}/lean/mathlib/lookup/${taskId}/result`
+    );
+  }
+
+  // --- Mathlib Lineage ---
+
+  submitMathlibLineage(declarationName: string, depth: number): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${this.apiBaseUrl}/lean/mathlib/lineage/submit`,
+      { declaration_name: declarationName, depth }
+    );
+  }
+
+  getMathlibLineageResult(taskId: string): Observable<MathlibLineageResult | { status: 'pending' }> {
+    return this.http.get<MathlibLineageResult | { status: 'pending' }>(
+      `${this.apiBaseUrl}/lean/mathlib/lineage/${taskId}/result`
     );
   }
 }

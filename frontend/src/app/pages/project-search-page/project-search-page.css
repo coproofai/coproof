@@ -1,5 +1,25 @@
     .max-wrap { max-width: 1320px; margin: 0 auto; }
-    h1 { margin: 0 0 18px 0; }
+    h1 { margin: 0 0 14px 0; }
+
+    /* ── TABS ── */
+    .tab-bar { display: flex; gap: 6px; margin-bottom: 16px; }
+    .tab-btn {
+      padding: 8px 18px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: #555;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover:not(:disabled) { background: #f3f4f6; }
+    .tab-btn.tab-active { background: #1e293b; border-color: #1e293b; color: #fff; }
+    .tab-btn:disabled { opacity: 0.45; cursor: default; }
+    .tab-lock { margin-left: 4px; }
+
+    /* ── LAYOUT ── */
     .layout { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
     .left, .right {
       background: #fff;
@@ -8,6 +28,8 @@
       padding: 14px;
       min-height: 420px;
     }
+
+    /* ── SEARCH ── */
     .search {
       width: 100%;
       padding: 10px;
@@ -16,44 +38,92 @@
       box-sizing: border-box;
       margin-bottom: 12px;
     }
-    h2 { margin: 0 0 10px 0; color: #555; }
+
+    /* ── PROJECT LIST ITEM ── */
     .project-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
       border: 1px solid #f3f4f6;
       border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 8px;
+      padding: 9px 10px;
+      margin-bottom: 6px;
       cursor: pointer;
       background: #fff;
+      gap: 8px;
     }
     .project-item:hover { background: #f9fafb; }
-    .project-item.selected { background: #e5e5e5; border-color: #333; }
-    .project-item small { font-weight: 700; color: #555; }
-    .visibility {
-      display: inline-block;
-      margin: 0 0 10px 0;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 0.8rem;
-      font-weight: 700;
+    .project-item.selected { background: #e5e7eb; border-color: #333; }
+    .pname { font-weight: 600; font-size: 0.88rem; color: #1e293b; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── BADGES ── */
+    .follow-badge {
+      background: #dbeafe; color: #1d4ed8;
+      border-radius: 999px; padding: 2px 8px;
+      font-size: 0.74rem; font-weight: 700; flex-shrink: 0;
     }
-    .public { background: #dcfce7; color: #166534; }
-    .private { background: #fee2e2; color: #991b1b; }
-    h3 { margin: 12px 0 8px 0; color: #555; }
+    .role-badge {
+      background: #e5e7eb; color: #374151;
+      border-radius: 999px; padding: 2px 8px;
+      font-size: 0.74rem; font-weight: 700; flex-shrink: 0;
+    }
+    .role-badge.role-owner { background: #fef3c7; color: #92400e; }
+
+    /* ── DETAIL HEADER ── */
+    .detail-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; }
+    .detail-header h2 { margin: 0; flex: 1; }
+
+    /* ── FOLLOW BUTTON ── */
+    .follow-btn {
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 2px solid #3b82f6;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .follow-btn:hover:not(:disabled) { background: #dbeafe; }
+    .follow-btn.following { background: #f0fdf4; border-color: #22c55e; color: #166534; }
+    .follow-btn.following:hover:not(:disabled) { background: #dcfce7; }
+    .follow-btn:disabled { opacity: 0.5; cursor: default; }
+
+    /* ── DESCRIPTION / TAGS ── */
+    .desc { color: #555; font-size: 0.88rem; margin: 4px 0 8px 0; }
+    .tags-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .tag { background: #f3f4f6; border-radius: 999px; padding: 3px 10px; font-size: 0.78rem; font-weight: 600; color: #555; }
+
+    /* ── COLLABORATORS ── */
+    h3 { margin: 12px 0 8px 0; color: #555; font-size: 0.92rem; }
     .collaborators { display: flex; flex-wrap: wrap; gap: 8px; }
     .collaborators span {
-      background: #e5e7eb;
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-size: 0.84rem;
-      font-weight: 600;
+      background: #e5e7eb; border-radius: 999px;
+      padding: 4px 10px; font-size: 0.82rem; font-weight: 600;
     }
-    .progress-row { display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600; color: #555; }
-    .bar { height: 12px; border-radius: 6px; overflow: hidden; background: #e5e7eb; margin-top: 8px; }
-    .fill { height: 100%; background: #333; }
-    .progress-label { margin: 6px 0 0 0; color: #666; font-size: 0.88rem; }
-    .empty { color: #666; }
+    .collab-owner { background: #fef3c7 !important; color: #92400e; }
+    .empty-inline { color: #9ca3af; font-size: 0.82rem; font-style: italic; }
+
+    /* ── PROGRESS BARS ── */
+    .progress-row { display: flex; justify-content: space-between; font-size: 0.87rem; font-weight: 600; color: #555; margin-top: 4px; }
+    .pct-lbl { color: #1e293b; font-weight: 700; }
+    .bar { height: 10px; border-radius: 5px; overflow: hidden; background: #e5e7eb; margin: 6px 0 12px 0; }
+    .fill { height: 100%; background: #334155; transition: width 0.4s ease; }
+    .bar-leaves .fill-leaves { background: #6366f1; }
+
+    /* ── MISC ── */
+    .loading-row { display: flex; align-items: center; gap: 8px; color: #6b7280; font-size: 0.87rem; margin-bottom: 8px; }
+    .mini-spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #e5e7eb; border-top-color: #6366f1;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error-msg { color: #991b1b; font-size: 0.85rem; margin-bottom: 8px; }
+    .empty { color: #9ca3af; font-size: 0.85rem; }
+    .private-note { margin-top: 16px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; font-size: 0.87rem; color: #555; }
+    .auth-prompt { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 32px; text-align: center; color: #6b7280; }
+
     @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
-  

@@ -1,43 +1,125 @@
-    <div class="max-wrap">
-      <h1>Buscar Proyectos de Formalización</h1>
+<div class="max-wrap">
+  <h1>Buscar Proyectos de Formalización</h1>
 
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab-btn" [class.tab-active]="activeTab === 'public'" (click)="switchTab('public')">Proyectos Públicos</button>
+    <button class="tab-btn" [class.tab-active]="activeTab === 'private'"
+            (click)="switchTab('private')"
+            [disabled]="!(isLoggedIn$ | async)"
+            [title]="!(isLoggedIn$ | async) ? 'Requiere autenticación' : ''">
+      Mis Proyectos Privados
+      <span *ngIf="!(isLoggedIn$ | async)" class="tab-lock">🔒</span>
+    </button>
+  </div>
+
+  <!-- ══ PUBLIC TAB ══════════════════════════════════════════════════════════ -->
+  <div *ngIf="activeTab === 'public'" class="layout">
+    <section class="left">
+      <input class="search" [(ngModel)]="publicQuery" (input)="onPublicQueryChange()"
+             placeholder="Buscar por nombre..." />
+      <div *ngIf="publicLoading" class="loading-row"><span class="mini-spinner"></span> Cargando…</div>
+      <p *ngIf="publicError" class="error-msg">{{ publicError }}</p>
+      <div *ngFor="let p of publicProjects" class="project-item"
+           [class.selected]="p.id === selectedPublic?.id" (click)="selectPublic(p)">
+        <span class="pname">{{ p.name }}</span>
+        <span class="follow-badge" *ngIf="p.is_following">Siguiendo</span>
+      </div>
+      <p *ngIf="!publicLoading && publicProjects.length === 0 && !publicError" class="empty">
+        No se encontraron proyectos públicos.
+      </p>
+    </section>
+
+    <section class="right">
+      <ng-container *ngIf="selectedPublic; else welcomePublic">
+        <div class="detail-header">
+          <h2>{{ selectedPublic.name }}</h2>
+          <button *ngIf="isLoggedIn$ | async"
+                  class="follow-btn"
+                  [class.following]="selectedPublic.is_following"
+                  [disabled]="followingInProgress.has(selectedPublic.id)"
+                  (click)="toggleFollow(selectedPublic)">
+            {{ selectedPublic.is_following ? 'Dejar de seguir' : '+ Seguir' }}
+          </button>
+        </div>
+
+        <p *ngIf="selectedPublic.description" class="desc">{{ selectedPublic.description }}</p>
+        <div class="tags-row" *ngIf="selectedPublic.tags?.length">
+          <span *ngFor="let tag of selectedPublic.tags" class="tag">{{ tag }}</span>
+        </div>
+
+        <h3>Colaboradores</h3>
+        <div class="collaborators">
+          <span class="collab-owner">{{ selectedPublic.author_login ?? selectedPublic.author?.full_name ?? '—' }} (autor)</span>
+          <span *ngFor="let login of selectedPublic.contributor_logins">{{ login }}</span>
+          <span *ngIf="!selectedPublic.contributor_logins?.length" class="empty-inline">Sin colaboradores adicionales</span>
+        </div>
+
+        <h3>Cobertura de Nodos (todos los nodos)</h3>
+        <div class="progress-row">
+          <span>Validados: {{ selectedPublic.validated_nodes }} / {{ selectedPublic.total_nodes }}</span>
+          <span class="pct-lbl">{{ progressAll(selectedPublic) }}%</span>
+        </div>
+        <div class="bar"><div class="fill" [style.width.%]="progressAll(selectedPublic)"></div></div>
+
+        <h3>Cobertura de Hojas (nodos sin hijos)</h3>
+        <div class="progress-row">
+          <span>Validadas: {{ selectedPublic.validated_leaves }} / {{ selectedPublic.total_leaves }}</span>
+          <span class="pct-lbl">{{ progressLeaves(selectedPublic) }}%</span>
+        </div>
+        <div class="bar bar-leaves"><div class="fill fill-leaves" [style.width.%]="progressLeaves(selectedPublic)"></div></div>
+      </ng-container>
+      <ng-template #welcomePublic>
+        <h2>Detalle del Proyecto</h2>
+        <p>Selecciona un proyecto de la lista para ver su información y progreso.</p>
+      </ng-template>
+    </section>
+  </div>
+
+  <!-- ══ PRIVATE TAB ═════════════════════════════════════════════════════════ -->
+  <div *ngIf="activeTab === 'private'">
+    <ng-container *ngIf="isLoggedIn$ | async; else requireAuth">
       <div class="layout">
         <section class="left">
-          <input class="search" [(ngModel)]="query" (input)="filterProjects()" placeholder="Buscar por nombre del proyecto..." />
-          <h2>Resultados</h2>
-          <div *ngFor="let project of filtered" class="project-item" [class.selected]="project.id === selected?.id" (click)="select(project)">
-            <span>{{ project.name }}</span>
-            <small>{{ project.visibility }}</small>
+          <input class="search" [(ngModel)]="privateQuery" placeholder="Filtrar por nombre…" />
+          <div *ngIf="privateLoading" class="loading-row"><span class="mini-spinner"></span> Cargando…</div>
+          <p *ngIf="privateError" class="error-msg">{{ privateError }}</p>
+          <div *ngFor="let p of filteredPrivate" class="project-item"
+               [class.selected]="p.id === selectedPrivate?.id" (click)="selectPrivate(p)">
+            <span class="pname">{{ p.name }}</span>
+            <span class="role-badge" [class.role-owner]="isOwner(p)">{{ isOwner(p) ? 'Autor' : 'Colaborador' }}</span>
           </div>
-          <p *ngIf="filtered.length === 0" class="empty">No se encontraron proyectos.</p>
+          <p *ngIf="!privateLoading && filteredPrivate.length === 0 && !privateError" class="empty">
+            No tienes proyectos privados.
+          </p>
         </section>
 
         <section class="right">
-          <ng-container *ngIf="selected; else welcome">
-            <h2>{{ selected.name }}</h2>
-            <p class="visibility" [class.public]="selected.visibility === 'Público'" [class.private]="selected.visibility === 'Privado'">
-              {{ selected.visibility }}
-            </p>
-
-            <h3>Colaboradores</h3>
-            <div class="collaborators">
-              <span *ngFor="let user of selected.collaborators">{{ user }}</span>
+          <ng-container *ngIf="selectedPrivate; else welcomePrivate">
+            <div class="detail-header">
+              <h2>{{ selectedPrivate.name }}</h2>
+              <span class="role-badge" [class.role-owner]="isOwner(selectedPrivate)">
+                {{ isOwner(selectedPrivate) ? 'Autor' : 'Colaborador' }}
+              </span>
             </div>
-
-            <h3>Progreso General de Metas</h3>
-            <div class="progress-row">
-              <span>Demostrado: {{ selected.demonstrated }}</span>
-              <span>Por demostrar: {{ selected.total - selected.demonstrated }}</span>
+            <p *ngIf="selectedPrivate.description" class="desc">{{ selectedPrivate.description }}</p>
+            <div class="tags-row" *ngIf="selectedPrivate.tags?.length">
+              <span *ngFor="let tag of selectedPrivate.tags" class="tag">{{ tag }}</span>
             </div>
-            <div class="bar"><div class="fill" [style.width.%]="progress(selected)"></div></div>
-            <p class="progress-label">{{ progress(selected) }}% del total de nodos completado.</p>
+            <p class="private-note">Este proyecto es privado. Para ver el grafo, ábrelo desde <strong>Open Workspace</strong>.</p>
           </ng-container>
-
-          <ng-template #welcome>
+          <ng-template #welcomePrivate>
             <h2>Detalle del Proyecto</h2>
-            <p>Selecciona un proyecto para ver su información y progreso.</p>
+            <p>Selecciona un proyecto para ver sus detalles.</p>
           </ng-template>
         </section>
       </div>
-    </div>
-  
+    </ng-container>
+
+    <ng-template #requireAuth>
+      <div class="auth-prompt">
+        <p>Debes autenticarte para ver tus proyectos privados.</p>
+      </div>
+    </ng-template>
+  </div>
+</div>

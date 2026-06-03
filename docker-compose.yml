@@ -18,6 +18,9 @@ services:
       - CELERY_GIT_ENGINE_QUEUE=git_engine_queue
       - CELERY_NL2FL_QUEUE=nl2fl_queue
       - CELERY_AGENTS_QUEUE=agents_queue
+      - CLUSTER_API_URL=${CLUSTER_API_URL:-http://192.168.0.17:8765}
+      - CLUSTER_API_KEY=${CLUSTER_API_KEY:-}
+      - CELERY_CLUSTER_COMPUTATION_QUEUE=cluster_computation_queue
       - JWT_SECRET_KEY=dev_jwt_secret_key_do_not_use_in_prod
       - SECRET_KEY=dev_secret_key_do_not_use_in_prod
     depends_on:
@@ -28,6 +31,8 @@ services:
       lean-worker:
         condition: service_started
       computation-worker:
+        condition: service_started
+      cluster-computation-worker:
         condition: service_started
       nl2fl-worker:
         condition: service_started
@@ -83,6 +88,22 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_COMPUTATION_QUEUE=computation_queue
+    depends_on:
+      redis:
+        condition: service_started
+
+  cluster-computation-worker:
+    build:
+      context: ./cluster_computation
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_CLUSTER_COMPUTATION_QUEUE=cluster_computation_queue
+      - CLUSTER_API_URL=${CLUSTER_API_URL:-http://192.168.0.17:8765}
+      - CLUSTER_API_KEY=${CLUSTER_API_KEY:-}
+      - CLUSTER_POLL_INTERVAL=4
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_started
