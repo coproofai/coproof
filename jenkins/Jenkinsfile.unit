@@ -115,28 +115,22 @@ pipeline {
         }
 
         // ── Frontend Unit Tests (ng test via @angular/build:unit-test) ─────
-        // node_modules is stashed after the first install and restored on
-        // subsequent runs when package-lock.json has not changed, skipping
-        // the 3-minute npm ci step entirely.
+        // A .npm-lock-hash file tracks the last installed package-lock.json
+        // checksum. npm ci is skipped entirely when it hasn't changed.
         stage('Frontend Unit Tests') {
             steps {
                 dir('/workspace/frontend') {
-                    script {
-                        def lockHash = sh(
-                            script: 'md5sum package-lock.json | cut -d" " -f1',
-                            returnStdout: true
-                        ).trim()
-                        def stashKey = "npm-modules-${lockHash}"
-
-                        try {
-                            unstash stashKey
-                            echo "Restored node_modules from stash (${lockHash})"
-                        } catch (e) {
-                            echo "Stash miss — running npm ci"
-                            sh 'npm ci --prefer-offline'
-                            stash name: stashKey, includes: 'node_modules/**'
-                        }
-                    }
+                    sh '''
+                        LOCK_HASH=$(md5sum package-lock.json | cut -d" " -f1)
+                        HASH_FILE=".npm-lock-hash"
+                        if [ ! -d node_modules ] || [ ! -f "$HASH_FILE" ] || [ "$(cat $HASH_FILE)" != "$LOCK_HASH" ]; then
+                            echo "package-lock.json changed or node_modules missing — running npm ci"
+                            npm ci --prefer-offline
+                            echo "$LOCK_HASH" > "$HASH_FILE"
+                        else
+                            echo "node_modules up to date (hash: $LOCK_HASH) — skipping npm ci"
+                        fi
+                    '''
                     sh '''npx ng test --configuration=ci \
                         --include="src/app/tcd12-auth-service.spec.ts" \
                         --include="src/app/tcd13-task-service.spec.ts" \
