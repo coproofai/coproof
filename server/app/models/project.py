@@ -36,7 +36,7 @@ class Project(db.Model):
         index=True,
     )
     contributor_ids = db.Column(
-        MutableList.as_mutable(_ArrayColumn(UUID(as_uuid=True))),
+        MutableList.as_mutable(_ArrayColumn(_UuidColumn())),
         nullable=False,
         default=list,
     )
