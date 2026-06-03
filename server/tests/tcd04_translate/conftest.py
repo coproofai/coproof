@@ -17,7 +17,7 @@ import unittest.mock as mock
 
 import pytest
 from flask_jwt_extended import create_access_token
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import StaticPool
 
 from app import create_app
 from app.extensions import db as _db
@@ -31,9 +31,7 @@ class UnitTestConfig:
     TESTING = True
     DEBUG = True
     SECRET_KEY = "unit-test-secret"
-    SQLALCHEMY_DATABASE_URI = (
-        "postgresql://coproof:coproofpass@localhost:5432/coproof_test_db"
-    )
+    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = "unit-test-jwt-secret-key-32-bytes!"
     JWT_ACCESS_TOKEN_EXPIRES = False
@@ -54,7 +52,11 @@ class UnitTestConfig:
     GITHUB_CLIENT_SECRET = "test_client_secret"
     GITHUB_OAUTH_SCOPES = "repo,read:user,user:email"
     WTF_CSRF_ENABLED = False
-    SQLALCHEMY_ENGINE_OPTIONS = {"poolclass": NullPool}
+    # StaticPool: all connections share the same in-memory SQLite database.
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "poolclass": StaticPool,
+        "connect_args": {"check_same_thread": False},
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -83,9 +85,7 @@ def app():
     yield application
 
     with application.app_context():
-        from sqlalchemy import text as sa_text
-        with _db.engine.begin() as conn:
-            conn.execute(sa_text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
+        _db.drop_all()
 
     patcher.stop()
     env_patch.stop()
@@ -110,16 +110,9 @@ def clean_tables(app):
     from sqlalchemy import text as sa_text
 
     with app.app_context():
-        with _db.engine.connect().execution_options(
-            isolation_level="AUTOCOMMIT"
-        ) as conn:
-            conn.execute(sa_text(
-                "SELECT pg_terminate_backend(pid) "
-                "FROM pg_stat_activity "
-                "WHERE datname = current_database() "
-                "  AND pid <> pg_backend_pid()"
-            ))
-            conn.execute(sa_text("TRUNCATE TABLE users CASCADE"))
+        for table in reversed(_db.metadata.sorted_tables):
+            _db.session.execute(table.delete())
+        _db.session.commit()
 
     yield
 
