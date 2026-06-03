@@ -144,10 +144,12 @@ PYEOF
         // ── Combined Services — Concurrent Multi-Worker Load ─────────────────
         // Fires Lean verifications in concurrent batches (1/4/8 workers).
         // Writes lean-concurrent-load.json inside the container, then copies out.
+        // NOTE: tr -d '\r' strips Windows CRLF from the heredoc before the bytes
+        //       reach Python inside the container (Python 3.12 rejects \r in source).
         stage('Combined: Lean + Computation Concurrent Load') {
             steps {
                 sh '''
-docker compose -f /workspace/docker-compose.yml exec -T lean-worker python3 - <<'PYEOF'
+tr -d '\r' <<'PYEOF' | docker compose -f /workspace/docker-compose.yml exec -T lean-worker python3 -
 import concurrent.futures, time, json, sys
 sys.path.insert(0, '/app')
 from lean_service import verify_lean_proof
@@ -201,7 +203,7 @@ PYEOF
         stage('Combined: Web → Celery Pipeline Throughput') {
             steps {
                 sh '''
-docker compose -f /workspace/docker-compose.yml exec -T web python3 - <<'PYEOF'
+tr -d '\r' <<'PYEOF' | docker compose -f /workspace/docker-compose.yml exec -T web python3 -
 import os, time, json, redis
 
 r = redis.from_url(os.environ['REDIS_URL'])

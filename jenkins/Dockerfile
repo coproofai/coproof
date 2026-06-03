@@ -58,7 +58,8 @@ RUN jenkins-plugin-cli --plugins \
     workflow-aggregator \
     git \
     pipeline-stage-view \
-    docker-workflow
+    docker-workflow \
+    junit
 
 USER root
 ENTRYPOINT ["/docker-entrypoint.sh"]
