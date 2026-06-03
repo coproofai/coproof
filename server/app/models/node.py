@@ -1,9 +1,31 @@
 import uuid
+from sqlalchemy import types as sa_types
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.dialects.postgresql import ENUM, UUID
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql import func
 from app.extensions import db
+
+
+class _JsonbColumn(sa_types.TypeDecorator):
+    """
+    Portable JSONB column.
+    Compiles to JSONB on PostgreSQL (production) and JSON on all other
+    dialects (SQLite for unit tests).
+    """
+    impl = sa_types.Text
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(postgresql.JSONB(astext_type=sa_types.Text()))
+        return dialect.type_descriptor(sa_types.JSON())
+
+    def process_bind_param(self, value, dialect):
+        return value
+
+    def process_result_value(self, value, dialect):
+        return value
 
 
 node_state_enum = ENUM(
@@ -43,8 +65,8 @@ class Node(db.Model):
 
     state = db.Column(node_state_enum, nullable=False, default='sorry')
     node_kind = db.Column(node_kind_enum, nullable=False, default='proof')
-    computation_spec = db.Column(MutableDict.as_mutable(postgresql.JSONB(astext_type=db.Text())), nullable=True)
-    last_computation_result = db.Column(MutableDict.as_mutable(postgresql.JSONB(astext_type=db.Text())), nullable=True)
+    computation_spec = db.Column(MutableDict.as_mutable(_JsonbColumn()), nullable=True)
+    last_computation_result = db.Column(MutableDict.as_mutable(_JsonbColumn()), nullable=True)
 
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
