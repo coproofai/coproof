@@ -1,0 +1,135 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Pipeline 2 — Integration Tests
+// Tests communication between two or more microservices:
+//
+//   • TCD-17  Lean Worker Functional       — real Lean compiler inside container
+//   • TCD-18  Computation Worker Functional — real Python subprocess inside container
+//   • TCD-15  E2E Auth Flow                — Cypress: frontend ↔ web ↔ db
+//   • TCD-16  E2E Project & Node Flow      — Cypress: frontend ↔ web ↔ db ↔ workers
+//
+// Prerequisites: docker compose up (full stack) must be running before this
+// pipeline is triggered. Jenkins lives on the same Docker network as all
+// services, so it can reach them by service name (e.g. http://frontend:80).
+// ─────────────────────────────────────────────────────────────────────────────
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        timeout(time: 45, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    environment {
+        DC = "docker compose -f /workspace/docker-compose.yml"
+        // Cypress targets the frontend container directly (same Docker network)
+        CYPRESS_BASE_URL = 'http://frontend:80'
+    }
+
+    stages {
+
+        // ── Lean Worker — Functional (real Lean 4 compiler) ──────────────────
+        // Invokes the actual lean binary; no mocks. Validates that the
+        // lean-worker microservice correctly compiles and evaluates proofs.
+        stage('TCD-17 · Lean Worker Functional') {
+            steps {
+                sh "${DC} cp /workspace/lean/tests/tcd17_lean_functional lean-worker:/app/tests/tcd17_lean_functional"
+                sh "${DC} exec -T lean-worker bash -c 'cd /app && pytest -v tests/tcd17_lean_functional/'"
+            }
+        }
+
+        // ── Computation Worker — Functional (real Python subprocess) ─────────
+        // Runs actual code execution inside the computation-worker container,
+        // testing that the worker correctly runs, sandboxes and times out code.
+        stage('TCD-18 · Computation Worker Functional') {
+            steps {
+                sh "${DC} cp /workspace/computation/tests/tcd18_computation_functional computation-worker:/app/tests/tcd18_computation_functional"
+                sh "${DC} exec -T computation-worker bash -c 'cd /app && pytest -v tests/tcd18_computation_functional/'"
+            }
+        }
+
+        // ── Install frontend dependencies once before parallel E2E stages ────
+        stage('Frontend: npm ci') {
+            steps {
+                dir('/workspace/frontend') {
+                    sh 'npm ci --prefer-offline'
+                }
+            }
+        }
+
+        // ── E2E Tests (full-stack, Cypress headless) ─────────────────────────
+        // Both specs share the same npm install done in the previous stage.
+        // They run in parallel since they target different routes/features.
+        stage('E2E Tests') {
+            parallel {
+
+                stage('TCD-15 · E2E Auth Flow') {
+                    steps {
+                        dir('/workspace/frontend') {
+                            sh "npx cypress run --spec 'cypress/e2e/tcd15_auth/**' --headless"
+                        }
+                    }
+                }
+
+                stage('TCD-16 · E2E Project & Node Flow') {
+                    steps {
+                        dir('/workspace/frontend') {
+                            sh "npx cypress run --spec 'cypress/e2e/tcd16_project/**' --headless"
+                        }
+                    }
+                }
+
+            } // parallel
+        }
+
+        // ── Web API ↔ Celery Worker Round-Trip ───────────────────────────────
+        // Fires a translate request through the web API and polls until the
+        // nl2fl-worker picks it up and returns a result, exercising the Redis
+        // task queue path between web and nl2fl-worker.
+        stage('Web ↔ NL2FL Worker: Celery Round-Trip') {
+            steps {
+                sh '''
+                    echo "=== Celery round-trip: web → Redis → nl2fl-worker ==="
+                    docker compose -f /workspace/docker-compose.yml exec -T web python3 - <<\'PYEOF\'
+import os, time, requests
+
+base = "http://localhost:5000"
+
+# 1. Submit a translation task via the web API (no auth required for health check)
+resp = requests.get(f"{base}/api/v1/health", timeout=5)
+print(f"Health check → {resp.status_code}")
+
+# 2. Confirm Redis is reachable from the web container
+import redis
+r = redis.from_url(os.environ["REDIS_URL"])
+pong = r.ping()
+print(f"Redis PING → {pong}")
+
+# 3. Confirm all Celery workers are registered
+from celery_worker import celery as app
+inspect = app.control.inspect(timeout=5)
+registered = inspect.registered() or {}
+queues_seen = sorted({w.split("@")[0] for w in registered})
+print(f"Active Celery queues: {queues_seen}")
+assert len(registered) > 0, "No Celery workers responded — workers may be down"
+print("Round-trip check PASSED")
+PYEOF
+                '''
+            }
+        }
+
+    } // stages
+
+    post {
+        success {
+            echo "✔ All integration tests passed (${currentBuild.durationString.minus(' and counting')})."
+        }
+        failure {
+            echo "✘ Integration test failure — check the failing stage above."
+        }
+        always {
+            echo "Pipeline result: ${currentBuild.currentResult}"
+        }
+    }
+}

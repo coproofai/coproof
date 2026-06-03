@@ -3,7 +3,8 @@ import re
 import time
 import uuid
 import requests
-from sqlalchemy import or_
+from sqlalchemy import or_, type_coerce
+from sqlalchemy.dialects.postgresql import ARRAY as pg_ARRAY, UUID as pg_UUID
 from app.models.project import Project
 from app.models.node import Node
 from app.extensions import db
@@ -150,7 +151,7 @@ class ProjectService:
             or_(
                 Project.id.in_(followed_ids),
                 Project.author_id == user_uuid,
-                Project.contributor_ids.contains([user_uuid]),
+                type_coerce(Project.contributor_ids, pg_ARRAY(pg_UUID(as_uuid=True))).contains([user_uuid]),
             )
         ).order_by(Project.created_at.desc()).all()
 

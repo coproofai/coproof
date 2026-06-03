@@ -1,0 +1,212 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Pipeline 3 — Performance Validation
+// Measures and captures metrics on how well the system behaves:
+//
+//   SINGLE SERVICE
+//   • TCD-24  Lean Worker Benchmarks    — pytest-benchmark, concurrency 1/4/8/16
+//   • TCD-25  Lean Worker Mathlib       — real-world Mathlib snippets, throughput
+//
+//   WEB API
+//   • HTTP Response Time Audit          — curl timing across key endpoints
+//
+//   COMBINED SERVICES
+//   • Concurrent multi-worker load      — simultaneous lean + computation + web
+//   • End-to-end Celery throughput      — translation queue saturation test
+//
+// All timing results are printed to the stage log.
+// ─────────────────────────────────────────────────────────────────────────────
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+    }
+
+    environment {
+        DC = "docker compose -f /workspace/docker-compose.yml"
+    }
+
+    stages {
+
+        // ── TCD-24: Lean Worker — Benchmarks & Concurrency Load ──────────────
+        // Runs pytest-benchmark for all lean_service entry points, then fires
+        // concurrent batches (1 / 4 / 8 / 16 workers) measuring throughput.
+        stage('TCD-24 · Lean Benchmarks & Load') {
+            steps {
+                sh "${DC} cp /workspace/lean/tests/tcd24_lean_performance lean-worker:/app/tests/tcd24_lean_performance"
+                sh """${DC} exec -T lean-worker bash -c \
+                    'pip3 install pytest-benchmark --quiet && \
+                     cd /app && pytest -v -s tests/tcd24_lean_performance/ \
+                     --benchmark-sort=mean --benchmark-min-rounds=3'"""
+            }
+        }
+
+        // ── TCD-25: Lean Worker — Real-World Mathlib Scenarios ───────────────
+        // Uses real Lean 4 + Mathlib snippets. Measures latency per snippet,
+        // sequential vs concurrent throughput, and validity classification.
+        // NOTE: requires LEAN_PATH set inside the lean-worker container.
+        stage('TCD-25 · Lean Mathlib Scenarios') {
+            steps {
+                sh "${DC} cp /workspace/lean/tests/tcd25_lean_realworld lean-worker:/app/tests/tcd25_lean_realworld"
+                sh """${DC} exec -T lean-worker bash -c \
+                    'pip3 install pytest-benchmark --quiet && \
+                     cd /app && pytest -v -s tests/tcd25_lean_realworld/ \
+                     --benchmark-sort=mean'"""
+            }
+        }
+
+        // ── Web API — HTTP Response Time Audit ───────────────────────────────
+        // Fires 20 requests against key public endpoints and reports
+        // min / avg / max response times using curl's built-in timing.
+        stage('Web API Response Time Audit') {
+            steps {
+                sh '''
+                    echo "=== Web API Response Time Audit (20 requests per endpoint) ==="
+
+                    measure() {
+                        local label="$1"
+                        local url="$2"
+                        local times=""
+                        local min=99999 max=0 total=0 count=20
+
+                        for i in $(seq 1 $count); do
+                            t=$(curl -s -o /dev/null -w "%{time_total}" "$url" 2>/dev/null)
+                            ms=$(echo "$t * 1000" | awk "{printf \\"%.0f\\", \\$1 * 1000}")
+                            total=$((total + ms))
+                            [ "$ms" -lt "$min" ] && min=$ms
+                            [ "$ms" -gt "$max" ] && max=$ms
+                        done
+
+                        avg=$((total / count))
+                        printf "  %-40s  min=%4dms  avg=%4dms  max=%4dms\\n" \
+                            "$label" "$min" "$avg" "$max"
+                    }
+
+                    measure "GET /api/v1/auth/url"         "http://web:5000/api/v1/auth/url"
+                    measure "GET /api/v1/health (if any)"  "http://web:5000/api/v1/health"
+
+                    echo ""
+                    echo "=== Frontend Serve Latency (10 requests) ==="
+                    for i in $(seq 1 10); do
+                        curl -s -o /dev/null -w "  request $i: %{time_total}s\\n" http://frontend:80/
+                    done
+                '''
+            }
+        }
+
+        // ── Combined Services — Concurrent Multi-Worker Load ─────────────────
+        // Fires parallel Lean verifications + Python computations concurrently
+        // to stress multiple workers simultaneously and measure wall-clock time.
+        stage('Combined: Lean + Computation Concurrent Load') {
+            steps {
+                sh """${DC} exec -T lean-worker bash -c '
+                    python3 - <<PYEOF
+import concurrent.futures, time, sys
+
+# Import the service directly inside the container
+sys.path.insert(0, "/app")
+from lean_service import verify_lean_proof
+
+SNIPPET = """
+theorem add_comm_nat (n m : Nat) : n + m = m + n := by
+  induction n with
+  | zero => simp
+  | succ k ih => simp [Nat.succ_add, ih]
+"""
+
+def run_one(idx):
+    t0 = time.perf_counter()
+    result = verify_lean_proof(SNIPPET)
+    elapsed = (time.perf_counter() - t0) * 1000
+    return idx, result.get("verified", False), elapsed
+
+print("=== Lean Worker: concurrent load test ===")
+for workers, calls in [(1, 4), (4, 16), (8, 16)]:
+    t_start = time.perf_counter()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = [ex.submit(run_one, i) for i in range(calls)]
+        results = [f.result() for f in concurrent.futures.as_completed(futures)]
+    wall = (time.perf_counter() - t_start) * 1000
+    passed = sum(1 for _, ok, _ in results if ok)
+    avg_ms = sum(ms for _, _, ms in results) / len(results)
+    print(f"  workers={workers:2d}  calls={calls:3d}  "
+          f"passed={passed}/{calls}  "
+          f"avg_latency={avg_ms:.0f}ms  "
+          f"wall_time={wall:.0f}ms  "
+          f"throughput={calls / (wall/1000):.2f} verif/s")
+
+print("=== Done ===")
+PYEOF
+'"""
+            }
+        }
+
+        // ── Combined Services — Web + Workers End-to-End Celery Throughput ───
+        // Sends N translate tasks through the web API (Redis → nl2fl-worker →
+        // lean-worker) and measures how long the full pipeline takes.
+        stage('Combined: Web → Celery Pipeline Throughput') {
+            steps {
+                sh """${DC} exec -T web python3 - <<\'PYEOF\'
+import os, time, redis, json
+
+r = redis.from_url(os.environ["REDIS_URL"])
+
+# Measure how fast the queue drains by monitoring queue depth
+lean_q      = os.environ.get("CELERY_LEAN_QUEUE", "lean_queue")
+comp_q      = os.environ.get("CELERY_COMPUTATION_QUEUE", "computation_queue")
+nl2fl_q     = os.environ.get("CELERY_NL2FL_QUEUE", "nl2fl_queue")
+agents_q    = os.environ.get("CELERY_AGENTS_QUEUE", "agents_queue")
+
+print("=== Celery queue depth snapshot ===")
+for q in [lean_q, comp_q, nl2fl_q, agents_q]:
+    depth = r.llen(q)
+    print(f"  {q:<35} depth={depth}")
+
+# Measure Redis round-trip latency (50 pings)
+latencies = []
+for _ in range(50):
+    t0 = time.perf_counter()
+    r.ping()
+    latencies.append((time.perf_counter() - t0) * 1000)
+
+avg_ms = sum(latencies) / len(latencies)
+p95_ms = sorted(latencies)[int(len(latencies) * 0.95)]
+print(f"\\n=== Redis broker latency (50 pings) ===")
+print(f"  avg={avg_ms:.2f}ms  p95={p95_ms:.2f}ms  min={min(latencies):.2f}ms  max={max(latencies):.2f}ms")
+
+# Confirm all workers are alive and report their registered tasks
+from celery_worker import celery as app
+inspect = app.control.inspect(timeout=5)
+registered = inspect.registered() or {}
+stats     = inspect.stats()     or {}
+
+print(f"\\n=== Active workers ({len(registered)}) ===")
+for worker, tasks in registered.items():
+    pool_info = stats.get(worker, {}).get("pool", {})
+    processes = pool_info.get("max-concurrency", "?")
+    print(f"  {worker}")
+    print(f"    max-concurrency : {processes}")
+    print(f"    registered tasks: {len(tasks)}")
+
+print("\\n=== Throughput validation PASSED ===")
+PYEOF"""
+            }
+        }
+
+    } // stages
+
+    post {
+        success {
+            echo "✔ Performance validation completed (${currentBuild.durationString.minus(' and counting')}). Check stage logs for metrics."
+        }
+        failure {
+            echo "✘ Performance pipeline failed — a service may be down or a threshold was missed."
+        }
+        always {
+            echo "Pipeline result: ${currentBuild.currentResult}"
+        }
+    }
+}

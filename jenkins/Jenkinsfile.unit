@@ -1,0 +1,141 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Pipeline 1 — Unit Tests
+// Covers all independent-unit TCDs (TCD-01 to TCD-14):
+//   • TCD-01..06  Server API tests       (pytest inside web container)
+//   • TCD-07..11  Worker unit tests      (pytest inside each worker container)
+//   • TCD-12..14  Angular unit tests     (Vitest, runs on Jenkins Node.js)
+// ─────────────────────────────────────────────────────────────────────────────
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    environment {
+        DC = "docker compose -f /workspace/docker-compose.yml"
+    }
+
+    stages {
+
+        // ── Server API Unit Tests ────────────────────────────────────────────
+        // These run inside the already-running 'web' container so they share
+        // the same Flask app context, DB connection and mock infrastructure.
+        stage('Server API Unit Tests') {
+            parallel {
+
+                stage('TCD-01 · Auth API') {
+                    steps {
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd01_auth/'"
+                    }
+                }
+
+                stage('TCD-02 · Projects API') {
+                    steps {
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd02_projects/'"
+                    }
+                }
+
+                stage('TCD-03 · Nodes API') {
+                    steps {
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd03_nodes/'"
+                    }
+                }
+
+                stage('TCD-04 · Translation API') {
+                    steps {
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd04_translate/'"
+                    }
+                }
+
+                stage('TCD-05 · Agents API') {
+                    steps {
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd05_agents/'"
+                    }
+                }
+
+                stage('TCD-06 · GitHub Service / Git Engine') {
+                    steps {
+                        sh "${DC} exec -T web bash -c 'cd /usr/src/app && pytest -v tests/tcd06_github_service/'"
+                    }
+                }
+
+            } // parallel
+        }
+
+        // ── Worker Unit Tests (mocked, no real Lean/computation) ────────────
+        // Each worker test set is synced into its container first, then
+        // executed via docker compose exec.
+        stage('Worker Unit Tests') {
+            parallel {
+
+                stage('TCD-07 · Lean Worker') {
+                    steps {
+                        sh "${DC} cp /workspace/lean/tests/tcd07_lean_worker lean-worker:/app/tests/tcd07_lean_worker"
+                        sh "${DC} exec -T lean-worker bash -c 'cd /app && pytest -v tests/tcd07_lean_worker/'"
+                    }
+                }
+
+                stage('TCD-08 · Computation Worker') {
+                    steps {
+                        sh "${DC} cp /workspace/computation/tests/tcd08_computation computation-worker:/app/tests/tcd08_computation"
+                        sh "${DC} exec -T computation-worker bash -c 'cd /app && pytest -v tests/tcd08_computation/'"
+                    }
+                }
+
+                stage('TCD-09 · Cluster Computation Worker') {
+                    steps {
+                        sh "${DC} cp /workspace/cluster_computation/tests/tcd09_cluster cluster-computation-worker:/app/tests/tcd09_cluster"
+                        sh "${DC} exec -T cluster-computation-worker bash -c 'cd /app && pytest -v tests/tcd09_cluster/'"
+                    }
+                }
+
+                stage('TCD-10 · NL2FL Worker') {
+                    steps {
+                        sh "${DC} cp /workspace/nl2fl/tests/tcd10_nl2fl nl2fl-worker:/app/tests/tcd10_nl2fl"
+                        sh "${DC} exec -T nl2fl-worker bash -c 'cd /app && pytest -v tests/tcd10_nl2fl/'"
+                    }
+                }
+
+                stage('TCD-11 · Agents Worker') {
+                    steps {
+                        sh "${DC} cp /workspace/agents/tests/tcd11_agents agents-worker:/app/tests/tcd11_agents"
+                        sh "${DC} exec -T agents-worker bash -c 'cd /app && pytest -v tests/tcd11_agents/'"
+                    }
+                }
+
+            } // parallel
+        }
+
+        // ── Frontend Unit Tests (Vitest) ─────────────────────────────────────
+        // npm ci runs once; all three spec files are passed to a single Vitest
+        // invocation so there's no duplicate install overhead.
+        stage('Frontend Unit Tests') {
+            steps {
+                dir('/workspace/frontend') {
+                    sh 'npm ci --prefer-offline'
+                    sh '''npx vitest run \
+                        src/app/services/auth.service.spec.ts \
+                        src/app/services/task.service.spec.ts \
+                        src/app/guards/auth.guard.spec.ts'''
+                }
+            }
+        }
+
+    } // stages
+
+    post {
+        success {
+            echo "✔ All unit tests passed (${currentBuild.durationString.minus(' and counting')})."
+        }
+        failure {
+            echo "✘ One or more unit tests failed — see the failing stage above for details."
+        }
+        always {
+            echo "Pipeline result: ${currentBuild.currentResult}"
+        }
+    }
+}
