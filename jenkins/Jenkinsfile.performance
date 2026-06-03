@@ -143,134 +143,24 @@ PYEOF
 
         // ── Combined Services — Concurrent Multi-Worker Load ─────────────────
         // Fires Lean verifications in concurrent batches (1/4/8 workers).
-        // Writes lean-concurrent-load.json inside the container, then copies out.
-        // NOTE: tr -d '\r' strips Windows CRLF from the heredoc before the bytes
-        //       reach Python inside the container (Python 3.12 rejects \r in source).
+        // The Python script lives in jenkins/scripts/ and is copied into the
+        // container as a file — avoiding Groovy \n-interpretation issues that
+        // occur when Python source is passed via stdin heredoc.
         stage('Combined: Lean + Computation Concurrent Load') {
             steps {
-                sh '''
-tr -d '\r' <<'PYEOF' | docker compose -f /workspace/docker-compose.yml exec -T lean-worker python3 -
-import concurrent.futures, time, json, sys
-sys.path.insert(0, '/app')
-from lean_service import verify_lean_proof
-
-SNIPPET = (
-    'theorem add_comm_nat (n m : Nat) : n + m = m + n := by\n'
-    '  induction n with\n'
-    '  | zero => simp\n'
-    '  | succ k ih => simp [Nat.succ_add, ih]\n'
-)
-
-def run_one(idx):
-    t0 = time.perf_counter()
-    result = verify_lean_proof(SNIPPET)
-    return idx, result.get('verified', False), (time.perf_counter() - t0) * 1000
-
-batches = []
-print('=== Lean Worker: concurrent load test ===')
-for workers, calls in [(1, 4), (4, 16), (8, 16)]:
-    t_start = time.perf_counter()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-        futures = [ex.submit(run_one, i) for i in range(calls)]
-        results = [f.result() for f in concurrent.futures.as_completed(futures)]
-    wall   = (time.perf_counter() - t_start) * 1000
-    passed = sum(1 for _, ok, _ in results if ok)
-    avg_ms = sum(ms for _, _, ms in results) / len(results)
-    tput   = round(calls / (wall / 1000), 2)
-    print(
-        f'  workers={workers}  calls={calls}  passed={passed}/{calls}'
-        f'  avg_latency={avg_ms:.0f}ms  wall={wall:.0f}ms  throughput={tput}/s'
-    )
-    batches.append({
-        'workers': workers, 'calls': calls, 'passed': passed,
-        'avg_latency_ms': round(avg_ms, 2),
-        'wall_ms': round(wall, 2),
-        'throughput_per_s': tput,
-    })
-
-with open('/tmp/lean-concurrent-load.json', 'w') as f:
-    json.dump({'stage': 'lean_concurrent_load', 'batches': batches}, f, indent=2)
-print('Artifact: /tmp/lean-concurrent-load.json')
-PYEOF
-'''
+                sh '${DC} cp /workspace/jenkins/scripts/lean-concurrent-load.py lean-worker:/tmp/lean-load.py'
+                sh '${DC} exec -T lean-worker python3 /tmp/lean-load.py'
                 sh '${DC} cp lean-worker:/tmp/lean-concurrent-load.json "$PERF_REPORTS/lean-concurrent-load.json" || true'
             }
         }
 
         // ── Combined Services — Web + Workers End-to-End Celery Throughput ───
         // Measures Redis round-trip latency (50 pings, p95), queue depths, and
-        // worker registry. Writes celery-throughput.json inside web container.
+        // worker registry. Script is copied as a file to avoid heredoc issues.
         stage('Combined: Web → Celery Pipeline Throughput') {
             steps {
-                sh '''
-tr -d '\r' <<'PYEOF' | docker compose -f /workspace/docker-compose.yml exec -T web python3 -
-import os, time, json, redis
-
-r = redis.from_url(os.environ['REDIS_URL'])
-
-queues = {
-    'lean':        os.environ.get('CELERY_LEAN_QUEUE',        'lean_queue'),
-    'computation': os.environ.get('CELERY_COMPUTATION_QUEUE', 'computation_queue'),
-    'nl2fl':       os.environ.get('CELERY_NL2FL_QUEUE',       'nl2fl_queue'),
-    'agents':      os.environ.get('CELERY_AGENTS_QUEUE',      'agents_queue'),
-}
-
-print('=== Celery queue depth snapshot ===')
-queue_depths = {}
-for name, q in queues.items():
-    depth = r.llen(q)
-    queue_depths[name] = {'queue': q, 'depth': depth}
-    print(f'  {q:<35} depth={depth}')
-
-latencies = []
-for _ in range(50):
-    t0 = time.perf_counter()
-    r.ping()
-    latencies.append((time.perf_counter() - t0) * 1000)
-s = sorted(latencies)
-redis_stats = {
-    'samples': len(latencies),
-    'min_ms':  round(min(latencies), 3),
-    'avg_ms':  round(sum(latencies) / len(latencies), 3),
-    'p95_ms':  round(s[int(len(s) * 0.95)], 3),
-    'max_ms':  round(max(latencies), 3),
-}
-avg = redis_stats['avg_ms']
-p95 = redis_stats['p95_ms']
-mn  = redis_stats['min_ms']
-mx  = redis_stats['max_ms']
-print(f'\n=== Redis broker latency (50 pings) ===')
-print(f'  avg={avg}ms  p95={p95}ms  min={mn}ms  max={mx}ms')
-
-from celery_worker import celery as app
-inspect   = app.control.inspect(timeout=5)
-registered = inspect.registered() or {}
-stats_map  = inspect.stats()      or {}
-
-workers_info = []
-print(f'\n=== Active workers ({len(registered)}) ===')
-for worker, tasks in registered.items():
-    pool = stats_map.get(worker, {}).get('pool', {})
-    entry = {
-        'name': worker,
-        'max_concurrency': pool.get('max-concurrency', '?'),
-        'registered_tasks': len(tasks),
-    }
-    workers_info.append(entry)
-    print(f"  {worker}  concurrency={entry['max_concurrency']}  tasks={entry['registered_tasks']}")
-
-payload = {
-    'stage': 'celery_throughput',
-    'queue_depths': queue_depths,
-    'redis_latency': redis_stats,
-    'workers': workers_info,
-}
-with open('/tmp/celery-throughput.json', 'w') as f:
-    json.dump(payload, f, indent=2)
-print('\nArtifact: /tmp/celery-throughput.json')
-print('=== Throughput validation PASSED ===')
-PYEOF
-'''
+                sh '${DC} cp /workspace/jenkins/scripts/celery-throughput.py web:/tmp/celery-throughput-script.py'
+                sh '${DC} exec -T web python3 /tmp/celery-throughput-script.py'
                 sh '${DC} cp web:/tmp/celery-throughput.json "$PERF_REPORTS/celery-throughput.json" || true'
             }
         }
