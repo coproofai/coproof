@@ -1,0 +1,6 @@
+node_modules
+.npm-lock-hash
+dist
+.angular
+cypress/videos
+cypress/screenshots
