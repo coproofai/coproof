@@ -165,10 +165,13 @@ PYEOF
             }
         }
 
-        // ── Merge all JSONs → perf-summary.json ──────────────────────────────
-        // Reads every *.json in perf-reports/ and writes a single summary file.
-        stage('Collect: Build perf-summary.json') {
+        // ── Merge all JSONs → perf-summary.json + perf-report.txt ─────────────
+        // 1. Stitches every *.json in perf-reports/ into perf-summary.json.
+        // 2. Runs perf-report.py which reads the summary and writes a
+        //    plain-English perf-report.txt (no machine details, human readable).
+        stage('Collect: Build perf-summary.json + perf-report.txt') {
             steps {
+                // Step 1 — merge JSONs into summary (runs in Jenkins container)
                 sh '''
 python3 - <<'PYEOF'
 import json, os, glob, datetime
@@ -184,17 +187,19 @@ for path in sorted(glob.glob(os.path.join(reports_dir, '*.json'))):
     try:
         with open(path) as f:
             summary['reports'][name] = json.load(f)
-        print(f'  merged: {name}')
+        print('  merged: ' + name)
     except Exception as e:
         summary['reports'][name] = {'error': str(e)}
-        print(f'  warning: {name}: {e}')
+        print('  warning: ' + name + ': ' + str(e))
 
 out = os.path.join(reports_dir, 'perf-summary.json')
 with open(out, 'w') as f:
     json.dump(summary, f, indent=2)
-print(f'Summary written: {out}')
+print('Summary written: ' + out)
 PYEOF
 '''
+                // Step 2 — generate plain-English report from summary
+                sh 'python3 /workspace/jenkins/scripts/perf-report.py'
             }
         }
 
