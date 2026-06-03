@@ -80,12 +80,12 @@ pipeline {
                     parallel(
                         'TCD-15 · E2E Auth Flow': {
                             dir('/workspace/frontend') {
-                                sh "npx cypress run --spec 'cypress/e2e/tcd15_auth/**' --headless"
+                                sh "npx cypress run --spec 'cypress/e2e/tcd15-auth-flow.cy.ts' --headless"
                             }
                         },
                         'TCD-16 · E2E Project & Node Flow': {
                             dir('/workspace/frontend') {
-                                sh "npx cypress run --spec 'cypress/e2e/tcd16_project/**' --headless"
+                                sh "npx cypress run --spec 'cypress/e2e/tcd16-project-node-flow.cy.ts' --headless"
                             }
                         }
                     )

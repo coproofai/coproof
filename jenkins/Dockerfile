@@ -41,6 +41,9 @@ RUN apt-get update \
         xauth \
     && rm -rf /var/lib/apt/lists/*
 
+# ── Xvfb X11 socket directory (must be root-owned, world-writable) ──────────
+RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+
 # ── Docker group + entrypoint ──────────────────────────────────────────────
 RUN groupadd -f docker
 COPY docker-entrypoint.sh /docker-entrypoint.sh
